@@ -101,11 +101,35 @@ export default function Dashboard({ lancamentos, resumos, onIrPara, onDetalhe })
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
 
+      {/* Saldo custo x contábil */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1px 1fr 1px 1fr', background:'#fff', border:'1px solid #E5E7EB', borderRadius:8, padding:'18px 24px', gap:0 }}>
+        <div>
+          <div style={{ fontSize:11, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:6 }}>Custo apurado · estoque</div>
+          <div style={{ fontSize:24, fontWeight:700, fontVariantNumeric:'tabular-nums' }}>R$ {brl(kpi.totalCusto)}</div>
+        </div>
+        <div style={{ background:'#E5E7EB' }} />
+        <div style={{ paddingLeft:24 }}>
+          <div style={{ fontSize:11, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:6 }}>Saldo contábil · lançamentos</div>
+          <div style={{ fontSize:24, fontWeight:700, fontVariantNumeric:'tabular-nums' }}>R$ {brl(kpi.totalCtb)}</div>
+        </div>
+        <div style={{ background:'#E5E7EB' }} />
+        <div style={{ paddingLeft:24 }}>
+          <div style={{ fontSize:11, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:6 }}>Diferença</div>
+          <div style={{ fontSize:24, fontWeight:700, fontVariantNumeric:'tabular-nums',
+            color: isZero(kpi.diff) ? '#12805C' : kpi.diff > 0 ? '#B42318' : '#1D5BBF' }}>
+            {kpi.diff > 0 ? '+' : ''}R$ {brl(kpi.diff)}
+          </div>
+          <div style={{ fontSize:11.5, color:'#9CA3AF', marginTop:3 }}>
+            {isZero(kpi.diff) ? 'Totalmente conciliado' : kpi.diff > 0 ? 'Custo acima do contábil' : 'Contábil acima do custo'}
+          </div>
+        </div>
+      </div>
+
       {/* Alerta situacional */}
       <div style={{ background:alertaCor.bg, border:`1px solid ${alertaCor.border}`, borderRadius:8, padding:'12px 16px', fontSize:13, color:alertaCor.texto }}>
         {alertaTexto}
         <span style={{ opacity:.7, marginLeft:8, fontSize:12 }}>
-          Taxa de conciliação real (excl. internos): <strong>{kpi.taxaReal.toFixed(1)}%</strong>
+          Taxa real (excl. internos): <strong>{kpi.taxaReal.toFixed(1)}%</strong>
         </span>
       </div>
 
