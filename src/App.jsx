@@ -210,10 +210,7 @@ export default function App() {
                 />
               )}
               {pagina === 'fechamento' && (
-                <Fechamento
-                  importacaoId={ultima?.importacao_id}
-                  periodo={ultima ? `${dBR(ultima.periodo_inicio)}-${dBR(ultima.periodo_fim)}` : ''}
-                />
+                <Fechamento />
               )}
 
               {pagina === 'razao' && <Razao />}
