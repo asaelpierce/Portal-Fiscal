@@ -33,13 +33,24 @@ export const dBR = (d) => {
 
 export const isZero = (n) => Math.abs(Number(n) || 0) < 0.005
 
-export const SITUACOES = [
-  { p: '1', k: 'ok',     rot: 'Confere',               cor: '#12805C', bg: '#D1FAE5' },
-  { p: '2', k: 'soCtb',  rot: 'Só na contabilidade',   cor: '#1D5BBF', bg: '#DBEAFE' },
-  { p: '3', k: 'soCusto',rot: 'Só no custo',           cor: '#B54708', bg: '#FEF3C7' },
-  { p: '4', k: 'valor',  rot: 'Divergência de valor',  cor: '#B42318', bg: '#FEE2E2' },
-]
+// Classes calculadas no banco — sem precisar de lógica no frontend
+export const CLASSES = {
+  OK:            { cor: '#12805C', bg: '#D1FAE5', rot: 'Conciliado',         icone: '✓' },
+  CRITICO:       { cor: '#B42318', bg: '#FEE2E2', rot: 'Crítico',            icone: '🔴' },
+  INVESTIGAR:    { cor: '#B54708', bg: '#FEF3C7', rot: 'Investigar',         icone: '⚠' },
+  ARREDONDAMENTO:{ cor: '#6B7280', bg: '#F3F4F6', rot: 'Arredondamento',     icone: '~' },
+  INTERNO:       { cor: '#9CA3AF', bg: '#F9FAFB', rot: 'Interno',            icone: '↔' },
+}
 
+export const classeDe = (c) => CLASSES[c] || CLASSES.INVESTIGAR
+
+// Mantém compatibilidade com sitDe usado em alguns lugares
+export const SITUACOES = [
+  { p: '1', k: 'ok',      rot: 'Confere',              cor: '#12805C', bg: '#D1FAE5' },
+  { p: '2', k: 'soCtb',   rot: 'Só na contabilidade',  cor: '#1D5BBF', bg: '#DBEAFE' },
+  { p: '3', k: 'soCusto', rot: 'Só no custo',          cor: '#B54708', bg: '#FEF3C7' },
+  { p: '4', k: 'valor',   rot: 'Divergência de valor',  cor: '#B42318', bg: '#FEE2E2' },
+]
 export const sitDe = (m) =>
   SITUACOES.find((s) => String(m || '').startsWith(s.p)) ||
   { k: 'outro', rot: 'Não classificado', cor: '#667085', bg: '#F3F4F6' }

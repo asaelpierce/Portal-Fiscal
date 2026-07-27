@@ -35,12 +35,12 @@ export default function App() {
 
   const carregar = useCallback(async () => {
     try {
-      const rs = await sbFetch('resumo_importacoes?select=*&order=criado_em.asc')
+      const rs = await sbFetch('resumo_analitico?select=*&order=criado_em.asc')
       setResumos(rs || [])
       if (!rs?.length) return setFase('vazio')
       const ult = rs[rs.length - 1]
       setUltima(ult)
-      const rows = await sbFetch(`lancamentos_conciliacao?importacao_id=eq.${ult.importacao_id}&select=*`)
+      const rows = await sbFetch(`lancamentos_conciliacao?importacao_id=eq.${ult.importacao_id}&select=*&order=prioridade.asc`)
       setLancamentos(rows || [])
       setFase('pronto')
     } catch (e) {
@@ -66,10 +66,8 @@ export default function App() {
   }
 
   // Pendências reais = "só no custo" E não é movimentação interna
-  const pendCount = lancamentos.filter(r =>
-    String(r.motivo_divergencia || '').startsWith('3') &&
-    !TOPS_SEM_CTB.has(r.cod_top || '')
-  ).length
+  // Badge conta só críticos — calculado no banco, sem lógica aqui
+  const pendCount = lancamentos.filter(r => r.classe_divergencia === 'CRITICO').length
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F4F6F8' }}>
