@@ -5,11 +5,13 @@ import Dashboard from './pages/Dashboard.jsx'
 import Pendencias from './pages/Pendencias.jsx'
 import Lancamentos from './pages/Lancamentos.jsx'
 import { Contas, Historico } from './pages/ContasHistorico.jsx'
+import Razao from './pages/Razao.jsx'
 
 const MENU = [
   { id: 'dashboard',  label: 'Visão geral',         icon: '▦' },
   { id: 'pendencias', label: 'Pendências',           icon: '⚠', badge: true },
-  { id: 'lancamentos',label: 'Todos os lançamentos', icon: '≡' },
+  { id: 'lancamentos',label: 'Lançamentos',          icon: '≡' },
+  { id: 'razao',      label: 'Razão de estoque',     icon: '📋' },
   { id: 'contas',     label: 'Contas contábeis',     icon: '⊞' },
   { id: 'historico',  label: 'Histórico',            icon: '⊙' },
 ]
@@ -206,6 +208,8 @@ export default function App() {
                   onFiltrarConta={irParaLancamentosComConta}
                 />
               )}
+              {pagina === 'razao' && <Razao />}
+
               {pagina === 'historico' && (
                 <Historico resumos={resumos} />
               )}
