@@ -6,9 +6,11 @@ import Pendencias from './pages/Pendencias.jsx'
 import Lancamentos from './pages/Lancamentos.jsx'
 import { Contas, Historico } from './pages/ContasHistorico.jsx'
 import Razao from './pages/Razao.jsx'
+import Fechamento from './pages/Fechamento.jsx'
 
 const MENU = [
-  { id: 'dashboard',  label: 'Visão geral',         icon: '▦' },
+  { id: 'fechamento', label: 'Fechamento',           icon: '⚖' },
+  { id: 'dashboard',  label: 'Visão geral',          icon: '▦' },
   { id: 'pendencias', label: 'Pendências',           icon: '⚠', badge: true },
   { id: 'lancamentos',label: 'Lançamentos',          icon: '≡' },
   { id: 'razao',      label: 'Razão de estoque',     icon: '📋' },
@@ -23,7 +25,7 @@ const TOPS_SEM_CTB = new Set([
 ])
 
 export default function App() {
-  const [pagina,     setPagina]     = useState('dashboard')
+  const [pagina,     setPagina]     = useState('fechamento')
   const [fase,       setFase]       = useState('carregando') // carregando | vazio | pronto | erro
   const [erro,       setErro]       = useState('')
   const [lancamentos,setLancamentos]= useState([])
@@ -67,7 +69,8 @@ export default function App() {
 
   // Pendências reais = "só no custo" E não é movimentação interna
   // Badge conta só críticos — calculado no banco, sem lógica aqui
-  const pendCount = lancamentos.filter(r => r.classe_divergencia === 'CRITICO').length
+  const pendCount = lancamentos.filter(r =>
+    ['CRITICO','AJUSTE_CUSTO','INVESTIGAR'].includes(r.classe_divergencia)).length
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F4F6F8' }}>
@@ -206,6 +209,13 @@ export default function App() {
                   onFiltrarConta={irParaLancamentosComConta}
                 />
               )}
+              {pagina === 'fechamento' && (
+                <Fechamento
+                  importacaoId={ultima?.importacao_id}
+                  periodo={ultima ? `${dBR(ultima.periodo_inicio)}-${dBR(ultima.periodo_fim)}` : ''}
+                />
+              )}
+
               {pagina === 'razao' && <Razao />}
 
               {pagina === 'historico' && (

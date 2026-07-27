@@ -35,11 +35,12 @@ export const isZero = (n) => Math.abs(Number(n) || 0) < 0.005
 
 // Classes calculadas no banco — sem precisar de lógica no frontend
 export const CLASSES = {
-  OK:            { cor: '#12805C', bg: '#D1FAE5', rot: 'Conciliado',         icone: '✓' },
-  CRITICO:       { cor: '#B42318', bg: '#FEE2E2', rot: 'Crítico',            icone: '🔴' },
-  INVESTIGAR:    { cor: '#B54708', bg: '#FEF3C7', rot: 'Investigar',         icone: '⚠' },
-  ARREDONDAMENTO:{ cor: '#6B7280', bg: '#F3F4F6', rot: 'Arredondamento',     icone: '~' },
-  INTERNO:       { cor: '#9CA3AF', bg: '#F9FAFB', rot: 'Interno',            icone: '↔' },
+  OK:          { cor: '#12805C', bg: '#D1FAE5', rot: 'Conciliado',       icone: '✓' },
+  CRITICO:     { cor: '#B42318', bg: '#FEE2E2', rot: 'Crítico',          icone: '🔴' },
+  AJUSTE_CUSTO:{ cor: '#B54708', bg: '#FEF3C7', rot: 'Ajuste de custo',  icone: '⚙' },
+  INVESTIGAR:  { cor: '#1D5BBF', bg: '#DBEAFE', rot: 'Investigar',       icone: '⚠' },
+  REMESSA:     { cor: '#6B7280', bg: '#F3F4F6', rot: 'Remessa aberta',   icone: '⏳' },
+  JUSTIFICADO: { cor: '#12805C', bg: '#ECFDF5', rot: 'Justificado',      icone: '📋' },
 }
 
 export const classeDe = (c) => CLASSES[c] || CLASSES.INVESTIGAR
