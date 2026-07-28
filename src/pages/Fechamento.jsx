@@ -10,18 +10,23 @@ const ACAO_ESTILO = {
 }
 
 // ─── Painel lateral de notas de uma conta ────────────────────────────────────
-function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
+function PainelNotas({ conta, importacaoId, dataFechamento, onClose, onNota }) {
   const [fase,    setFase]    = useState('carregando')
   const [notas,   setNotas]   = useState([])
   const [mostrarTodas, setMostrarTodas] = useState(false)
 
   useEffect(() => {
-    if (!conta) return
+    if (!conta || !importacaoId) return
     setFase('carregando'); setNotas([])
-    sbFetch(`lancamentos_conciliacao?conta_contabil=eq.${encodeURIComponent(conta)}&select=*&order=prioridade.asc,diferenca.desc`)
+    // Filtra pela importação correta (mesmo mês do fechamento)
+    sbFetch(
+      `lancamentos_conciliacao?importacao_id=eq.${importacaoId}` +
+      `&conta_contabil=eq.${encodeURIComponent(conta)}` +
+      `&select=*&order=prioridade.asc,diferenca.desc`
+    )
       .then(r => { setNotas(r || []); setFase('pronto') })
       .catch(e => setFase('erro'))
-  }, [conta])
+  }, [conta, importacaoId])
 
   // Por padrão mostra só as que têm diferença — é isso que causou o desvio
   const comDif   = notas.filter(n => n.classe_divergencia !== 'OK')
@@ -163,10 +168,15 @@ export default function Fechamento() {
   const [datas,      setDatas]      = useState([])
   const [data,       setData]       = useState('')
   const [linhas,     setLinhas]     = useState([])
-  const [contaAberta, setContaAberta] = useState(null) // abre painel de notas
-  const [notaAberta,  setNotaAberta]  = useState(null) // abre drawer de detalhe
+  const [contaAberta, setContaAberta] = useState(null)
+  const [notaAberta,  setNotaAberta]  = useState(null)
+  const [importacoes, setImportacoes] = useState([]) // importações de conciliação
 
   useEffect(() => {
+    // Carrega lista de importações de conciliação para cruzar com a data
+    sbFetch('importacoes?select=id,periodo_inicio,periodo_fim&order=periodo_fim.desc')
+      .then(r => setImportacoes(r || []))
+      .catch(() => {})
     sbFetch('fechamento_saldos?select=data_posicao&order=data_posicao.desc')
       .then(r => {
         const u = [...new Set((r||[]).map(x=>x.data_posicao))]
@@ -203,6 +213,16 @@ export default function Fechamento() {
   }
 
   const fmt = s => { const [y,m,d]=String(s).slice(0,10).split('-'); return `${d}/${m}/${y}` }
+
+  // Encontra a importação de conciliação cujo período contém a data do fechamento
+  const importacaoId = useMemo(() => {
+    if (!data || !importacoes.length) return null
+    // Prefere a importação cujo periodo_fim está no mesmo mês/ano da data de fechamento
+    const [ano, mes] = data.slice(0,7).split('-')
+    const mesAno = `${ano}-${mes}`
+    const match = importacoes.find(i => i.periodo_fim?.startsWith(mesAno))
+    return match?.id || importacoes[0]?.id
+  }, [data, importacoes])
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:18}}>
@@ -351,6 +371,7 @@ export default function Fechamento() {
       {contaAberta && (
         <PainelNotas
           conta={contaAberta}
+          importacaoId={importacaoId}
           dataFechamento={data}
           onClose={()=>setContaAberta(null)}
           onNota={nota=>{ setContaAberta(null); setNotaAberta(nota) }}
