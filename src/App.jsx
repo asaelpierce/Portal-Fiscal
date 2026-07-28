@@ -6,6 +6,7 @@ import Lancamentos from './pages/Lancamentos.jsx'
 import Fechamento from './pages/Fechamento.jsx'
 import Razao from './pages/Razao.jsx'
 import { Contas, Historico } from './pages/ContasHistorico.jsx'
+import Sincronizacao from './pages/Sincronizacao.jsx'
 
 const MENU = [
   { id: 'visao',      label: 'Visão geral',         icon: '▦' },
@@ -14,6 +15,7 @@ const MENU = [
   { id: 'razao',      label: 'Razão de estoque',     icon: '📋' },
   { id: 'contas',     label: 'Contas contábeis',     icon: '⊞' },
   { id: 'historico',  label: 'Histórico',            icon: '⊙' },
+  { id: 'sync',       label: 'Importar período',      icon: '↻' },
 ]
 
 export default function App() {
@@ -195,6 +197,7 @@ export default function App() {
                   onFiltrarConta={conta => { setLancFiltro(conta); setPagina('lancamentos') }} />
               )}
               {pagina === 'historico'  && <Historico resumos={resumos} />}
+              {pagina === 'sync'        && <Sincronizacao />}
             </>
           )}
         </div>

@@ -125,7 +125,7 @@ function BlocoNotas({ lancamentos, onDetalhe }) {
               ⚠ {investigar.length} nota{investigar.length > 1 ? 's' : ''} para investigar
             </span>
             <span style={{ fontSize: 12, color: '#92400E' }}>
-              diferença real · precisa verificar no Sankhya
+              diferença de custo de entrada · verificar TGFCUSITE no Sankhya
             </span>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
@@ -172,7 +172,7 @@ function BlocoNotas({ lancamentos, onDetalhe }) {
               ⚙ {ajustesCusto.length} lançamentos com ajuste de custo médio
             </span>
             <span style={{ fontSize: 12, color: '#6B7280' }}>
-              fecham no saldo da conta · não requerem ação
+              fecham no saldo da conta · já estão refletidos no fechamento acima
             </span>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
@@ -237,7 +237,7 @@ export default function VIsaoGeral({ lancamentos, fechamento, onDetalhe }) {
       <section>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.1em' }}>
-            NOTAS DO PERÍODO — {int(total)} movimentações
+            DETALHE DAS NOTAS — {int(total)} movimentações do período
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <Badge cls="OK"           n={ok} />
