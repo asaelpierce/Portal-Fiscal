@@ -11,31 +11,52 @@ const ACAO_ESTILO = {
 
 // ─── Painel lateral de notas de uma conta ────────────────────────────────────
 function PainelNotas({ conta, importacaoId, dataFechamento, onClose, onNota }) {
-  const [fase,    setFase]    = useState('carregando')
-  const [notas,   setNotas]   = useState([])
-  const [mostrarTodas, setMostrarTodas] = useState(false)
+  const [fase,         setFase]         = useState('carregando')
+  const [porMes,       setPorMes]       = useState([]) // [{mes, label, notas, comDif}]
+  const [mesAberto,    setMesAberto]    = useState(null)
+  const [mostrarOk,    setMostrarOk]    = useState({}) // {mesKey: bool}
 
   useEffect(() => {
-    if (!conta || !importacaoId) return
-    setFase('carregando'); setNotas([])
-    // Busca lançamentos de TODOS os meses disponíveis até a data do fechamento
-    // para explicar a diferença acumulada que aparece no fechamento por saldo
-    sbFetch(
-      `lancamentos_conciliacao` +
-      `?conta_contabil=eq.${encodeURIComponent(conta)}` +
-      `&select=*,importacoes(periodo_inicio,periodo_fim)` +
-      `&order=data_entrada_saida.desc,prioridade.asc`
-    )
-      .then(r => { setNotas(r || []); setFase('pronto') })
-      .catch(e => setFase('erro'))
-  }, [conta, importacaoId])
+    if (!conta) return
+    setFase('carregando'); setPorMes([])
+    // Busca importações disponíveis + lançamentos com diferença da conta
+    Promise.all([
+      sbFetch('importacoes?select=id,periodo_inicio,periodo_fim&order=periodo_fim.desc'),
+      sbFetch(
+        `lancamentos_conciliacao?conta_contabil=eq.${encodeURIComponent(conta)}` +
+        `&select=*&order=data_entrada_saida.desc`
+      )
+    ])
+    .then(([imps, lancs]) => {
+      // Agrupa lançamentos por importação
+      const grupos = (imps || []).map(imp => {
+        const notas = (lancs || []).filter(l => l.importacao_id === imp.id)
+        if (!notas.length) return null
+        const comDif = notas.filter(n => n.classe_divergencia !== 'OK')
+        const [y, m] = imp.periodo_fim.split('-')
+        const meses  = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+        return {
+          mesKey:  `${y}-${m}`,
+          label:   `${meses[parseInt(m)-1]}/${y}`,
+          periodo: `${imp.periodo_inicio} → ${imp.periodo_fim}`,
+          impId:   imp.id,
+          notas,
+          comDif,
+          somaDif: comDif.reduce((s,n)=>s+Number(n.diferenca||0),0),
+        }
+      }).filter(Boolean)
 
-  // Por padrão mostra só as que têm diferença — é isso que causou o desvio
-  const comDif   = notas.filter(n => n.classe_divergencia !== 'OK')
-  const filtradas = mostrarTodas ? notas : comDif
+      // Abre o mês mais recente com diferença automaticamente
+      const primeiro = grupos.find(g => g.comDif.length > 0)
+      if (primeiro) setMesAberto(primeiro.mesKey)
+      setPorMes(grupos)
+      setFase('pronto')
+    })
+    .catch(() => setFase('erro'))
+  }, [conta])
 
-  const totCusto = notas.reduce((s,n)=>s+Number(n.saldo_dash||0),0)
-  const totCtb   = notas.reduce((s,n)=>s+Number(n.saldo_contabil||0),0)
+  const totalDif = porMes.reduce((s,g)=>s+g.somaDif,0)
+  const toggleOk = (key) => setMostrarOk(p=>({...p,[key]:!p[key]}))
 
   return (
     <div style={{
@@ -56,106 +77,134 @@ function PainelNotas({ conta, importacaoId, dataFechamento, onClose, onNota }) {
           </button>
         </div>
 
-        {/* Resumo da diferença */}
+          {/* Resumo acumulado */}
         {fase==='pronto' && (
-          <div style={{marginTop:12}}>
-            {comDif.length > 0 ? (
-              <div style={{padding:'10px 12px',background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:8}}>
-                <div style={{fontSize:11,color:'#92400E',marginBottom:4,fontWeight:600}}>
-                  {comDif.length} nota{comDif.length>1?'s':''} com diferença (todos os meses)
-                </div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
-                  <div>
-                    <div style={{fontSize:10,color:'#92400E',opacity:.7}}>Custo apurado</div>
-                    <div style={{fontSize:13,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>
-                      R$ {brl(comDif.reduce((s,n)=>s+Number(n.saldo_dash||0),0))}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:10,color:'#92400E',opacity:.7}}>Saldo contábil</div>
-                    <div style={{fontSize:13,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>
-                      R$ {brl(comDif.reduce((s,n)=>s+Number(n.saldo_contabil||0),0))}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:10,color:'#92400E',opacity:.7}}>Soma das diferenças</div>
-                    <div style={{fontSize:13,fontWeight:700,color:'#B54708',fontVariantNumeric:'tabular-nums'}}>
-                      R$ {brl(comDif.reduce((s,n)=>s+Number(n.diferenca||0),0))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div style={{padding:'10px 12px',background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:8,fontSize:12.5,color:'#166534'}}>
-                ✅ Nenhuma nota com diferença nesta conta.
-              </div>
-            )}
-            {/* Botão para ver todas se quiser */}
-            <button onClick={()=>setMostrarTodas(v=>!v)} style={{
-              marginTop:8,fontSize:11.5,color:'#9CA3AF',background:'none',border:'none',
-              cursor:'pointer',fontFamily:'inherit',padding:0,
-            }}>
-              {mostrarTodas ? `▲ Ocultar notas conciliadas (${notas.length - comDif.length})` : `▼ Ver também notas conciliadas (${notas.length - comDif.length})`}
-            </button>
+          <div style={{marginTop:10,padding:'9px 12px',background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:8}}>
+            <div style={{fontSize:10.5,color:'#92400E',fontWeight:600,marginBottom:2}}>Diferença acumulada (todos os meses)</div>
+            <div style={{fontSize:15,fontWeight:800,color:'#B54708',fontVariantNumeric:'tabular-nums'}}>
+              {totalDif>0?'+':''}R$ {brl(totalDif)}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Lista de notas */}
+      {/* Accordion por mês */}
       <div style={{flex:1,overflowY:'auto'}}>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         {fase==='carregando' && (
           <div style={{display:'flex',alignItems:'center',gap:10,padding:'32px 20px',color:'#9CA3AF',fontSize:13}}>
             <div style={{width:20,height:20,border:'3px solid #E5E7EB',borderTopColor:'#1D5BBF',borderRadius:'50%',animation:'spin .8s linear infinite'}}/>
-            Carregando notas…
-            <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+            Carregando…
           </div>
         )}
-        {fase==='pronto' && filtradas.map((nota,i) => {
-          const cls = classeDe(nota.classe_divergencia)
-          const dif = Number(nota.diferenca||0)
+
+        {fase==='pronto' && porMes.map(g => {
+          const aberto = mesAberto === g.mesKey
+          const verOk  = mostrarOk[g.mesKey]
+          const lista  = verOk ? g.notas : g.comDif
+          const temDif = g.comDif.length > 0
+
           return (
-            <button key={nota.id||i} onClick={()=>onNota(nota)}
-              style={{
-                display:'grid', gridTemplateColumns:'1fr auto',
-                gap:12, width:'100%', padding:'13px 20px',
-                background:'none', border:'none',
-                borderBottom:'1px solid #F3F4F6',
-                cursor:'pointer', textAlign:'left', fontFamily:'inherit',
-              }}
-              onMouseOver={e=>e.currentTarget.style.background='#F9FAFB'}
-              onMouseOut={e=>e.currentTarget.style.background='none'}
-            >
-              <div>
-                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
-                  <span style={{fontSize:13,fontWeight:700}}>NF {nota.nota_fiscal}</span>
-                  <span style={{fontSize:10.5,fontWeight:700,padding:'2px 7px',borderRadius:4,
-                    background:cls.bg,color:cls.cor}}>{cls.icone} {cls.rot}</span>
+            <div key={g.mesKey} style={{borderBottom:'2px solid #F3F4F6'}}>
+              {/* Cabeçalho do mês — clicável */}
+              <button onClick={()=>setMesAberto(aberto?null:g.mesKey)}
+                style={{
+                  width:'100%',padding:'12px 20px',background:aberto?'#F0F7FF':'#fff',
+                  border:'none',borderBottom:`1px solid ${aberto?'#DBEAFE':'transparent'}`,
+                  cursor:'pointer',textAlign:'left',fontFamily:'inherit',
+                  display:'flex',justifyContent:'space-between',alignItems:'center',
+                }}
+                onMouseOver={e=>{ if(!aberto) e.currentTarget.style.background='#F9FAFB' }}
+                onMouseOut={e=>{ if(!aberto) e.currentTarget.style.background='#fff' }}
+              >
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <span style={{fontSize:13,fontWeight:700,color:aberto?'#1D5BBF':'#101828'}}>{g.label}</span>
+                  {temDif
+                    ? <span style={{fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:4,background:'#FEF3C7',color:'#B54708'}}>
+                        {g.comDif.length} com diferença
+                      </span>
+                    : <span style={{fontSize:11,padding:'2px 8px',borderRadius:4,background:'#D1FAE5',color:'#12805C'}}>✓ conciliado</span>
+                  }
                 </div>
-                <div style={{fontSize:12,color:'#6B7280'}}>{nota.descr_top}</div>
-                <div style={{fontSize:11.5,color:'#9CA3AF',marginTop:2}}>{dBR(nota.data_entrada_saida)} · {nota.descr_local}</div>
-                {nota.motivo_calculado && nota.classe_divergencia!=='OK' && (
-                  <div style={{fontSize:11.5,color:cls.cor,marginTop:3}}>{nota.motivo_calculado}</div>
-                )}
-              </div>
-              <div style={{textAlign:'right',flexShrink:0}}>
-                <div style={{fontSize:11,color:'#9CA3AF',marginBottom:2}}>Custo · Contábil</div>
-                <div style={{fontSize:12,fontVariantNumeric:'tabular-nums',color:'#374151'}}>
-                  {brl(nota.saldo_dash)} · {brl(nota.saldo_contabil)}
+                <div style={{display:'flex',alignItems:'center',gap:14}}>
+                  {temDif && (
+                    <span style={{fontSize:13,fontWeight:700,color:'#B54708',fontVariantNumeric:'tabular-nums'}}>
+                      {g.somaDif>0?'+':''}R$ {brl(g.somaDif)}
+                    </span>
+                  )}
+                  <span style={{fontSize:12,color:'#9CA3AF'}}>{aberto?'▲':'▼'}</span>
                 </div>
-                {Math.abs(dif)>0.005 && (
-                  <div style={{fontSize:13,fontWeight:700,fontVariantNumeric:'tabular-nums',marginTop:3,
-                    color:cls.cor}}>
-                    {dif>0?'+':''}R$ {brl(dif)}
-                  </div>
-                )}
-                <div style={{fontSize:11,color:'#9CA3AF',marginTop:4}}>ver detalhes →</div>
-              </div>
-            </button>
+              </button>
+
+              {/* Notas do mês */}
+              {aberto && (
+                <div>
+                  {lista.map((nota,i) => {
+                    const cls = classeDe(nota.classe_divergencia)
+                    const dif = Number(nota.diferenca||0)
+                    return (
+                      <button key={nota.id||i} onClick={()=>onNota(nota)}
+                        style={{
+                          display:'grid',gridTemplateColumns:'1fr auto',gap:10,
+                          width:'100%',padding:'11px 20px 11px 28px',
+                          background:'none',border:'none',
+                          borderBottom:'1px solid #F3F4F6',
+                          cursor:'pointer',textAlign:'left',fontFamily:'inherit',
+                        }}
+                        onMouseOver={e=>e.currentTarget.style.background='#F9FAFB'}
+                        onMouseOut={e=>e.currentTarget.style.background='none'}
+                      >
+                        <div>
+                          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
+                            <span style={{fontSize:13,fontWeight:700}}>NF {nota.nota_fiscal}</span>
+                            <span style={{fontSize:10.5,fontWeight:700,padding:'2px 6px',borderRadius:4,
+                              background:cls.bg,color:cls.cor}}>{cls.icone} {cls.rot}</span>
+                          </div>
+                          <div style={{fontSize:11.5,color:'#6B7280'}}>{nota.descr_top}</div>
+                          <div style={{fontSize:11,color:'#9CA3AF',marginTop:1}}>{dBR(nota.data_entrada_saida)}</div>
+                          {nota.motivo_calculado && nota.classe_divergencia!=='OK' && (
+                            <div style={{fontSize:11,color:cls.cor,marginTop:2}}>{nota.motivo_calculado}</div>
+                          )}
+                        </div>
+                        <div style={{textAlign:'right',flexShrink:0}}>
+                          <div style={{fontSize:11,color:'#9CA3AF',marginBottom:2,whiteSpace:'nowrap'}}>Custo / Contábil</div>
+                          <div style={{fontSize:11.5,fontVariantNumeric:'tabular-nums',color:'#374151',whiteSpace:'nowrap'}}>
+                            {brl(nota.saldo_dash)} / {brl(nota.saldo_contabil)}
+                          </div>
+                          {Math.abs(dif)>0.005 && (
+                            <div style={{fontSize:13,fontWeight:700,fontVariantNumeric:'tabular-nums',
+                              color:cls.cor,whiteSpace:'nowrap'}}>
+                              {dif>0?'+':''}R$ {brl(dif)}
+                            </div>
+                          )}
+                          <div style={{fontSize:10.5,color:'#1D5BBF',marginTop:3}}>ver detalhes →</div>
+                        </div>
+                      </button>
+                    )
+                  })}
+
+                  {/* Botão ver conciliadas */}
+                  {g.notas.length > g.comDif.length && (
+                    <button onClick={()=>toggleOk(g.mesKey)} style={{
+                      width:'100%',padding:'8px 20px 8px 28px',background:'#F9FAFB',
+                      border:'none',borderTop:'1px solid #F3F4F6',
+                      cursor:'pointer',textAlign:'left',fontFamily:'inherit',
+                      fontSize:11.5,color:'#9CA3AF',
+                    }}>
+                      {verOk
+                        ? `▲ Ocultar conciliadas (${g.notas.length - g.comDif.length})`
+                        : `▼ Ver conciliadas (${g.notas.length - g.comDif.length})`}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           )
         })}
-        {fase==='pronto' && !filtradas.length && (
+
+        {fase==='pronto' && !porMes.length && (
           <div style={{padding:'32px',textAlign:'center',color:'#9CA3AF',fontSize:13}}>
-            Nenhuma nota com esses filtros.
+            Nenhum lançamento encontrado para esta conta.
           </div>
         )}
       </div>
