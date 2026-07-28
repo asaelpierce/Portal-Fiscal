@@ -14,7 +14,8 @@ function PainelNotas({ conta, importacaoId, dataFechamento, onClose, onNota }) {
   const [fase,         setFase]         = useState('carregando')
   const [porMes,       setPorMes]       = useState([]) // [{mes, label, notas, comDif}]
   const [mesAberto,    setMesAberto]    = useState(null)
-  const [mostrarOk,    setMostrarOk]    = useState({}) // {mesKey: bool}
+  const [mostrarOk,    setMostrarOk]    = useState({})
+  const [abaVista,     setAbaVista]     = useState('mes')
 
   useEffect(() => {
     if (!conta) return
@@ -56,6 +57,12 @@ function PainelNotas({ conta, importacaoId, dataFechamento, onClose, onNota }) {
   }, [conta])
 
   const totalDif = porMes.reduce((s,g)=>s+g.somaDif,0)
+  const MESES_BR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  const mesFechamento = dataFechamento ? dataFechamento.slice(0,7) : null
+  const labelMesFechamento = mesFechamento
+    ? MESES_BR[parseInt(mesFechamento.split('-')[1])-1] + '/' + mesFechamento.split('-')[0]
+    : 'Mes'
+  const mesSelecionado = porMes.find(g => g.mesKey === mesFechamento)
   const toggleOk = (key) => setMostrarOk(p=>({...p,[key]:!p[key]}))
 
   return (
@@ -98,7 +105,7 @@ function PainelNotas({ conta, importacaoId, dataFechamento, onClose, onNota }) {
           </div>
         )}
 
-        {fase==='pronto' && porMes.map(g => {
+        {fase==='pronto' && abaVista==='todos' && porMes.map(g => {
           const aberto = mesAberto === g.mesKey
           const verOk  = mostrarOk[g.mesKey]
           const lista  = verOk ? g.notas : g.comDif
