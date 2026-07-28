@@ -278,11 +278,11 @@ export default function DrawerDetalhe({ nota, onClose }) {
                       <div style={{border:'1px solid #E5E7EB',borderRadius:8,overflow:'hidden'}}>
                         <table style={{width:'100%',borderCollapse:'collapse',fontSize:12.5}}>
                           <thead>
-                            <tr>{['CT-e','Transportadora','Data','Valor'].map(h=>(
+                            <tr>{['CT-e','Transportadora','Data','Frete total','Rateado nesta NF'].map(h=>(
                               <th key={h} style={{padding:'8px 10px',background:'#F9FAFB',
-                                textAlign:h==='Valor'?'right':'left',
+                                textAlign:['Frete total','Rateado nesta NF'].includes(h)?'right':'left',
                                 fontSize:10.5,fontWeight:600,color:'#6B7280',borderBottom:'1px solid #E5E7EB',
-                                textTransform:'uppercase',letterSpacing:'.04em'}}>{h}</th>
+                                textTransform:'uppercase',letterSpacing:'.04em',whiteSpace:'nowrap'}}>{h}</th>
                             ))}</tr>
                           </thead>
                           <tbody>
@@ -291,10 +291,19 @@ export default function DrawerDetalhe({ nota, onClose }) {
                                 <td style={{padding:'8px 10px',fontWeight:700}}>{c.num_cte}</td>
                                 <td style={{padding:'8px 10px',color:'#6B7280'}}>{c.transportadora}</td>
                                 <td style={{padding:'8px 10px',color:'#9CA3AF'}}>{c.data_cte}</td>
-                                <td style={{padding:'8px 10px',textAlign:'right',fontVariantNumeric:'tabular-nums',fontWeight:600}}>R$ {brl(c.vlr_cte)}</td>
+                                <td style={{padding:'8px 10px',textAlign:'right',fontVariantNumeric:'tabular-nums',color:'#9CA3AF'}}>R$ {brl(c.vlr_total_frete)}</td>
+                                <td style={{padding:'8px 10px',textAlign:'right',fontVariantNumeric:'tabular-nums',fontWeight:700}}>R$ {brl(c.vlr_rateado_total)}</td>
                               </tr>
                             ))}
                           </tbody>
+                          <tfoot>
+                            <tr style={{background:'#F9FAFB',fontWeight:700}}>
+                              <td colSpan={4} style={{padding:'8px 10px',borderTop:'2px solid #E5E7EB'}}>Total de frete rateado nesta nota</td>
+                              <td style={{padding:'8px 10px',textAlign:'right',borderTop:'2px solid #E5E7EB',fontVariantNumeric:'tabular-nums'}}>
+                                R$ {brl(dados.ctes.reduce((s,c)=>s+Number(c.vlr_rateado_total||0),0))}
+                              </td>
+                            </tr>
+                          </tfoot>
                         </table>
                       </div>
                     ) : (
