@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { sbFetch, brl, int, dBR, isZero } from './config.js'
-import { Spinner, EmptyState, Btn, Drawer } from './components/UI.jsx'
+import { Spinner, EmptyState, Btn } from './components/UI.jsx'
+import DrawerDetalhe from './components/DrawerDetalhe.jsx'
 import VIsaoGeral from './pages/VIsaoGeral.jsx'
 import Lancamentos from './pages/Lancamentos.jsx'
 import Fechamento from './pages/Fechamento.jsx'
@@ -204,8 +205,7 @@ export default function App() {
         </div>
       </main>
 
-      <Drawer linha={detalhe} onClose={() => setDetalhe(null)}
-        brl={brl} dBR={dBR} sitDe={c => ({ cor: '#6B7280', bg: '#F3F4F6', rot: c })} isZero={isZero} />
+      <DrawerDetalhe nota={detalhe} onClose={() => setDetalhe(null)} />
     </div>
   )
 }
