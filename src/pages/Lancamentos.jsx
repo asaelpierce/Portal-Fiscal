@@ -14,7 +14,7 @@ const COLS = [
   { k: 'descr_top',         r: 'Operação' },
 ]
 
-export default function Lancamentos({ lancamentos }) {
+export default function Lancamentos({ lancamentos, onDetalhe }) {
   const [fConta,  setFConta]  = useState('')
   const [fClasse, setFClasse] = useState('')
   const [fLocal,  setFLocal]  = useState('')

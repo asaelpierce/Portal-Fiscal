@@ -190,7 +190,7 @@ export default function App() {
               )}
               {pagina === 'divergencias' && <Divergencias lancamentos={lancamentos} />}
               {pagina === 'lancamentos' && (
-                <Lancamentos lancamentos={lancamentos} />
+                <Lancamentos lancamentos={lancamentos} onDetalhe={setDetalhe} />
               )}
               {pagina === 'fechamento' && <Fechamento />}
               {pagina === 'razao'      && <Razao />}
