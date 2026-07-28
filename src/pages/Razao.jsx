@@ -19,6 +19,7 @@ function DashRazao({ importacoes }) {
   const [fClasse, setFClasse] = useState('')
   const [fLocal,  setFLocal]  = useState('')
   const [fTop,    setFTop]    = useState('')
+  const [fOperacao, setFOperacao] = useState('')
   const [fCentro, setFCentro] = useState('')
   const [busca,   setBusca]   = useState('')
   const [ordem,   setOrdem]   = useState({ col: null, dir: 1 })
@@ -39,7 +40,8 @@ function DashRazao({ importacoes }) {
     contas:  [...new Set(dados.map(r => r.conta_contabil).filter(Boolean))].sort(),
     classes: [...new Set(dados.map(r => r.classe_divergencia).filter(Boolean))].sort(),
     locais:  [...new Set(dados.map(r => r.descr_local).filter(Boolean))].sort(),
-    tops:    [...new Set(dados.map(r => r.descr_top).filter(Boolean))].sort(),
+    tops:    [...new Set(dados.map(r => r.cod_top).filter(Boolean))].sort((a,b)=>Number(a)-Number(b)),
+    operacoes: [...new Set(dados.map(r => r.descr_top).filter(Boolean))].sort(),
     centros: [...new Set(dados.map(r => r.descr_centro_resultado).filter(Boolean))].sort(),
   }), [dados])
 
@@ -49,7 +51,8 @@ function DashRazao({ importacoes }) {
       if (fConta  && r.conta_contabil            !== fConta)  return false
       if (fClasse && r.classe_divergencia        !== fClasse) return false
       if (fLocal  && r.descr_local               !== fLocal)  return false
-      if (fTop    && r.descr_top                 !== fTop)    return false
+      if (fTop      && r.cod_top                 !== fTop)      return false
+      if (fOperacao && r.descr_top                !== fOperacao) return false
       if (fCentro && r.descr_centro_resultado     !== fCentro) return false
       if (q) {
         const h = `${r.nota_fiscal} ${r.conta_contabil} ${r.descr_local} ${r.descr_top} ${r.descr_centro_resultado}`.toLowerCase()
@@ -57,7 +60,7 @@ function DashRazao({ importacoes }) {
       }
       return true
     })
-  }, [dados, fConta, fClasse, fLocal, fTop, fCentro, busca])
+  }, [dados, fConta, fClasse, fLocal, fTop, fOperacao, fCentro, busca])
 
   const ordenados = useMemo(() => {
     if (!ordem.col) return filtrados
@@ -90,7 +93,7 @@ function DashRazao({ importacoes }) {
   }
 
   const ord = col => setOrdem(p => p.col === col ? { col, dir: p.dir * -1 } : { col, dir: 1 })
-  const temFiltro = fConta || fClasse || fLocal || fTop || fCentro || busca
+  const temFiltro = fConta || fClasse || fLocal || fTop || fOperacao || fCentro || busca
 
   const COLS = [
     { k:'conta_contabil',      r:'Conta' },
@@ -101,7 +104,8 @@ function DashRazao({ importacoes }) {
     { k:'saldo_contabil',      r:'Contábil (Razão)', num:true },
     { k:'diferenca',           r:'Diferença',        num:true },
     { k:'classe_divergencia',  r:'Situação' },
-    { k:'descr_top',           r:'TOP' },
+    { k:'cod_top',             r:'TOP' },
+    { k:'descr_top',           r:'Operação' },
     { k:'descr_centro_resultado', r:'Centro de Resultado' },
   ]
 
@@ -162,7 +166,7 @@ function DashRazao({ importacoes }) {
             title={`${int(ordenados.length)} de ${int(dados.length)} lançamentos`}
             action={
               <div style={{display:'flex',gap:8}}>
-                {temFiltro && <Btn small onClick={()=>{setFConta('');setFClasse('');setFLocal('');setFTop('');setFCentro('');setBusca('')}}>✕ Limpar</Btn>}
+                {temFiltro && <Btn small onClick={()=>{setFConta('');setFClasse('');setFLocal('');setFTop('');setFOperacao('');setFCentro('');setBusca('')}}>✕ Limpar</Btn>}
                 <Btn small onClick={exportar}>↓ CSV</Btn>
               </div>
             }
@@ -172,6 +176,7 @@ function DashRazao({ importacoes }) {
               <Select label="Situação" value={fClasse} onChange={setFClasse} options={opcoes.classes} placeholder="Todas"/>
               <Select label="Local"    value={fLocal}  onChange={setFLocal}  options={opcoes.locais} />
               <Select label="TOP"      value={fTop}    onChange={setFTop}    options={opcoes.tops} />
+              <Select label="Operação" value={fOperacao} onChange={setFOperacao} options={opcoes.operacoes} />
               <Select label="Centro de Resultado" value={fCentro} onChange={setFCentro} options={opcoes.centros} />
               <SearchInput value={busca} onChange={setBusca} placeholder="nota, conta, operação…"/>
             </div>
@@ -221,6 +226,9 @@ function DashRazao({ importacoes }) {
                             {cls.icone} {cls.rot}
                           </span>
                         </td>
+                        <td style={{...TD,fontVariantNumeric:'tabular-nums',fontWeight:600,color:'#374151'}}>
+                          {r.cod_top || '—'}
+                        </td>
                         <td style={{...TD,color:'#6B7280',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={r.descr_top}>
                           {r.descr_top || '—'}
                         </td>
@@ -231,10 +239,10 @@ function DashRazao({ importacoes }) {
                     )
                   })}
                   {!ordenados.length&&(
-                    <tr><td colSpan={10} style={{textAlign:'center',padding:'28px',color:'#9CA3AF'}}>Nenhum registro.</td></tr>
+                    <tr><td colSpan={11} style={{textAlign:'center',padding:'28px',color:'#9CA3AF'}}>Nenhum registro.</td></tr>
                   )}
                   {ordenados.length > 500 && (
-                    <tr><td colSpan={10} style={{textAlign:'center',padding:'12px',color:'#9CA3AF',fontSize:12}}>
+                    <tr><td colSpan={11} style={{textAlign:'center',padding:'12px',color:'#9CA3AF',fontSize:12}}>
                       Mostrando 500 de {int(ordenados.length)} — refine os filtros ou exporte o CSV.
                     </td></tr>
                   )}
