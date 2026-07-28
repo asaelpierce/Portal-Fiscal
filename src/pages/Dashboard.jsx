@@ -1,355 +1,285 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, Cell, LineChart, Line, PieChart, Pie,
+  ResponsiveContainer, LineChart, Line, BarChart, Bar, AreaChart, Area,
+  PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts'
-import { Card, Panel, Btn } from '../components/UI.jsx'
-import { brl, brlK, int, dBR, isZero, classeDe, CLASSES } from '../config.js'
+import { sbFetch, brl, brlK, int, dBR, classeDe, CLASSES } from '../config.js'
+import { Panel, Spinner } from '../components/UI.jsx'
 
-function Dica({ active, payload, label, moeda }) {
+const MESES_BR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+const fmtMes = iso => { const [y,m] = String(iso).slice(0,7).split('-'); return `${MESES_BR[parseInt(m)-1]}/${y.slice(2)}` }
+const fmtData = iso => { const [y,m,d] = String(iso).slice(0,10).split('-'); return `${d}/${m}` }
+
+function TooltipCard({ active, payload, label, moeda, pct }) {
   if (!active || !payload?.length) return null
   return (
-    <div style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:6, padding:'8px 12px', fontSize:12, boxShadow:'0 4px 12px rgba(0,0,0,.1)' }}>
-      <strong>{label || payload[0].name}</strong>
-      <div>{moeda ? `R$ ${brl(payload[0].value)}` : int(payload[0].value)}</div>
-    </div>
-  )
-}
-
-// Agrupa críticos por TOP para mostrar o padrão
-function GrupoCriticos({ items }) {
-  const grupos = useMemo(() => {
-    const g = {}
-    items.forEach(r => {
-      const k = r.cod_top || 'outro'
-      if (!g[k]) g[k] = { cod: k, descr: r.descr_top, items: [], valorTotal: 0 }
-      g[k].items.push(r)
-      g[k].valorTotal += Math.abs(Number(r.diferenca) || 0)
-    })
-    return Object.values(g).sort((a,b) => b.valorTotal - a.valorTotal)
-  }, [items])
-
-  return (
-    <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-      {grupos.map(g => (
-        <div key={g.cod} style={{ border:'1px solid #FECACA', borderRadius:8, overflow:'hidden' }}>
-          {/* Cabeçalho do grupo */}
-          <div style={{ background:'#FEF2F2', padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-            <div>
-              <span style={{ fontSize:11, fontWeight:700, color:'#991B1B', textTransform:'uppercase', letterSpacing:'.06em' }}>
-                TOP {g.cod}
-              </span>
-              <span style={{ fontSize:13, fontWeight:600, color:'#7F1D1D', marginLeft:8 }}>{g.descr}</span>
-            </div>
-            <div style={{ textAlign:'right' }}>
-              <span style={{ fontSize:12, color:'#991B1B' }}>{g.items.length} lançamento{g.items.length > 1 ? 's' : ''} · </span>
-              <span style={{ fontSize:13, fontWeight:700, color:'#B42318' }}>R$ {brl(g.valorTotal)}</span>
-            </div>
-          </div>
-          {/* Linhas do grupo */}
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
-            <thead>
-              <tr style={{ background:'#FFF5F5' }}>
-                {['Nota','Conta','Local','Data','Custo','Contábil','Diferença','Diagnóstico'].map(h => (
-                  <th key={h} style={{
-                    padding:'6px 12px', textAlign:['Custo','Contábil','Diferença'].includes(h)?'right':'left',
-                    fontSize:10.5, fontWeight:600, color:'#9CA3AF', borderBottom:'1px solid #FECACA',
-                    textTransform:'uppercase', letterSpacing:'.04em', whiteSpace:'nowrap'
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {g.items.map((r,i) => (
-                <tr key={r.id||i} style={{ borderBottom:'1px solid #FEF2F2' }}>
-                  <td style={TD2}><strong>{r.nota_fiscal}</strong></td>
-                  <td style={{ ...TD2, fontVariantNumeric:'tabular-nums' }}>{r.conta_contabil}</td>
-                  <td style={{ ...TD2, color:'#6B7280', maxWidth:130, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.descr_local}</td>
-                  <td style={{ ...TD2, color:'#9CA3AF', whiteSpace:'nowrap' }}>{dBR(r.data_entrada_saida)}</td>
-                  <td style={{ ...TD2, textAlign:'right', fontVariantNumeric:'tabular-nums' }}>R$ {brl(r.saldo_dash)}</td>
-                  <td style={{ ...TD2, textAlign:'right', fontVariantNumeric:'tabular-nums' }}>R$ {brl(r.saldo_contabil)}</td>
-                  <td style={{ ...TD2, textAlign:'right', fontWeight:700, color:'#B42318', fontVariantNumeric:'tabular-nums', whiteSpace:'nowrap' }}>
-                    R$ {brl(r.diferenca)}
-                  </td>
-                  <td style={{ ...TD2, fontSize:11, color:'#6B7280', maxWidth:200 }}>{r.motivo_calculado}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <div style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:8, padding:'10px 14px',
+      fontSize:12.5, boxShadow:'0 8px 24px rgba(16,24,40,.12)' }}>
+      <div style={{ fontWeight:700, marginBottom:6 }}>{label}</div>
+      {payload.map((p,i) => (
+        <div key={i} style={{ display:'flex', justifyContent:'space-between', gap:16, color:p.color }}>
+          <span>{p.name}</span>
+          <strong>{moeda ? `R$ ${brl(p.value)}` : pct ? `${p.value}%` : int(p.value)}</strong>
         </div>
       ))}
     </div>
   )
 }
 
-const TD2 = { padding:'7px 12px', fontSize:12.5 }
+export default function Dashboard() {
+  const [fase, setFase] = useState('carregando')
+  const [erro, setErro] = useState('')
+  const [evolucao, setEvolucao] = useState([])
+  const [fechamentos, setFechamentos] = useState([])
+  const [topContas, setTopContas] = useState([])
 
-export default function Dashboard({ lancamentos, resumos, onIrPara, onDetalhe }) {
-  const [verTodosInv, setVerTodosInv] = useState(false)
-
-  const kpi = useMemo(() => {
-    const porClasse = (c) => lancamentos.filter(r => r.classe_divergencia === c)
-    const criticos    = porClasse('CRITICO')
-    const investigar  = porClasse('INVESTIGAR')
-    const arred       = porClasse('ARREDONDAMENTO')
-    const interno     = porClasse('INTERNO')
-    const ok          = porClasse('OK')
-    const relevantes  = lancamentos.filter(r => r.classe_divergencia !== 'INTERNO')
-    const taxaReal    = relevantes.length ? (ok.length / relevantes.length * 100) : 100
-
-    return {
-      total: lancamentos.length,
-      ok: ok.length,
-      criticos: criticos.length,
-      investigar: investigar.length,
-      arred: arred.length,
-      interno: interno.length,
-      taxaReal,
-      valorCritico:   criticos.reduce((s,r)=>s+Math.abs(Number(r.diferenca)||0),0),
-      valorInvestigar:investigar.reduce((s,r)=>s+Math.abs(Number(r.diferenca)||0),0),
-      totalCusto: lancamentos.reduce((s,r)=>s+Number(r.saldo_dash||0),0),
-      totalCtb:   lancamentos.reduce((s,r)=>s+Number(r.saldo_contabil||0),0),
-      diff:       lancamentos.reduce((s,r)=>s+Number(r.diferenca||0),0),
-    }
-  }, [lancamentos])
-
-  const criticos = useMemo(() =>
-    lancamentos.filter(r=>r.classe_divergencia==='CRITICO')
-      .sort((a,b)=>Math.abs(Number(b.diferenca)||0)-Math.abs(Number(a.diferenca)||0))
-  , [lancamentos])
-
-  const investigar = useMemo(() =>
-    lancamentos.filter(r=>r.classe_divergencia==='INVESTIGAR')
-      .sort((a,b)=>Math.abs(Number(b.diferenca)||0)-Math.abs(Number(a.diferenca)||0))
-  , [lancamentos])
-
-  // Arredondamentos — agrupados para não poluir
-  const arredAgrupado = useMemo(() => {
-    const g = {}
-    lancamentos.filter(r=>r.classe_divergencia==='ARREDONDAMENTO').forEach(r => {
-      const k = r.cod_top||'outro'
-      if (!g[k]) g[k] = { descr: r.descr_top, qtd:0, total:0 }
-      g[k].qtd++
-      g[k].total += Math.abs(Number(r.diferenca)||0)
+  useEffect(() => {
+    Promise.all([
+      sbFetch('dashboard_evolucao_mensal?select=*'),
+      sbFetch('dashboard_fechamento_evolucao?select=*'),
+      sbFetch('dashboard_top_contas?select=*&order=soma_diferenca.asc'),
+    ])
+    .then(([ev, fc, tc]) => {
+      setEvolucao(ev || [])
+      setFechamentos(fc || [])
+      setTopContas(tc || [])
+      setFase('pronto')
     })
-    return Object.values(g).sort((a,b)=>b.total-a.total)
-  }, [lancamentos])
+    .catch(e => { setErro(e.message); setFase('erro') })
+  }, [])
 
-  const porConta = useMemo(() => {
-    const g = {}
-    lancamentos.filter(r=>['CRITICO','INVESTIGAR'].includes(r.classe_divergencia)).forEach(r=>{
-      const k = r.conta_contabil||'sem conta'
-      if(!g[k]) g[k]={conta:k,valor:0,qtd:0,criticos:0}
-      g[k].valor += Number(r.saldo_dash||0)
-      g[k].qtd++
-      if(r.classe_divergencia==='CRITICO') g[k].criticos++
-    })
-    return Object.values(g).sort((a,b)=>Math.abs(b.valor)-Math.abs(a.valor)).slice(0,8)
-  }, [lancamentos])
+  const dadosEvolucao = useMemo(() => evolucao.map(e => ({
+    mes: fmtMes(e.periodo_fim),
+    taxa: Number(e.taxa_conciliacao),
+    ok: Number(e.qtd_ok),
+    investigar: Number(e.qtd_investigar) + Number(e.qtd_critico),
+    ajuste: Number(e.qtd_ajuste),
+    custo: Number(e.custo_total),
+    ctb: Number(e.ctb_total),
+    dif: Number(e.dif_total),
+    valorInvestigar: Number(e.valor_investigar || 0),
+  })), [evolucao])
 
-  const pizza = Object.entries(CLASSES)
-    .map(([k,v])=>({name:v.rot, value:lancamentos.filter(r=>r.classe_divergencia===k).length, cor:v.cor}))
-    .filter(x=>x.value>0)
+  const dadosFechamento = useMemo(() => fechamentos.map(f => ({
+    data: dBR(f.data_posicao).slice(0,5),
+    estoque: Number(f.total_estoque),
+    contabil: Number(f.total_contabil),
+    diferenca: Number(f.diferenca),
+    contas: Number(f.qtd_contas),
+    conferem: Number(f.contas_conferem),
+  })), [fechamentos])
 
-  const tendencia = resumos.map(r=>({
-    dia: new Date(r.criado_em).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}),
-    diferenca: Number(r.diferenca_total||r.total_diferenca||0),
-  }))
+  const ultimoMes = dadosEvolucao[dadosEvolucao.length - 1]
+  const ultimoFechamento = dadosFechamento[dadosFechamento.length - 1]
 
-  const EIXO = { fill:'#9CA3AF', fontSize:11 }
+  const kpis = useMemo(() => {
+    const totalLanc = evolucao.reduce((s,e) => s + Number(e.total), 0)
+    const totalOk   = evolucao.reduce((s,e) => s + Number(e.qtd_ok), 0)
+    const totalInv  = evolucao.reduce((s,e) => s + Number(e.qtd_investigar) + Number(e.qtd_critico), 0)
+    const valorInv  = evolucao.reduce((s,e) => s + Number(e.valor_investigar || 0), 0)
+    const taxaMedia = evolucao.length ? evolucao.reduce((s,e) => s + Number(e.taxa_conciliacao), 0) / evolucao.length : 0
+    return { totalLanc, totalOk, totalInv, valorInv, taxaMedia }
+  }, [evolucao])
 
-  const alertaCor = kpi.criticos>0
-    ? {bg:'#FEF2F2',border:'#FECACA',texto:'#991B1B'}
-    : kpi.investigar>0
-      ? {bg:'#FFFBEB',border:'#FDE68A',texto:'#92400E'}
-      : {bg:'#F0FDF4',border:'#BBF7D0',texto:'#166534'}
+  const pizzaUltimoMes = ultimoMes ? [
+    { name: 'Conciliado', value: ultimoMes.ok, cor: '#12805C' },
+    { name: 'Ajuste de custo', value: ultimoMes.ajuste, cor: '#9CA3AF' },
+    { name: 'Investigar', value: ultimoMes.investigar, cor: '#B54708' },
+  ].filter(x => x.value > 0) : []
+
+  const contasComProblema = useMemo(() =>
+    topContas.filter(c => Math.abs(Number(c.soma_diferenca)) > 1)
+      .sort((a,b) => Math.abs(Number(b.soma_diferenca)) - Math.abs(Number(a.soma_diferenca)))
+      .slice(0, 8)
+      .map(c => ({ conta: c.conta_contabil, valor: Number(c.soma_diferenca), investigar: Number(c.valor_investigar || 0) }))
+  , [topContas])
+
+  if (fase === 'carregando') return <Spinner/>
+  if (fase === 'erro') return (
+    <div style={{ background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:8, padding:16, color:'#B42318' }}>
+      Erro: {erro}
+    </div>
+  )
 
   return (
-    <div style={{display:'flex',flexDirection:'column',gap:18}}>
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
 
-      {/* ═══ SALDO PRINCIPAL ═══ */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1px 1fr 1px 1fr',background:'#fff',border:'1px solid #E5E7EB',borderRadius:8,padding:'18px 24px',gap:0}}>
-        <div>
-          <div style={{fontSize:11,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>Custo apurado · estoque</div>
-          <div style={{fontSize:26,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>R$ {brl(kpi.totalCusto)}</div>
-        </div>
-        <div style={{background:'#E5E7EB'}}/>
-        <div style={{paddingLeft:24}}>
-          <div style={{fontSize:11,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>Saldo contábil · lançamentos</div>
-          <div style={{fontSize:26,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>R$ {brl(kpi.totalCtb)}</div>
-        </div>
-        <div style={{background:'#E5E7EB'}}/>
-        <div style={{paddingLeft:24}}>
-          <div style={{fontSize:11,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>Diferença total</div>
-          <div style={{fontSize:26,fontWeight:700,fontVariantNumeric:'tabular-nums',
-            color:isZero(kpi.diff)?'#12805C':kpi.diff>0?'#B42318':'#1D5BBF'}}>
-            {kpi.diff>0?'+':''}R$ {brl(kpi.diff)}
+      {/* KPIs principais */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
+        {[
+          { label:'Taxa de conciliação média', valor:`${kpis.taxaMedia.toFixed(1)}%`,
+            sub:`${evolucao.length} meses analisados`, cor: kpis.taxaMedia >= 95 ? '#12805C' : '#B54708' },
+          { label:'Lançamentos processados', valor: int(kpis.totalLanc),
+            sub:`${int(kpis.totalOk)} conciliados`, cor:'#101828' },
+          { label:'Para investigar (acumulado)', valor: int(kpis.totalInv),
+            sub:`R$ ${brl(kpis.valorInv)} em risco`, cor: kpis.totalInv > 0 ? '#B54708' : '#12805C' },
+          { label:'Último fechamento', valor: ultimoFechamento ? `R$ ${brl(Math.abs(ultimoFechamento.diferenca))}` : '—',
+            sub: ultimoFechamento ? `${ultimoFechamento.conferem}/${ultimoFechamento.contas} contas conferem` : '',
+            cor: ultimoFechamento && Math.abs(ultimoFechamento.diferenca) < 100 ? '#12805C' : '#B54708' },
+        ].map((k,i) => (
+          <div key={i} style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:8, padding:'16px 18px' }}>
+            <div style={{ fontSize:11, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
+              {k.label}
+            </div>
+            <div style={{ fontSize:24, fontWeight:800, color:k.cor, fontVariantNumeric:'tabular-nums' }}>{k.valor}</div>
+            <div style={{ fontSize:11.5, color:'#9CA3AF', marginTop:4 }}>{k.sub}</div>
           </div>
-          <div style={{fontSize:12,color:'#9CA3AF',marginTop:2}}>
-            {isZero(kpi.diff)?'Totalmente conciliado':kpi.diff>0?'Custo acima do contábil':'Contábil acima do custo'}
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* ═══ ALERTA + KPIs ═══ */}
-      <div style={{background:alertaCor.bg,border:`1px solid ${alertaCor.border}`,borderRadius:8,padding:'10px 16px',fontSize:13,color:alertaCor.texto,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
-        <span>
-          {kpi.criticos>0
-            ? `🔴 ${kpi.criticos} críticos · R$ ${brl(kpi.valorCritico)} em risco imediato`
-            : kpi.investigar>0
-              ? `⚠ ${kpi.investigar} para investigar (R$ ${brl(kpi.valorInvestigar)}). Nenhum crítico.`
-              : '✅ Nenhum crítico ou investigar. Mês controlado.'}
-        </span>
-        <span style={{fontSize:12,opacity:.8}}>Taxa real (excl. internos): <strong>{kpi.taxaReal.toFixed(1)}%</strong> · {int(kpi.ok)} de {int(lancamentos.filter(r=>r.classe_divergencia!=='INTERNO').length)} conciliados</span>
-      </div>
-
-      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12}}>
-        <Card title="🔴 Críticos"        value={int(kpi.criticos)}  sub={`R$ ${brl(kpi.valorCritico)}`}   color="red"/>
-        <Card title="⚠ Investigar"       value={int(kpi.investigar)} sub={`R$ ${brl(kpi.valorInvestigar)}`} color="orange"/>
-        <Card title="~ Arredondamento"   value={int(kpi.arred)}      sub="aceitos automaticamente"          color="gray"/>
-        <Card title="↔ Internos (ruído)" value={int(kpi.interno)}    sub="transferências/requisições"       color="gray"/>
-        <Card title="✓ Conciliados"      value={`${kpi.taxaReal.toFixed(1)}%`} sub={`${int(kpi.ok)} lançamentos`} color={kpi.taxaReal>=95?'green':'orange'}/>
-      </div>
-
-      {/* ═══ CRÍTICOS — DETALHADO NA TELA ═══ */}
-      {criticos.length > 0 && (
-        <Panel title={`🔴 Críticos — ${criticos.length} lançamentos · R$ ${brl(kpi.valorCritico)}`}
-          action={<Btn small onClick={()=>onIrPara('pendencias')}>ver na fila →</Btn>}>
-          <GrupoCriticos items={criticos} />
+      {/* Linha: Taxa de conciliação + Composição do último mês */}
+      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:16 }}>
+        <Panel title="Taxa de conciliação por mês">
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={dadosEvolucao} margin={{ top:10, right:20, left:0, bottom:0 }}>
+              <CartesianGrid stroke="#F3F4F6" vertical={false}/>
+              <XAxis dataKey="mes" tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false}/>
+              <YAxis domain={[0,100]} tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false}
+                tickFormatter={v => `${v}%`}/>
+              <Tooltip content={<TooltipCard pct/>}/>
+              <Line type="monotone" dataKey="taxa" name="Taxa de conciliação" stroke="#1D5BBF" strokeWidth={2.5}
+                dot={{ r:4, fill:'#1D5BBF' }} activeDot={{ r:6 }}/>
+            </LineChart>
+          </ResponsiveContainer>
         </Panel>
-      )}
 
-      {/* ═══ INVESTIGAR — DETALHADO NA TELA ═══ */}
-      {investigar.length > 0 && (
-        <Panel title={`⚠ Para investigar — ${investigar.length} lançamentos · R$ ${brl(kpi.valorInvestigar)}`}>
-          <div style={{overflowX:'auto'}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12.5}}>
-              <thead>
-                <tr style={{background:'#FFFBEB'}}>
-                  {['Nota','Conta','Local','Data','Custo','Contábil','Diferença','Diagnóstico'].map(h=>(
-                    <th key={h} style={{padding:'7px 12px',textAlign:['Custo','Contábil','Diferença'].includes(h)?'right':'left',
-                      fontSize:10.5,fontWeight:600,color:'#9CA3AF',borderBottom:'1px solid #FDE68A',
-                      textTransform:'uppercase',letterSpacing:'.04em',whiteSpace:'nowrap'}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(verTodosInv ? investigar : investigar.slice(0,10)).map((r,i)=>(
-                  <tr key={r.id||i} onClick={()=>onDetalhe(r)} style={{cursor:'pointer',borderBottom:'1px solid #FFFBEB'}}
-                    onMouseOver={e=>e.currentTarget.querySelectorAll('td').forEach(td=>td.style.background='#FFFBEB')}
-                    onMouseOut={e=>e.currentTarget.querySelectorAll('td').forEach(td=>td.style.background='')}
-                  >
-                    <td style={{...TD2,fontWeight:600}}>{r.nota_fiscal}</td>
-                    <td style={{...TD2,fontVariantNumeric:'tabular-nums'}}>{r.conta_contabil}</td>
-                    <td style={{...TD2,color:'#6B7280',maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.descr_local}</td>
-                    <td style={{...TD2,color:'#9CA3AF',whiteSpace:'nowrap'}}>{dBR(r.data_entrada_saida)}</td>
-                    <td style={{...TD2,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>R$ {brl(r.saldo_dash)}</td>
-                    <td style={{...TD2,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>R$ {brl(r.saldo_contabil)}</td>
-                    <td style={{...TD2,textAlign:'right',fontWeight:700,color:'#B54708',fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap'}}>R$ {brl(r.diferenca)}</td>
-                    <td style={{...TD2,fontSize:11,color:'#6B7280',maxWidth:200}}>{r.motivo_calculado}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {investigar.length>10 && (
-              <button onClick={()=>setVerTodosInv(!verTodosInv)} style={{
-                width:'100%',padding:'10px',background:'none',border:'none',
-                borderTop:'1px solid #FDE68A',color:'#B54708',fontSize:12.5,cursor:'pointer',fontFamily:'inherit'
-              }}>
-                {verTodosInv ? '▲ Mostrar menos' : `▼ Ver mais ${investigar.length-10} registros`}
-              </button>
-            )}
-          </div>
-        </Panel>
-      )}
-
-      {/* ═══ ARREDONDAMENTOS — RESUMO AGRUPADO ═══ */}
-      {arredAgrupado.length > 0 && (
-        <Panel title={`~ Arredondamentos aceitos — ${kpi.arred} lançamentos (classificados automaticamente)`}>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:10}}>
-            {arredAgrupado.map((g,i)=>(
-              <div key={i} style={{background:'#F9FAFB',border:'1px solid #E5E7EB',borderRadius:6,padding:'10px 12px'}}>
-                <div style={{fontSize:12.5,fontWeight:500,marginBottom:4}}>{g.descr}</div>
-                <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'#9CA3AF'}}>
-                  <span>{int(g.qtd)} lançamentos</span>
-                  <span>total desvio: <strong style={{color:'#374151'}}>R$ {brl(g.total)}</strong></span>
-                </div>
+        <Panel title={`Composição — ${ultimoMes?.mes || 'último mês'}`}>
+          <ResponsiveContainer width="100%" height={200}>
+            <PieChart>
+              <Pie data={pizzaUltimoMes} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={3}>
+                {pizzaUltimoMes.map((e,i) => <Cell key={i} fill={e.cor}/>)}
+              </Pie>
+              <Tooltip content={<TooltipCard/>}/>
+            </PieChart>
+          </ResponsiveContainer>
+          <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:8 }}>
+            {pizzaUltimoMes.map((e,i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12 }}>
+                <span style={{ width:9, height:9, borderRadius:'50%', background:e.cor, flexShrink:0 }}/>
+                <span style={{ flex:1, color:'#374151' }}>{e.name}</span>
+                <span style={{ fontWeight:700, fontVariantNumeric:'tabular-nums' }}>{int(e.value)}</span>
               </div>
             ))}
           </div>
         </Panel>
-      )}
+      </div>
 
-      {/* ═══ GRÁFICOS ═══ */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:18}}>
-        <Panel title="Composição">
-          <div style={{display:'flex',alignItems:'center',gap:18,flexWrap:'wrap'}}>
-            <div style={{flex:1,minWidth:160}}>
-              <ResponsiveContainer width="100%" height={190}>
-                <PieChart>
-                  <Pie data={pizza} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2} strokeWidth={0}>
-                    {pizza.map((e,i)=><Cell key={i} fill={e.cor}/>)}
-                  </Pie>
-                  <Tooltip content={<Dica/>}/>
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <ul style={{listStyle:'none',margin:0,padding:0,display:'flex',flexDirection:'column',gap:7}}>
-              {Object.entries(CLASSES).map(([k,v])=>{
-                const n=lancamentos.filter(r=>r.classe_divergencia===k).length
-                const val=lancamentos.filter(r=>r.classe_divergencia===k).reduce((s,r)=>s+Math.abs(Number(r.diferenca)||0),0)
-                return(
-                  <li key={k} style={{opacity:n?1:0.3}}>
-                    <div style={{display:'flex',alignItems:'center',gap:7}}>
-                      <span style={{width:8,height:8,borderRadius:'50%',background:v.cor,flexShrink:0}}/>
-                      <span style={{flex:1,fontSize:12,color:'#374151'}}>{v.icone} {v.rot}</span>
-                      <span style={{fontWeight:700,fontSize:12.5,fontVariantNumeric:'tabular-nums'}}>{int(n)}</span>
-                    </div>
-                    {n>0 && val>0.01 && (
-                      <div style={{paddingLeft:15,fontSize:11,color:'#9CA3AF',fontVariantNumeric:'tabular-nums'}}>R$ {brl(val)}</div>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
+      {/* Custo apurado x Contábil — barras comparativas por mês */}
+      <Panel title="Custo apurado × Saldo contábil — fluxo mensal">
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={dadosEvolucao} margin={{ top:10, right:20, left:0, bottom:0 }}>
+            <CartesianGrid stroke="#F3F4F6" vertical={false}/>
+            <XAxis dataKey="mes" tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false}/>
+            <YAxis tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false} tickFormatter={brlK}/>
+            <Tooltip content={<TooltipCard moeda/>}/>
+            <Legend wrapperStyle={{ fontSize:12 }}/>
+            <Bar dataKey="custo" name="Custo apurado" fill="#1D5BBF" radius={[4,4,0,0]}/>
+            <Bar dataKey="ctb"   name="Saldo contábil" fill="#9CA3AF" radius={[4,4,0,0]}/>
+          </BarChart>
+        </ResponsiveContainer>
+      </Panel>
+
+      {/* Evolução do Fechamento (saldo acumulado) */}
+      <Panel title="Fechamento — Estoque × Contabilidade (posição acumulada)">
+        <ResponsiveContainer width="100%" height={260}>
+          <AreaChart data={dadosFechamento} margin={{ top:10, right:20, left:0, bottom:0 }}>
+            <defs>
+              <linearGradient id="gEst" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#1D5BBF" stopOpacity={0.25}/>
+                <stop offset="100%" stopColor="#1D5BBF" stopOpacity={0}/>
+              </linearGradient>
+              <linearGradient id="gCtb" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#9CA3AF" stopOpacity={0.2}/>
+                <stop offset="100%" stopColor="#9CA3AF" stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke="#F3F4F6" vertical={false}/>
+            <XAxis dataKey="data" tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false}/>
+            <YAxis tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false} tickFormatter={brlK}/>
+            <Tooltip content={<TooltipCard moeda/>}/>
+            <Legend wrapperStyle={{ fontSize:12 }}/>
+            <Area type="monotone" dataKey="estoque"  name="Estoque"    stroke="#1D5BBF" fill="url(#gEst)" strokeWidth={2.5}/>
+            <Area type="monotone" dataKey="contabil" name="Contábil"   stroke="#9CA3AF" fill="url(#gCtb)" strokeWidth={2.5}/>
+          </AreaChart>
+        </ResponsiveContainer>
+      </Panel>
+
+      {/* Linha: Quantidade por classe + Contas com maior desvio */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+        <Panel title="Lançamentos por situação — evolução mensal">
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={dadosEvolucao} margin={{ top:10, right:20, left:0, bottom:0 }} stackOffset="sign">
+              <CartesianGrid stroke="#F3F4F6" vertical={false}/>
+              <XAxis dataKey="mes" tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false}/>
+              <YAxis tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false}/>
+              <Tooltip content={<TooltipCard/>}/>
+              <Legend wrapperStyle={{ fontSize:11 }}/>
+              <Bar dataKey="ok"         name="Conciliado"      stackId="a" fill="#12805C" radius={[0,0,0,0]}/>
+              <Bar dataKey="ajuste"     name="Ajuste de custo" stackId="a" fill="#D1D5DB"/>
+              <Bar dataKey="investigar" name="Investigar"      stackId="a" fill="#B54708" radius={[4,4,0,0]}/>
+            </BarChart>
+          </ResponsiveContainer>
         </Panel>
 
-        <Panel title="Impacto por conta" action={<span style={{fontSize:11.5,color:'#9CA3AF'}}>críticos + investigar</span>}>
-          {porConta.length?(
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={porConta} layout="vertical" margin={{left:8,right:22,top:4,bottom:4}}>
+        <Panel title="Contas com maior desvio acumulado (todos os meses)">
+          {contasComProblema.length ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={contasComProblema} layout="vertical" margin={{ top:10, right:30, left:10, bottom:0 }}>
                 <CartesianGrid stroke="#F3F4F6" horizontal={false}/>
-                <XAxis type="number" tickFormatter={brlK} tick={EIXO} axisLine={false} tickLine={false}/>
-                <YAxis type="category" dataKey="conta" width={64} tick={EIXO} axisLine={false} tickLine={false}/>
-                <Tooltip content={<Dica moeda/>} cursor={{fill:'#F9FAFB'}}/>
-                <Bar dataKey="valor" radius={[0,3,3,0]} barSize={12}>
-                  {porConta.map((c,i)=><Cell key={i} fill={isZero(c.valor)?'#12805C':c.valor>0?'#B42318':'#1D5BBF'}/>)}
+                <XAxis type="number" tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false} tickFormatter={brlK}/>
+                <YAxis type="category" dataKey="conta" tick={{ fontSize:11.5, fill:'#374151' }} axisLine={false} tickLine={false} width={70}/>
+                <Tooltip content={<TooltipCard moeda/>}/>
+                <Bar dataKey="valor" name="Diferença" radius={[0,4,4,0]}>
+                  {contasComProblema.map((c,i) => (
+                    <Cell key={i} fill={c.valor >= 0 ? '#1D5BBF' : '#B54708'}/>
+                  ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          ):(
-            <p style={{textAlign:'center',color:'#9CA3AF',padding:'50px 0',margin:0}}>Nenhum crítico ou investigar. ✓</p>
+          ) : (
+            <div style={{ padding:'60px 20px', textAlign:'center', color:'#9CA3AF', fontSize:13 }}>
+              Nenhuma conta com desvio relevante.
+            </div>
           )}
         </Panel>
       </div>
 
-      {/* Tendência */}
-      {tendencia.length>1&&(
-        <Panel title="Evolução da diferença total (sincronizações)">
-          <ResponsiveContainer width="100%" height={190}>
-            <LineChart data={tendencia} margin={{left:0,right:12,top:8,bottom:4}}>
-              <CartesianGrid stroke="#F3F4F6" vertical={false}/>
-              <XAxis dataKey="dia" tick={EIXO} axisLine={false} tickLine={false}/>
-              <YAxis tickFormatter={brlK} tick={EIXO} axisLine={false} tickLine={false} width={58}/>
-              <Tooltip content={<Dica moeda/>}/>
-              <Line type="monotone" dataKey="diferenca" name="Diferença" stroke="#1D5BBF" strokeWidth={2}
-                dot={{r:3,fill:'#1D5BBF',strokeWidth:0}} activeDot={{r:5}}/>
-            </LineChart>
-          </ResponsiveContainer>
-        </Panel>
-      )}
-
+      {/* Tabela resumo mensal */}
+      <Panel title="Resumo por mês">
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
+            <thead>
+              <tr>
+                {['Mês','Lançamentos','Conciliado','Investigar','Ajuste','Taxa','Custo apurado','Saldo contábil','Diferença'].map(h => (
+                  <th key={h} style={{
+                    padding:'9px 12px', background:'#F9FAFB', borderBottom:'1px solid #E5E7EB',
+                    textAlign:['Lançamentos','Conciliado','Investigar','Ajuste','Taxa','Custo apurado','Saldo contábil','Diferença'].includes(h) ? 'right' : 'left',
+                    fontSize:10.5, fontWeight:600, color:'#6B7280', textTransform:'uppercase', letterSpacing:'.04em', whiteSpace:'nowrap',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {dadosEvolucao.map((e,i) => (
+                <tr key={i} style={{ borderBottom:'1px solid #F9FAFB' }}>
+                  <td style={{ padding:'9px 12px', fontWeight:600 }}>{e.mes}</td>
+                  <td style={{ padding:'9px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{int(e.ok + e.investigar + e.ajuste)}</td>
+                  <td style={{ padding:'9px 12px', textAlign:'right', color:'#12805C', fontVariantNumeric:'tabular-nums' }}>{int(e.ok)}</td>
+                  <td style={{ padding:'9px 12px', textAlign:'right', color: e.investigar > 0 ? '#B54708' : '#9CA3AF', fontVariantNumeric:'tabular-nums' }}>{int(e.investigar)}</td>
+                  <td style={{ padding:'9px 12px', textAlign:'right', color:'#9CA3AF', fontVariantNumeric:'tabular-nums' }}>{int(e.ajuste)}</td>
+                  <td style={{ padding:'9px 12px', textAlign:'right', fontWeight:700, color: e.taxa >= 95 ? '#12805C' : '#B54708', fontVariantNumeric:'tabular-nums' }}>{e.taxa}%</td>
+                  <td style={{ padding:'9px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>R$ {brl(e.custo)}</td>
+                  <td style={{ padding:'9px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>R$ {brl(e.ctb)}</td>
+                  <td style={{ padding:'9px 12px', textAlign:'right', fontWeight:700, fontVariantNumeric:'tabular-nums',
+                    color: Math.abs(e.dif) < 10 ? '#12805C' : '#B54708' }}>
+                    {e.dif > 0 ? '+' : ''}R$ {brl(e.dif)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
     </div>
   )
 }

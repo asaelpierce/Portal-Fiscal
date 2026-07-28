@@ -8,12 +8,14 @@ import Fechamento from './pages/Fechamento.jsx'
 import Razao from './pages/Razao.jsx'
 import { Contas, Historico } from './pages/ContasHistorico.jsx'
 import Sincronizacao from './pages/Sincronizacao.jsx'
+import Dashboard from './pages/Dashboard.jsx'
 import Divergencias from './pages/Divergencias.jsx'
 
 const MENU = [
   { id: 'visao',      label: 'Visão geral',         icon: '▦' },
   { id: 'divergencias',label: 'Divergências',         icon: '⚠', badge: true },
   { id: 'lancamentos',label: 'Lançamentos',          icon: '≡' },
+  { id: 'painel',     label: 'Dashboard',            icon: '📊' },
   { id: 'fechamento', label: 'Fechamento',           icon: '⚖' },
   { id: 'razao',      label: 'Razão de estoque',     icon: '📋' },
   { id: 'contas',     label: 'Contas contábeis',     icon: '⊞' },
@@ -192,6 +194,7 @@ export default function App() {
               {pagina === 'lancamentos' && (
                 <Lancamentos lancamentos={lancamentos} onDetalhe={setDetalhe} />
               )}
+              {pagina === 'painel'     && <Dashboard />}
               {pagina === 'fechamento' && <Fechamento />}
               {pagina === 'razao'      && <Razao />}
               {pagina === 'contas'     && (
