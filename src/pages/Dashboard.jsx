@@ -32,6 +32,8 @@ export default function Dashboard() {
   const [evolucao, setEvolucao] = useState([])
   const [fechamentos, setFechamentos] = useState([])
   const [topContas, setTopContas] = useState([])
+  const [dtIni, setDtIni] = useState('')
+  const [dtFim, setDtFim] = useState('')
 
   useEffect(() => {
     Promise.all([
@@ -48,7 +50,22 @@ export default function Dashboard() {
     .catch(e => { setErro(e.message); setFase('erro') })
   }, [])
 
-  const dadosEvolucao = useMemo(() => evolucao.map(e => ({
+  const evolucaoFiltrada = useMemo(() => evolucao.filter(e => {
+    if (dtIni && e.periodo_fim < dtIni) return false
+    if (dtFim && e.periodo_inicio > dtFim) return false
+    return true
+  }), [evolucao, dtIni, dtFim])
+
+  const fechamentosFiltrados = useMemo(() => fechamentos.filter(f => {
+    if (dtIni && f.data_posicao < dtIni) return false
+    if (dtFim && f.data_posicao > dtFim) return false
+    return true
+  }), [fechamentos, dtIni, dtFim])
+
+  const minData = evolucao.map(e => e.periodo_inicio).filter(Boolean).sort()[0] || ''
+  const maxData = evolucao.map(e => e.periodo_fim).filter(Boolean).sort().slice(-1)[0] || ''
+
+  const dadosEvolucao = useMemo(() => evolucaoFiltrada.map(e => ({
     mes: fmtMes(e.periodo_fim),
     taxa: Number(e.taxa_conciliacao),
     ok: Number(e.qtd_ok),
@@ -58,28 +75,28 @@ export default function Dashboard() {
     ctb: Number(e.ctb_total),
     dif: Number(e.dif_total),
     valorInvestigar: Number(e.valor_investigar || 0),
-  })), [evolucao])
+  })), [evolucaoFiltrada])
 
-  const dadosFechamento = useMemo(() => fechamentos.map(f => ({
+  const dadosFechamento = useMemo(() => fechamentosFiltrados.map(f => ({
     data: dBR(f.data_posicao).slice(0,5),
     estoque: Number(f.total_estoque),
     contabil: Number(f.total_contabil),
     diferenca: Number(f.diferenca),
     contas: Number(f.qtd_contas),
     conferem: Number(f.contas_conferem),
-  })), [fechamentos])
+  })), [fechamentosFiltrados])
 
   const ultimoMes = dadosEvolucao[dadosEvolucao.length - 1]
   const ultimoFechamento = dadosFechamento[dadosFechamento.length - 1]
 
   const kpis = useMemo(() => {
-    const totalLanc = evolucao.reduce((s,e) => s + Number(e.total), 0)
-    const totalOk   = evolucao.reduce((s,e) => s + Number(e.qtd_ok), 0)
-    const totalInv  = evolucao.reduce((s,e) => s + Number(e.qtd_investigar) + Number(e.qtd_critico), 0)
-    const valorInv  = evolucao.reduce((s,e) => s + Number(e.valor_investigar || 0), 0)
-    const taxaMedia = evolucao.length ? evolucao.reduce((s,e) => s + Number(e.taxa_conciliacao), 0) / evolucao.length : 0
+    const totalLanc = evolucaoFiltrada.reduce((s,e) => s + Number(e.total), 0)
+    const totalOk   = evolucaoFiltrada.reduce((s,e) => s + Number(e.qtd_ok), 0)
+    const totalInv  = evolucaoFiltrada.reduce((s,e) => s + Number(e.qtd_investigar) + Number(e.qtd_critico), 0)
+    const valorInv  = evolucaoFiltrada.reduce((s,e) => s + Number(e.valor_investigar || 0), 0)
+    const taxaMedia = evolucaoFiltrada.length ? evolucaoFiltrada.reduce((s,e) => s + Number(e.taxa_conciliacao), 0) / evolucaoFiltrada.length : 0
     return { totalLanc, totalOk, totalInv, valorInv, taxaMedia }
-  }, [evolucao])
+  }, [evolucaoFiltrada])
 
   const pizzaUltimoMes = ultimoMes ? [
     { name: 'Conciliado', value: ultimoMes.ok, cor: '#12805C' },
@@ -103,6 +120,28 @@ export default function Dashboard() {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+
+      {/* Filtro de período */}
+      <div style={{ display:'flex', gap:12, alignItems:'flex-end', flexWrap:'wrap' }}>
+        <div>
+          <label style={{ fontSize:11, color:'#6B7280', fontWeight:500, display:'block', marginBottom:5 }}>De</label>
+          <input type="date" value={dtIni} min={minData} max={maxData}
+            onChange={e => setDtIni(e.target.value)}
+            style={{ fontFamily:'inherit', fontSize:13, padding:'7px 10px', border:'1px solid #E5E7EB', borderRadius:6 }} />
+        </div>
+        <div>
+          <label style={{ fontSize:11, color:'#6B7280', fontWeight:500, display:'block', marginBottom:5 }}>Até</label>
+          <input type="date" value={dtFim} min={minData} max={maxData}
+            onChange={e => setDtFim(e.target.value)}
+            style={{ fontFamily:'inherit', fontSize:13, padding:'7px 10px', border:'1px solid #E5E7EB', borderRadius:6 }} />
+        </div>
+        {(dtIni || dtFim) && (
+          <button onClick={() => { setDtIni(''); setDtFim('') }} style={{
+            fontSize:12, color:'#6B7280', background:'none', border:'1px solid #E5E7EB',
+            borderRadius:6, padding:'7px 12px', cursor:'pointer', fontFamily:'inherit',
+          }}>✕ Limpar</button>
+        )}
+      </div>
 
       {/* KPIs principais */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>

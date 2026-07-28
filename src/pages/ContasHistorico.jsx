@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, BarChart, Bar, Cell,
@@ -96,22 +96,35 @@ export function Contas({ lancamentos, onFiltrarConta }) {
 }
 
 export function Historico({ resumos }) {
+  const [dtIni, setDtIni] = useState('')
+  const [dtFim, setDtFim] = useState('')
+
+  const todasDatas = resumos.map(r => r.periodo_inicio).filter(Boolean).sort()
+  const minData = todasDatas[0] || ''
+  const maxData = resumos.map(r => r.periodo_fim).filter(Boolean).sort().slice(-1)[0] || ''
+
+  const filtrados = resumos.filter(r => {
+    if (dtIni && r.periodo_fim < dtIni) return false
+    if (dtFim && r.periodo_inicio > dtFim) return false
+    return true
+  })
+
   // resumos vem de resumo_analitico — campos corretos
-  const dados = [...resumos].reverse()
+  const dados = [...filtrados].reverse()
   const EIXO = { fill:'#9CA3AF', fontSize:11 }
 
-  const graficoDiff = resumos.map(r => ({
+  const graficoDiff = filtrados.map(r => ({
     dia: new Date(r.criado_em).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }),
     diferenca: Number(r.diferenca_total || 0),
   }))
 
-  const graficoSaldo = resumos.map(r => ({
+  const graficoSaldo = filtrados.map(r => ({
     dia: new Date(r.criado_em).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }),
     custo:   Number(r.total_custo || 0),
     contabil:Number(r.total_ctb   || 0),
   }))
 
-  const graficoClasses = resumos.map(r => ({
+  const graficoClasses = filtrados.map(r => ({
     dia:   new Date(r.criado_em).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }),
     ok:          Number(r.qtd_ok || 0),
     critico:     Number(r.qtd_critico || 0),
@@ -122,6 +135,29 @@ export function Historico({ resumos }) {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
+
+      {/* Filtro de período */}
+      <div style={{ display:'flex', gap:12, alignItems:'flex-end', flexWrap:'wrap' }}>
+        <div>
+          <label style={{ fontSize:11, color:'#6B7280', fontWeight:500, display:'block', marginBottom:5 }}>De</label>
+          <input type="date" value={dtIni} min={minData} max={maxData}
+            onChange={e => setDtIni(e.target.value)}
+            style={{ fontFamily:'inherit', fontSize:13, padding:'7px 10px', border:'1px solid #E5E7EB', borderRadius:6 }} />
+        </div>
+        <div>
+          <label style={{ fontSize:11, color:'#6B7280', fontWeight:500, display:'block', marginBottom:5 }}>Até</label>
+          <input type="date" value={dtFim} min={minData} max={maxData}
+            onChange={e => setDtFim(e.target.value)}
+            style={{ fontFamily:'inherit', fontSize:13, padding:'7px 10px', border:'1px solid #E5E7EB', borderRadius:6 }} />
+        </div>
+        {(dtIni || dtFim) && (
+          <button onClick={() => { setDtIni(''); setDtFim('') }} style={{
+            fontSize:12, color:'#6B7280', background:'none', border:'1px solid #E5E7EB',
+            borderRadius:6, padding:'7px 12px', cursor:'pointer', fontFamily:'inherit',
+          }}>✕ Limpar</button>
+        )}
+      </div>
+
 
       {/* Evolução custo x contábil */}
       <Panel title="Custo apurado × Saldo contábil por sincronização">

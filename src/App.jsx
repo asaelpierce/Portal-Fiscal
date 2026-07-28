@@ -30,10 +30,14 @@ export default function App() {
   const [lancamentos, setLancamentos] = useState([])
   const [resumos,     setResumos]     = useState([])
   const [ultima,      setUltima]      = useState(null)
+  const [periodoId,   setPeriodoId]   = useState(null) // importacao_id selecionado no filtro global
   const [fechamento,  setFechamento]  = useState(null)
   const [atualizando, setAtualizando] = useState(false)
   const [detalhe,     setDetalhe]     = useState(null)
   const [lancFiltro,  setLancFiltro]  = useState(null)
+
+  // período selecionado no filtro global (objeto resumo correspondente)
+  const periodoAtual = resumos.find(r => r.importacao_id === periodoId) || ultima
 
   const carregar = useCallback(async () => {
     try {
@@ -45,12 +49,7 @@ export default function App() {
       // pega o período mais recente (por periodo_fim, não por data de criação/sincronização)
       const ult = [...rs].sort((a, b) => new Date(b.periodo_fim) - new Date(a.periodo_fim))[0]
       setUltima(ult)
-
-      // 2. lançamentos da importação mais recente
-      const rows = await sbFetch(
-        `lancamentos_conciliacao?importacao_id=eq.${ult.importacao_id}&select=*&order=prioridade.asc`
-      )
-      setLancamentos(rows || [])
+      setPeriodoId(prev => prev && rs.some(r => r.importacao_id === prev) ? prev : ult.importacao_id)
 
       // 3. fechamento mais recente (se existir)
       try {
@@ -73,6 +72,14 @@ export default function App() {
   }, [])
 
   useEffect(() => { carregar() }, [carregar])
+
+  // recarrega os lançamentos sempre que o período selecionado mudar
+  useEffect(() => {
+    if (!periodoId) return
+    sbFetch(`lancamentos_conciliacao?importacao_id=eq.${periodoId}&select=*&order=prioridade.asc`)
+      .then(rows => setLancamentos(rows || []))
+      .catch(e => { setErro(e.message || String(e)); setFase('erro') })
+  }, [periodoId])
 
   const atualizar = async () => {
     setAtualizando(true)
@@ -157,15 +164,33 @@ export default function App() {
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
               {MENU.find(m => m.id === pagina)?.label}
             </h1>
-            {ultima && pagina !== 'fechamento' && (
+            {periodoAtual && !['fechamento', 'razao', 'historico', 'painel', 'sync'].includes(pagina) && (
               <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9CA3AF' }}>
-                Período {dBR(ultima.periodo_inicio)} a {dBR(ultima.periodo_fim)}
+                Período {dBR(periodoAtual.periodo_inicio)} a {dBR(periodoAtual.periodo_fim)}
               </p>
             )}
           </div>
-          <Btn primary onClick={atualizar} disabled={atualizando || fase === 'carregando'}>
-            {atualizando ? '↻ Atualizando…' : '↻ Atualizar dados'}
-          </Btn>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {resumos.length > 1 && !['fechamento', 'razao', 'sync'].includes(pagina) && (
+              <select
+                value={periodoId || ''}
+                onChange={e => setPeriodoId(e.target.value)}
+                style={{
+                  fontFamily: 'inherit', fontSize: 13, padding: '7px 10px',
+                  border: '1px solid #E5E7EB', borderRadius: 6, background: '#fff', color: '#374151',
+                }}
+              >
+                {[...resumos].sort((a, b) => new Date(b.periodo_fim) - new Date(a.periodo_fim)).map(r => (
+                  <option key={r.importacao_id} value={r.importacao_id}>
+                    {dBR(r.periodo_inicio)} a {dBR(r.periodo_fim)}
+                  </option>
+                ))}
+              </select>
+            )}
+            <Btn primary onClick={atualizar} disabled={atualizando || fase === 'carregando'}>
+              {atualizando ? '↻ Atualizando…' : '↻ Atualizar dados'}
+            </Btn>
+          </div>
         </header>
 
         <div style={{ flex: 1, padding: '22px 26px 60px', overflowY: 'auto' }}>
