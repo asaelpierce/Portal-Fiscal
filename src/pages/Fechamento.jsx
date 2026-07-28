@@ -76,7 +76,10 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
       const grupos = (imps || []).map(imp => {
         const notas  = (lancs || []).filter(l => l.importacao_id === imp.id)
         if (!notas.length) return null
-        const comDif = notas.filter(n => n.classe_divergencia !== 'OK')
+        const comDif    = notas.filter(n => n.classe_divergencia !== 'OK')
+        // Separa: problema real (investigar/critico) vs ajuste de custo medio (esperado, ja no saldo)
+        const investigar = comDif.filter(n => ['INVESTIGAR','CRITICO'].includes(n.classe_divergencia))
+        const ajuste      = comDif.filter(n => n.classe_divergencia === 'AJUSTE_CUSTO')
         const [y, m] = imp.periodo_fim.split('-')
         return {
           mesKey:  `${y}-${m}`,
@@ -84,7 +87,11 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
           impId:   imp.id,
           notas,
           comDif,
-          somaDif: comDif.reduce((s, n) => s + Number(n.diferenca || 0), 0),
+          investigar,
+          ajuste,
+          somaDif:        comDif.reduce((s, n) => s + Number(n.diferenca || 0), 0),
+          somaInvestigar: investigar.reduce((s, n) => s + Number(n.diferenca || 0), 0),
+          somaAjuste:     ajuste.reduce((s, n) => s + Number(n.diferenca || 0), 0),
         }
       }).filter(Boolean)
 
@@ -97,11 +104,10 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
     .catch(() => setFase('erro'))
   }, [conta])
 
-  const totalDif      = porMes.reduce((s, g) => s + g.somaDif, 0)
-  const mesSelecionado = porMes.find(g => g.mesKey === mesFechamento)
-  const totalDifMes   = mesSelecionado?.somaDif || 0
-  const qtdDifMes     = mesSelecionado?.comDif.length || 0
-  const qtdDifTotal   = porMes.reduce((s, g) => s + g.comDif.length, 0)
+  const totalDif        = porMes.reduce((s, g) => s + g.somaDif, 0)
+  const mesSelecionado  = porMes.find(g => g.mesKey === mesFechamento)
+  const qtdInvestigarMes = mesSelecionado?.investigar.length || 0
+  const qtdInvestigarTotal = porMes.reduce((s, g) => s + g.investigar.length, 0)
 
   return (
     <div style={{ position:'fixed', top:0, right:0, bottom:0, width:'min(560px,92vw)',
@@ -140,8 +146,8 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
         {fase === 'pronto' && (
           <div style={{ display:'flex', borderBottom:'1px solid #E5E7EB' }}>
             {[
-              { id:'mes',   label: labelMes,         qtd: qtdDifMes   },
-              { id:'todos', label: 'Todos os meses', qtd: qtdDifTotal },
+              { id:'mes',   label: labelMes,         qtd: qtdInvestigarMes   },
+              { id:'todos', label: 'Todos os meses', qtd: qtdInvestigarTotal },
             ].map(a => (
               <button key={a.id} onClick={() => setAba(a.id)} style={{
                 flex:1, padding:'8px 4px', fontSize:12.5, fontWeight: aba === a.id ? 700 : 400,
@@ -181,16 +187,44 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
             </div>
           )
           const verOk = verOkMes['__mes__']
-          const lista = verOk ? g.notas : g.comDif
           return (
             <div>
-              {lista.length === 0 && !verOk && (
-                <div style={{ margin:'16px', padding:'20px', textAlign:'center',
-                  background:'#F0FDF4', borderRadius:8, fontSize:13, color:'#166534' }}>
-                  ✅ Nenhuma nota com diferença em {labelMes}.
+              {/* Bloco: problemas reais */}
+              {g.investigar.length > 0 ? (
+                <div>
+                  <div style={{ padding:'10px 20px', background:'#FFFBEB', borderBottom:'1px solid #FDE68A' }}>
+                    <span style={{ fontSize:11.5, fontWeight:700, color:'#92400E' }}>
+                      ⚠ {g.investigar.length} nota{g.investigar.length>1?'s':''} para investigar
+                    </span>
+                    <span style={{ fontSize:11, color:'#92400E', marginLeft:8, opacity:.8 }}>
+                      diferença real · R$ {brl(g.somaInvestigar)}
+                    </span>
+                  </div>
+                  {g.investigar.map((nota, i) => <CardNota key={nota.id || i} nota={nota} onNota={onNota} />)}
+                </div>
+              ) : (
+                <div style={{ margin:'16px', padding:'16px', textAlign:'center',
+                  background:'#F0FDF4', borderRadius:8, fontSize:12.5, color:'#166534' }}>
+                  ✅ Nenhuma nota para investigar em {labelMes}.
                 </div>
               )}
-              {lista.map((nota, i) => <CardNota key={nota.id || i} nota={nota} onNota={onNota} />)}
+
+              {/* Bloco: ajuste de custo (esperado, não é problema) */}
+              {g.ajuste.length > 0 && (
+                <div style={{ marginTop:8 }}>
+                  <div style={{ padding:'10px 20px', background:'#F9FAFB', borderTop:'1px solid #F3F4F6', borderBottom:'1px solid #F3F4F6' }}>
+                    <span style={{ fontSize:11.5, fontWeight:700, color:'#6B7280' }}>
+                      ⚙ {g.ajuste.length} ajuste{g.ajuste.length>1?'s':''} de custo médio
+                    </span>
+                    <span style={{ fontSize:11, color:'#9CA3AF', marginLeft:8 }}>
+                      já refletido no saldo da conta · não requer ação
+                    </span>
+                  </div>
+                  {g.ajuste.map((nota, i) => <CardNota key={nota.id || i} nota={nota} onNota={onNota} />)}
+                </div>
+              )}
+
+              {/* Ver conciliadas */}
               {g.notas.length > g.comDif.length && (
                 <button onClick={() => setVerOkMes(p => ({ ...p, '__mes__': !p['__mes__'] }))}
                   style={{ width:'100%', padding:'9px 20px', background:'#F9FAFB', border:'none',
@@ -201,6 +235,9 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
                     : `▼ Ver conciliadas (${g.notas.length - g.comDif.length})`}
                 </button>
               )}
+              {verOk && g.notas.filter(n=>n.classe_divergencia==='OK').map((nota,i)=>(
+                <CardNota key={nota.id||i} nota={nota} onNota={onNota} />
+              ))}
             </div>
           )
         })()}
@@ -209,7 +246,6 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
         {fase === 'pronto' && aba === 'todos' && porMes.map(g => {
           const aberto = mesAberto === g.mesKey
           const verOk  = verOkMes[g.mesKey]
-          const lista  = verOk ? g.notas : g.comDif
           return (
             <div key={g.mesKey} style={{ borderBottom:'2px solid #F3F4F6' }}>
               {/* Cabeçalho do mês */}
@@ -222,23 +258,31 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
                 onMouseOver={e => { if (!aberto) e.currentTarget.style.background = '#F9FAFB' }}
                 onMouseOut={e  => { if (!aberto) e.currentTarget.style.background = '#fff' }}
               >
-                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                   <span style={{ fontSize:13, fontWeight:700, color: aberto ? '#1D5BBF' : '#101828' }}>
                     {g.label}
                   </span>
-                  {g.comDif.length > 0
-                    ? <span style={{ fontSize:11, fontWeight:700, padding:'2px 7px', borderRadius:4,
-                        background:'#FEF3C7', color:'#B54708' }}>
-                        {g.comDif.length} com diferença
-                      </span>
-                    : <span style={{ fontSize:11, padding:'2px 7px', borderRadius:4,
-                        background:'#D1FAE5', color:'#12805C' }}>✓ conciliado</span>
-                  }
+                  {g.investigar.length > 0 && (
+                    <span style={{ fontSize:11, fontWeight:700, padding:'2px 7px', borderRadius:4,
+                      background:'#FEF3C7', color:'#B54708' }}>
+                      ⚠ {g.investigar.length} investigar
+                    </span>
+                  )}
+                  {g.ajuste.length > 0 && (
+                    <span style={{ fontSize:11, fontWeight:600, padding:'2px 7px', borderRadius:4,
+                      background:'#F3F4F6', color:'#6B7280' }}>
+                      ⚙ {g.ajuste.length} ajuste
+                    </span>
+                  )}
+                  {g.comDif.length === 0 && (
+                    <span style={{ fontSize:11, padding:'2px 7px', borderRadius:4,
+                      background:'#D1FAE5', color:'#12805C' }}>✓ conciliado</span>
+                  )}
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                  {g.comDif.length > 0 && (
+                  {g.investigar.length > 0 && (
                     <span style={{ fontSize:13, fontWeight:700, color:'#B54708', fontVariantNumeric:'tabular-nums' }}>
-                      {g.somaDif > 0 ? '+' : ''}R$ {brl(g.somaDif)}
+                      {g.somaInvestigar > 0 ? '+' : ''}R$ {brl(g.somaInvestigar)}
                     </span>
                   )}
                   <span style={{ fontSize:12, color:'#9CA3AF' }}>{aberto ? '▲' : '▼'}</span>
@@ -248,12 +292,18 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
               {/* Notas do mês */}
               {aberto && (
                 <div>
-                  {lista.length === 0 && !verOk && (
+                  {g.comDif.length === 0 && (
                     <div style={{ padding:'16px 20px', fontSize:12.5, color:'#12805C' }}>
                       ✅ Nenhuma nota com diferença neste mês.
                     </div>
                   )}
-                  {lista.map((nota, i) => <CardNota key={nota.id || i} nota={nota} onNota={onNota} />)}
+                  {g.investigar.map((nota, i) => <CardNota key={nota.id || i} nota={nota} onNota={onNota} />)}
+                  {g.ajuste.length > 0 && (
+                    <div style={{ padding:'7px 20px 7px 28px', background:'#F9FAFB', fontSize:11, color:'#9CA3AF' }}>
+                      ⚙ {g.ajuste.length} ajuste(s) de custo médio — já refletido no saldo, não requer ação
+                    </div>
+                  )}
+                  {g.ajuste.map((nota, i) => <CardNota key={nota.id || i} nota={nota} onNota={onNota} />)}
                   {g.notas.length > g.comDif.length && (
                     <button onClick={() => setVerOkMes(p => ({ ...p, [g.mesKey]: !p[g.mesKey] }))}
                       style={{ width:'100%', padding:'8px 20px 8px 28px', background:'#F9FAFB', border:'none',
@@ -264,6 +314,9 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
                         : `▼ Ver conciliadas (${g.notas.length - g.comDif.length})`}
                     </button>
                   )}
+                  {verOk && g.notas.filter(n=>n.classe_divergencia==='OK').map((nota,i)=>(
+                    <CardNota key={nota.id||i} nota={nota} onNota={onNota} />
+                  ))}
                 </div>
               )}
             </div>
