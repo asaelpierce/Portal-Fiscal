@@ -3,7 +3,6 @@ import { sbFetch, brl, int, dBR, isZero } from './config.js'
 import { Spinner, EmptyState, Btn } from './components/UI.jsx'
 import DrawerDetalhe from './components/DrawerDetalhe.jsx'
 import VIsaoGeral from './pages/VIsaoGeral.jsx'
-import Lancamentos from './pages/Lancamentos.jsx'
 import Fechamento from './pages/Fechamento.jsx'
 import Razao from './pages/Razao.jsx'
 import { Contas, Historico } from './pages/ContasHistorico.jsx'
@@ -14,10 +13,9 @@ import Divergencias from './pages/Divergencias.jsx'
 const MENU = [
   { id: 'visao',      label: 'Visão geral',         icon: '▦' },
   { id: 'divergencias',label: 'Divergências',         icon: '⚠', badge: true },
-  { id: 'lancamentos',label: 'Movimentos',           icon: '≡' },
   { id: 'painel',     label: 'Dashboard',            icon: '📊' },
   { id: 'fechamento', label: 'Comp. Saldo de Estoque', icon: '⚖' },
-  { id: 'razao',      label: 'Razão de estoque',     icon: '📋' },
+  { id: 'razao',      label: 'Movimentos',           icon: '📋' },
   { id: 'contas',     label: 'Contas contábeis',     icon: '⊞' },
   { id: 'historico',  label: 'Histórico',            icon: '⊙' },
   { id: 'sync',       label: 'Importar período',      icon: '↻' },
@@ -34,7 +32,6 @@ export default function App() {
   const [fechamento,  setFechamento]  = useState(null)
   const [atualizando, setAtualizando] = useState(false)
   const [detalhe,     setDetalhe]     = useState(null)
-  const [lancFiltro,  setLancFiltro]  = useState(null)
 
   // período selecionado no filtro global (objeto resumo correspondente)
   const periodoAtual = resumos.find(r => r.importacao_id === periodoId) || ultima
@@ -216,15 +213,12 @@ export default function App() {
                 />
               )}
               {pagina === 'divergencias' && <Divergencias lancamentos={lancamentos} />}
-              {pagina === 'lancamentos' && (
-                <Lancamentos lancamentos={lancamentos} onDetalhe={setDetalhe} />
-              )}
               {pagina === 'painel'     && <Dashboard />}
               {pagina === 'fechamento' && <Fechamento />}
               {pagina === 'razao'      && <Razao />}
               {pagina === 'contas'     && (
                 <Contas lancamentos={lancamentos}
-                  onFiltrarConta={conta => { setLancFiltro(conta); setPagina('lancamentos') }} />
+                  onFiltrarConta={() => setPagina('razao')} />
               )}
               {pagina === 'historico'  && <Historico resumos={resumos} />}
               {pagina === 'sync'        && <Sincronizacao />}
