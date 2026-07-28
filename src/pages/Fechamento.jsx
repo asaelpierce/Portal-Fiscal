@@ -18,11 +18,13 @@ function PainelNotas({ conta, importacaoId, dataFechamento, onClose, onNota }) {
   useEffect(() => {
     if (!conta || !importacaoId) return
     setFase('carregando'); setNotas([])
-    // Filtra pela importação correta (mesmo mês do fechamento)
+    // Busca lançamentos de TODOS os meses disponíveis até a data do fechamento
+    // para explicar a diferença acumulada que aparece no fechamento por saldo
     sbFetch(
-      `lancamentos_conciliacao?importacao_id=eq.${importacaoId}` +
-      `&conta_contabil=eq.${encodeURIComponent(conta)}` +
-      `&select=*&order=prioridade.asc,diferenca.desc`
+      `lancamentos_conciliacao` +
+      `?conta_contabil=eq.${encodeURIComponent(conta)}` +
+      `&select=*,importacoes(periodo_inicio,periodo_fim)` +
+      `&order=data_entrada_saida.desc,prioridade.asc`
     )
       .then(r => { setNotas(r || []); setFase('pronto') })
       .catch(e => setFase('erro'))
@@ -46,7 +48,7 @@ function PainelNotas({ conta, importacaoId, dataFechamento, onClose, onNota }) {
       <div style={{padding:'16px 20px',borderBottom:'1px solid #F3F4F6',flexShrink:0}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
           <div>
-            <div style={{fontSize:11,color:'#9CA3AF',marginBottom:4}}>NOTAS DA CONTA</div>
+            <div style={{fontSize:11,color:'#9CA3AF',marginBottom:4}}>NOTAS COM DIFERENÇA — CONTA</div>
             <div style={{fontSize:18,fontWeight:800}}>{conta}</div>
           </div>
           <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',padding:6,color:'#6B7280'}}>
@@ -60,7 +62,7 @@ function PainelNotas({ conta, importacaoId, dataFechamento, onClose, onNota }) {
             {comDif.length > 0 ? (
               <div style={{padding:'10px 12px',background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:8}}>
                 <div style={{fontSize:11,color:'#92400E',marginBottom:4,fontWeight:600}}>
-                  {comDif.length} nota{comDif.length>1?'s':''} causando a diferença
+                  {comDif.length} nota{comDif.length>1?'s':''} com diferença (todos os meses)
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
                   <div>
