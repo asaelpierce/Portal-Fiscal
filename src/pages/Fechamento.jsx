@@ -13,26 +13,22 @@ const ACAO_ESTILO = {
 function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
   const [fase,    setFase]    = useState('carregando')
   const [notas,   setNotas]   = useState([])
-  const [filtro,  setFiltro]  = useState('todas') // todas | diferenca | ok
+  const [mostrarTodas, setMostrarTodas] = useState(false)
 
   useEffect(() => {
     if (!conta) return
     setFase('carregando'); setNotas([])
-    // Busca lançamentos da conta na importação mais próxima do fechamento
-    sbFetch(`lancamentos_conciliacao?conta_contabil=eq.${conta}&select=*&order=prioridade.asc,diferenca.desc`)
+    sbFetch(`lancamentos_conciliacao?conta_contabil=eq.${encodeURIComponent(conta)}&select=*&order=prioridade.asc,diferenca.desc`)
       .then(r => { setNotas(r || []); setFase('pronto') })
       .catch(e => setFase('erro'))
   }, [conta])
 
-  const filtradas = useMemo(() => {
-    if (filtro === 'diferenca') return notas.filter(n => n.classe_divergencia !== 'OK')
-    if (filtro === 'ok')        return notas.filter(n => n.classe_divergencia === 'OK')
-    return notas
-  }, [notas, filtro])
+  // Por padrão mostra só as que têm diferença — é isso que causou o desvio
+  const comDif   = notas.filter(n => n.classe_divergencia !== 'OK')
+  const filtradas = mostrarTodas ? notas : comDif
 
   const totCusto = notas.reduce((s,n)=>s+Number(n.saldo_dash||0),0)
   const totCtb   = notas.reduce((s,n)=>s+Number(n.saldo_contabil||0),0)
-  const comDif   = notas.filter(n=>n.classe_divergencia!=='OK').length
 
   return (
     <div style={{
@@ -53,36 +49,47 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
           </button>
         </div>
 
-        {/* Resumo custo x contábil */}
+        {/* Resumo da diferença */}
         {fase==='pronto' && (
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginTop:12,padding:'10px 12px',background:'#F9FAFB',borderRadius:8}}>
-            <div>
-              <div style={{fontSize:10.5,color:'#9CA3AF',marginBottom:2}}>Custo apurado (fluxo)</div>
-              <div style={{fontSize:15,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>R$ {brl(totCusto)}</div>
-            </div>
-            <div>
-              <div style={{fontSize:10.5,color:'#9CA3AF',marginBottom:2}}>Saldo contábil</div>
-              <div style={{fontSize:15,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>R$ {brl(totCtb)}</div>
-            </div>
-          </div>
-        )}
-
-        {/* Filtro */}
-        {fase==='pronto' && (
-          <div style={{display:'flex',gap:6,marginTop:12}}>
-            {[
-              {id:'todas',    label:`Todas (${notas.length})`},
-              {id:'diferenca',label:`Com diferença (${comDif})`, cor:'#B54708'},
-              {id:'ok',       label:`Conciliadas (${notas.length-comDif})`, cor:'#12805C'},
-            ].map(f=>(
-              <button key={f.id} onClick={()=>setFiltro(f.id)} style={{
-                padding:'5px 11px',fontSize:12,borderRadius:5,
-                border:`1px solid ${filtro===f.id?'#1D5BBF':'#E5E7EB'}`,
-                background:filtro===f.id?'#EBF2FC':'#fff',
-                color:filtro===f.id?'#1D5BBF':f.cor||'#374151',
-                cursor:'pointer',fontFamily:'inherit',fontWeight:filtro===f.id?600:400,
-              }}>{f.label}</button>
-            ))}
+          <div style={{marginTop:12}}>
+            {comDif.length > 0 ? (
+              <div style={{padding:'10px 12px',background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:8}}>
+                <div style={{fontSize:11,color:'#92400E',marginBottom:4,fontWeight:600}}>
+                  {comDif.length} nota{comDif.length>1?'s':''} causando a diferença
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+                  <div>
+                    <div style={{fontSize:10,color:'#92400E',opacity:.7}}>Custo apurado</div>
+                    <div style={{fontSize:13,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>
+                      R$ {brl(comDif.reduce((s,n)=>s+Number(n.saldo_dash||0),0))}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,color:'#92400E',opacity:.7}}>Saldo contábil</div>
+                    <div style={{fontSize:13,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>
+                      R$ {brl(comDif.reduce((s,n)=>s+Number(n.saldo_contabil||0),0))}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,color:'#92400E',opacity:.7}}>Soma das diferenças</div>
+                    <div style={{fontSize:13,fontWeight:700,color:'#B54708',fontVariantNumeric:'tabular-nums'}}>
+                      R$ {brl(comDif.reduce((s,n)=>s+Number(n.diferenca||0),0))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{padding:'10px 12px',background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:8,fontSize:12.5,color:'#166534'}}>
+                ✅ Nenhuma nota com diferença nesta conta.
+              </div>
+            )}
+            {/* Botão para ver todas se quiser */}
+            <button onClick={()=>setMostrarTodas(v=>!v)} style={{
+              marginTop:8,fontSize:11.5,color:'#9CA3AF',background:'none',border:'none',
+              cursor:'pointer',fontFamily:'inherit',padding:0,
+            }}>
+              {mostrarTodas ? `▲ Ocultar notas conciliadas (${notas.length - comDif.length})` : `▼ Ver também notas conciliadas (${notas.length - comDif.length})`}
+            </button>
           </div>
         )}
       </div>
