@@ -1,73 +1,26 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { SUPABASE_URL, SUPABASE_ANON_KEY, sbFetch, brl, int, dBR, classeDe } from '../config.js'
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
-
 async function analisarComIA(nota, dados) {
-  const itens = dados.itens.map(i => ({
-    produto: i.codprod,
-    descricao: i.descrprod.slice(0, 60),
-    quantidade: i.qtdneg,
-    unidade: i.codvol,
-    vlr_unit_nf: i.vlr_unit_nota,
-    custo_sem_icms: i.custo_sem_icms,
-    diff_unit: Math.abs(i.vlr_unit_nota - i.custo_sem_icms).toFixed(4),
-    custo_total: i.custo_total,
-  }))
-
-  const lancs = dados.lancamentos.map(l => ({
-    conta: l.codctactb,
-    descricao: l.descrcta,
-    dc: l.tiplanc === 'D' ? 'Débito' : 'Crédito',
-    valor: l.vlrlanc,
-    data: l.dtmov,
-  }))
-
-  const prompt = `Você é um analista de custos sênior especialista em sistema Sankhya.
-
-Analise a seguinte divergência entre o custo apurado no módulo de estoque e o lançamento contábil:
-
-NOTA FISCAL: ${nota.nota_fiscal}
-OPERAÇÃO: ${nota.descr_top} (TOP ${nota.cod_top})
-DATA: ${nota.data_entrada_saida}
-CONTA CONTÁBIL: ${nota.conta_contabil} — ${nota.descr_local}
-
-VALORES:
-- Custo apurado (Dash): R$ ${brl_str(nota.saldo_dash)}
-- Saldo contábil (Razão): R$ ${brl_str(nota.saldo_contabil)}
-- Diferença: R$ ${brl_str(nota.diferenca)}
-
-ITENS DA NOTA:
-${JSON.stringify(itens, null, 2)}
-
-LANÇAMENTOS CONTÁBEIS GERADOS:
-${JSON.stringify(lancs, null, 2)}
-
-TOTAL CUSTO DOS ITENS: R$ ${brl_str(dados.totalCusto)}
-TOTAL CONTABILIZADO: R$ ${brl_str(dados.totalContab)}
-
-Com base nesses dados, responda em português (máximo 200 palavras):
-1. Qual é a causa exata desta diferença?
-2. O que o analista deve fazer para corrigir?
-3. Esta diferença é esperada ou indica um problema real?
-
-Seja direto e específico. Use os valores reais.`
-
-  const res = await fetch(ANTHROPIC_URL, {
+  // Chama a edge function — a API key da Anthropic fica no servidor, nunca exposta no frontend
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/nota-analise-ia`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      'x-api-key': 'kb2026sync!',
+    },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: prompt }],
+      nota,
+      itens: dados.itens,
+      lancamentos: dados.lancamentos,
+      totalCusto: dados.totalCusto,
+      totalContab: dados.totalContab,
     }),
   })
   const data = await res.json()
-  if (data.error) throw new Error(data.error.message)
-  return data.content?.[0]?.text || 'Sem resposta'
-}
-
-function brl_str(n) {
-  return (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  if (!data.ok) throw new Error(data.erro || 'Erro na análise')
+  return data.analise
 }
 
 
