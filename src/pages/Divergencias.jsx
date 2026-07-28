@@ -338,7 +338,7 @@ function DrawerDetalhe({ nota, onClose }) {
                       border:'none',borderRadius:8,fontSize:14,fontWeight:600,
                       cursor:'pointer',fontFamily:'inherit',
                     }}>
-                      🤖 Analisar esta nota com IA
+                      🤖 Analisar com GPT-4
                     </button>
                   )}
 
@@ -347,7 +347,7 @@ function DrawerDetalhe({ nota, onClose }) {
                       background:'#EBF2FC',borderRadius:8,color:'#1D5BBF',fontSize:13}}>
                       <div style={{width:20,height:20,border:'3px solid #BFDBFE',borderTopColor:'#1D5BBF',
                         borderRadius:'50%',animation:'spin 0.8s linear infinite',flexShrink:0}}/>
-                      Analisando os dados da nota no Sankhya…
+                      Consultando GPT-4…
                     </div>
                   )}
 
