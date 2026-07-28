@@ -14,6 +14,17 @@ async function buscarDetalhe(nunota) {
   return data
 }
 
+async function buscarDetalheCte(nunotaCte) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/cte-detalhe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    body: JSON.stringify({ nunota_cte: nunotaCte, _key: SYNC_KEY }),
+  })
+  const data = await res.json()
+  if (!data.ok) throw new Error(data.erro || 'Erro ao buscar CT-e')
+  return data
+}
+
 async function analisarComIA(nota, dados) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/nota-analise-ia`, {
     method: 'POST',
@@ -33,6 +44,10 @@ export default function DrawerDetalhe({ nota, onClose }) {
   const [iaFase,   setIaFase]   = useState('idle')
   const [iaTexto,  setIaTexto]  = useState('')
   const [iaErro,   setIaErro]   = useState('')
+  const [cteAberto, setCteAberto] = useState(null)
+  const [cteFase,   setCteFase]   = useState('idle')
+  const [cteDados,  setCteDados]  = useState(null)
+  const [cteErro,   setCteErro]   = useState('')
 
   useEffect(() => {
     if (!nota) return
@@ -42,6 +57,14 @@ export default function DrawerDetalhe({ nota, onClose }) {
       .then(d => { setDados(d); setFase('pronto') })
       .catch(e => { setErro(e.message); setFase('erro') })
   }, [nota?.nunota])
+
+  const abrirCte = async (nunotaCte) => {
+    setCteAberto(nunotaCte); setCteFase('carregando'); setCteDados(null); setCteErro('')
+    try {
+      const d = await buscarDetalheCte(nunotaCte)
+      setCteDados(d); setCteFase('pronto')
+    } catch(e) { setCteErro(e.message); setCteFase('erro') }
+  }
 
   const rodarIA = async () => {
     if (!dados || iaFase === 'rodando') return
@@ -287,8 +310,12 @@ export default function DrawerDetalhe({ nota, onClose }) {
                           </thead>
                           <tbody>
                             {dados.ctes.map((c,i)=>(
-                              <tr key={i} style={{borderBottom:'1px solid #F9FAFB'}}>
-                                <td style={{padding:'8px 10px',fontWeight:700}}>{c.num_cte}</td>
+                              <tr key={i} onClick={()=>abrirCte(c.nunota_cte)}
+                                style={{borderBottom:'1px solid #F9FAFB',cursor:'pointer'}}
+                                onMouseOver={e=>e.currentTarget.querySelectorAll('td').forEach(td=>td.style.background='#F0F7FF')}
+                                onMouseOut={e=>e.currentTarget.querySelectorAll('td').forEach(td=>td.style.background='')}
+                              >
+                                <td style={{padding:'8px 10px',fontWeight:700,color:'#1D5BBF'}}>{c.num_cte} →</td>
                                 <td style={{padding:'8px 10px',color:'#6B7280'}}>{c.transportadora}</td>
                                 <td style={{padding:'8px 10px',color:'#9CA3AF'}}>{c.data_cte}</td>
                                 <td style={{padding:'8px 10px',textAlign:'right',fontVariantNumeric:'tabular-nums',color:'#9CA3AF'}}>R$ {brl(c.vlr_total_frete)}</td>
@@ -364,6 +391,121 @@ export default function DrawerDetalhe({ nota, onClose }) {
           )}
         </div>
       </aside>
+
+      {/* Sub-drawer: detalhe do CT-e */}
+      {cteAberto && (
+        <>
+          <div onClick={()=>setCteAberto(null)} style={{position:'fixed',inset:0,background:'rgba(16,24,40,.5)',zIndex:50}}/>
+          <aside style={{
+            position:'fixed',top:0,right:0,bottom:0,width:'min(600px,94vw)',
+            background:'#fff',borderLeft:'1px solid #E5E7EB',zIndex:51,
+            display:'flex',flexDirection:'column',boxShadow:'-8px 0 40px rgba(16,24,40,.2)',overflow:'hidden',
+          }}>
+            <div style={{padding:'18px 22px',borderBottom:'1px solid #F3F4F6',flexShrink:0,
+              display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+              <div>
+                <div style={{fontSize:11,color:'#9CA3AF',marginBottom:4}}>DETALHE DO CT-e</div>
+                <h3 style={{margin:0,fontSize:17,fontWeight:700}}>
+                  🚚 CT-e {cteDados?.cab?.numnota || cteAberto}
+                </h3>
+                {cteDados?.cab && (
+                  <div style={{fontSize:12.5,color:'#6B7280',marginTop:3}}>
+                    {cteDados.cab.transportadora} · {cteDados.cab.dtentsai}
+                  </div>
+                )}
+              </div>
+              <button onClick={()=>setCteAberto(null)} style={{background:'none',border:'none',cursor:'pointer',padding:6,color:'#6B7280'}}>
+                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+
+            <div style={{flex:1,overflowY:'auto',padding:'18px 22px'}}>
+              {cteFase==='carregando' && (
+                <div style={{display:'flex',alignItems:'center',gap:10,padding:'40px',color:'#9CA3AF',fontSize:13}}>
+                  <div style={{width:20,height:20,border:'3px solid #E5E7EB',borderTopColor:'#1D5BBF',borderRadius:'50%',animation:'spin .8s linear infinite'}}/>
+                  Buscando CT-e no Sankhya…
+                </div>
+              )}
+              {cteFase==='erro' && (
+                <div style={{padding:16,background:'#FEF2F2',border:'1px solid #FECACA',borderRadius:8,color:'#B42318',fontSize:13}}>
+                  Erro: {cteErro}
+                </div>
+              )}
+              {cteFase==='pronto' && cteDados && (
+                <>
+                  {/* Financeiro do CT-e */}
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontSize:12,fontWeight:700,color:'#374151',marginBottom:10}}>💰 Composição financeira</div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                      {[
+                        ['Valor total do CT-e', cteDados.cab.vlrnota, '#101828'],
+                        ['Frete líquido',        cteDados.cab.vlrfreteliquido, '#12805C'],
+                        ['ICMS sobre frete',      cteDados.cab.icmsfrete, '#B54708'],
+                        ['PIS sobre frete',       cteDados.cab.pisfrete, '#B54708'],
+                        ['COFINS sobre frete',    cteDados.cab.cofinsfrete, '#B54708'],
+                      ].map(([l,v,c])=>(
+                        <div key={l} style={{padding:'12px 14px',background:'#F9FAFB',borderRadius:8}}>
+                          <div style={{fontSize:10.5,color:'#9CA3AF',marginBottom:3}}>{l}</div>
+                          <div style={{fontSize:15,fontWeight:700,color:c,fontVariantNumeric:'tabular-nums'}}>R$ {brl(v)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Dados cadastrais */}
+                  <div style={{marginBottom:20,padding:'12px 14px',background:'#F9FAFB',borderRadius:8}}>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,fontSize:12.5}}>
+                      <div><span style={{color:'#9CA3AF'}}>Transportadora: </span><strong>{cteDados.cab.transportadora}</strong></div>
+                      <div><span style={{color:'#9CA3AF'}}>CNPJ: </span><strong>{cteDados.cab.cnpj}</strong></div>
+                      <div><span style={{color:'#9CA3AF'}}>Operação: </span><strong>{cteDados.cab.descroper}</strong></div>
+                      <div><span style={{color:'#9CA3AF'}}>Data emissão: </span><strong>{cteDados.cab.dtneg}</strong></div>
+                    </div>
+                  </div>
+
+                  {/* Rateio completo */}
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:'#374151',marginBottom:10}}>
+                      📦 Rateio por nota fiscal ({cteDados.rateio.length} {cteDados.rateio.length===1?'item':'itens'})
+                    </div>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                      <thead>
+                        <tr>
+                          {['NF','Fornecedor','Produto','Qtd','Vlr. total item','Frete rateado'].map(h=>(
+                            <th key={h} style={{padding:'7px 9px',background:'#F9FAFB',
+                              textAlign:['Qtd','Vlr. total item','Frete rateado'].includes(h)?'right':'left',
+                              fontSize:10,fontWeight:600,color:'#6B7280',borderBottom:'1px solid #E5E7EB',
+                              textTransform:'uppercase',letterSpacing:'.03em',whiteSpace:'nowrap'}}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cteDados.rateio.map((r,i)=>(
+                          <tr key={i} style={{borderBottom:'1px solid #F9FAFB'}}>
+                            <td style={{padding:'7px 9px',fontWeight:700}}>{r.num_nf}</td>
+                            <td style={{padding:'7px 9px',color:'#6B7280',maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.fornecedor}</td>
+                            <td style={{padding:'7px 9px',color:'#6B7280',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={r.descrprod}>{r.descrprod}</td>
+                            <td style={{padding:'7px 9px',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>{r.qtdneg} {r.codvol}</td>
+                            <td style={{padding:'7px 9px',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>R$ {brl(r.vlr_total_item)}</td>
+                            <td style={{padding:'7px 9px',textAlign:'right',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>R$ {brl(r.vlr_frete_rateado)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{background:'#F9FAFB',fontWeight:700}}>
+                          <td colSpan={5} style={{padding:'7px 9px',borderTop:'2px solid #E5E7EB'}}>Total rateado</td>
+                          <td style={{padding:'7px 9px',textAlign:'right',borderTop:'2px solid #E5E7EB',fontVariantNumeric:'tabular-nums'}}>
+                            R$ {brl(cteDados.rateio.reduce((s,r)=>s+Number(r.vlr_frete_rateado||0),0))}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          </aside>
+        </>
+      )}
     </>
   )
 }
