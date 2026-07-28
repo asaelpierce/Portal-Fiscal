@@ -79,9 +79,12 @@ export default function Razao() {
               <option value="">Selecione uma importação…</option>
               {importacoes.map(i => (
                 <option key={i.id} value={i.id}>
-                  {new Date(i.criado_em).toLocaleDateString('pt-BR')} — {
-                    new Date(i.periodo_inicio).toLocaleDateString('pt-BR')
-                  } a {new Date(i.periodo_fim).toLocaleDateString('pt-BR')}
+                  {(() => {
+                    const d = String(i.periodo_inicio).slice(0,10)
+                    const f = String(i.periodo_fim).slice(0,10)
+                    const fmt = s => { const [y,m,d2]=s.split('-'); return d2+'/'+m+'/'+y }
+                    return fmt(d) + ' a ' + fmt(f)
+                  })()}
                   {i.status !== 'pronto' ? ` (${i.status})` : ''}
                 </option>
               ))}

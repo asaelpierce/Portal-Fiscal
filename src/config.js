@@ -23,7 +23,8 @@ export const brlK = (n) => {
   return `${s}${a.toFixed(0)}`
 }
 
-export const int = (n) => (Number(n) || 0).toLocaleString('pt-BR')
+export const int  = (n) => (Number(n) || 0).toLocaleString('pt-BR')
+export const isZero = (n) => Math.abs(Number(n) || 0) < 0.005
 
 export const dBR = (d) => {
   if (!d) return '—'
@@ -31,27 +32,28 @@ export const dBR = (d) => {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : String(d)
 }
 
-export const isZero = (n) => Math.abs(Number(n) || 0) < 0.005
-
-// Classes calculadas no banco — sem precisar de lógica no frontend
+// Classificações calculadas no banco — fonte única de verdade
 export const CLASSES = {
-  OK:          { cor: '#12805C', bg: '#D1FAE5', rot: 'Conciliado',       icone: '✓' },
-  CRITICO:     { cor: '#B42318', bg: '#FEE2E2', rot: 'Crítico',          icone: '🔴' },
-  AJUSTE_CUSTO:{ cor: '#B54708', bg: '#FEF3C7', rot: 'Ajuste de custo',  icone: '⚙' },
-  INVESTIGAR:  { cor: '#1D5BBF', bg: '#DBEAFE', rot: 'Investigar',       icone: '⚠' },
-  REMESSA:     { cor: '#6B7280', bg: '#F3F4F6', rot: 'Remessa aberta',   icone: '⏳' },
-  JUSTIFICADO: { cor: '#12805C', bg: '#ECFDF5', rot: 'Justificado',      icone: '📋' },
+  OK:          { cor: '#12805C', bg: '#D1FAE5', rot: 'Conciliado',      icone: '✓' },
+  INVESTIGAR:  { cor: '#B54708', bg: '#FEF3C7', rot: 'Investigar',      icone: '⚠' },
+  AJUSTE_CUSTO:{ cor: '#6B7280', bg: '#F3F4F6', rot: 'Ajuste de custo', icone: '⚙' },
+  CRITICO:     { cor: '#B42318', bg: '#FEE2E2', rot: 'Crítico',         icone: '🔴' },
+  REMESSA:     { cor: '#1D5BBF', bg: '#DBEAFE', rot: 'Remessa aberta',  icone: '⏳' },
+  JUSTIFICADO: { cor: '#12805C', bg: '#ECFDF5', rot: 'Justificado',     icone: '📋' },
 }
 
 export const classeDe = (c) => CLASSES[c] || CLASSES.INVESTIGAR
 
-// Mantém compatibilidade com sitDe usado em alguns lugares
-export const SITUACOES = [
-  { p: '1', k: 'ok',      rot: 'Confere',              cor: '#12805C', bg: '#D1FAE5' },
-  { p: '2', k: 'soCtb',   rot: 'Só na contabilidade',  cor: '#1D5BBF', bg: '#DBEAFE' },
-  { p: '3', k: 'soCusto', rot: 'Só no custo',          cor: '#B54708', bg: '#FEF3C7' },
-  { p: '4', k: 'valor',   rot: 'Divergência de valor',  cor: '#B42318', bg: '#FEE2E2' },
-]
-export const sitDe = (m) =>
-  SITUACOES.find((s) => String(m || '').startsWith(s.p)) ||
-  { k: 'outro', rot: 'Não classificado', cor: '#667085', bg: '#F3F4F6' }
+// Situação legível para o analista (usa classe_divergencia do banco, não o motivo bruto do Oracle)
+export const situacaoLabel = (row) => {
+  if (!row) return '—'
+  switch (row.classe_divergencia) {
+    case 'OK':           return row.motivo_calculado || 'Conciliado'
+    case 'INVESTIGAR':   return row.motivo_calculado || 'Investigar'
+    case 'AJUSTE_CUSTO': return row.motivo_calculado || 'Ajuste de custo médio'
+    case 'CRITICO':      return row.motivo_calculado || 'Crítico'
+    case 'REMESSA':      return row.motivo_calculado || 'Remessa em aberto'
+    case 'JUSTIFICADO':  return row.motivo_calculado || 'Justificado'
+    default:             return row.motivo_calculado || row.motivo_divergencia || '—'
+  }
+}
