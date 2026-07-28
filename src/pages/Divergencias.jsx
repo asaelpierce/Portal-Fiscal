@@ -8,9 +8,9 @@ async function analisarComIA(nota, dados) {
       'Content-Type': 'application/json',
       apikey: SUPABASE_ANON_KEY,
       Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      'x-api-key': 'kb2026sync!',
     },
     body: JSON.stringify({
+      _key: SYNC_KEY,
       nota,
       itens: dados.itens,
       lancamentos: dados.lancamentos,
