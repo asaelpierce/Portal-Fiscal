@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { sbFetch, brl, brlK, int, dBR, classeDe } from '../config.js'
+import { sbFetch, brl, int, dBR, classeDe } from '../config.js'
 import { Spinner, Btn } from '../components/UI.jsx'
 import DrawerDetalhe from '../components/DrawerDetalhe.jsx'
 
@@ -8,46 +8,87 @@ const ACAO_ESTILO = {
   'AUMENTAR CUSTO': { cor:'#1D5BBF', bg:'#DBEAFE', icone:'▲' },
   'DIMINUIR CUSTO': { cor:'#B54708', bg:'#FEF3C7', icone:'▼' },
 }
+const MESES_BR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
-// ─── Painel lateral de notas de uma conta ────────────────────────────────────
-function PainelNotas({ conta, importacaoId, dataFechamento, onClose, onNota }) {
-  const [fase,         setFase]         = useState('carregando')
-  const [porMes,       setPorMes]       = useState([]) // [{mes, label, notas, comDif}]
-  const [mesAberto,    setMesAberto]    = useState(null)
-  const [mostrarOk,    setMostrarOk]    = useState({})
-  const [abaVista,     setAbaVista]     = useState('mes')
+// ─── Card de nota clicável ────────────────────────────────────────────────────
+function CardNota({ nota, onNota }) {
+  const cls = classeDe(nota.classe_divergencia)
+  const dif = Number(nota.diferenca || 0)
+  return (
+    <button onClick={() => onNota(nota)}
+      style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:10, width:'100%',
+        padding:'11px 20px', background:'none', border:'none',
+        borderBottom:'1px solid #F3F4F6', cursor:'pointer', textAlign:'left', fontFamily:'inherit' }}
+      onMouseOver={e => e.currentTarget.style.background = '#F9FAFB'}
+      onMouseOut={e  => e.currentTarget.style.background = 'none'}
+    >
+      <div>
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+          <span style={{ fontSize:13, fontWeight:700 }}>NF {nota.nota_fiscal}</span>
+          <span style={{ fontSize:10.5, fontWeight:700, padding:'2px 6px', borderRadius:4,
+            background:cls.bg, color:cls.cor }}>{cls.icone} {cls.rot}</span>
+        </div>
+        <div style={{ fontSize:11.5, color:'#6B7280' }}>{nota.descr_top}</div>
+        <div style={{ fontSize:11, color:'#9CA3AF', marginTop:1 }}>{dBR(nota.data_entrada_saida)}</div>
+        {nota.motivo_calculado && nota.classe_divergencia !== 'OK' && (
+          <div style={{ fontSize:11, color:cls.cor, marginTop:2 }}>{nota.motivo_calculado}</div>
+        )}
+      </div>
+      <div style={{ textAlign:'right', flexShrink:0 }}>
+        <div style={{ fontSize:11, color:'#9CA3AF', marginBottom:2, whiteSpace:'nowrap' }}>Custo / Contábil</div>
+        <div style={{ fontSize:11.5, fontVariantNumeric:'tabular-nums', color:'#374151', whiteSpace:'nowrap' }}>
+          {brl(nota.saldo_dash)} / {brl(nota.saldo_contabil)}
+        </div>
+        {Math.abs(dif) > 0.005 && (
+          <div style={{ fontSize:13, fontWeight:700, fontVariantNumeric:'tabular-nums',
+            color:cls.cor, whiteSpace:'nowrap' }}>
+            {dif > 0 ? '+' : ''}R$ {brl(dif)}
+          </div>
+        )}
+        <div style={{ fontSize:10.5, color:'#1D5BBF', marginTop:3 }}>ver detalhes →</div>
+      </div>
+    </button>
+  )
+}
+
+// ─── Painel lateral de notas da conta ────────────────────────────────────────
+function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
+  const [fase,      setFase]      = useState('carregando')
+  const [porMes,    setPorMes]    = useState([])
+  const [mesAberto, setMesAberto] = useState(null)
+  const [verOkMes,  setVerOkMes]  = useState({}) // {mesKey: bool}
+  const [aba,       setAba]       = useState('mes') // 'mes' | 'todos'
+
+  // Mês do fechamento selecionado: '2026-07'
+  const mesFechamento = dataFechamento ? dataFechamento.slice(0, 7) : null
+  const labelMes = mesFechamento
+    ? `${MESES_BR[parseInt(mesFechamento.split('-')[1]) - 1]}/${mesFechamento.split('-')[0]}`
+    : 'Mês'
 
   useEffect(() => {
     if (!conta) return
     setFase('carregando'); setPorMes([])
-    // Busca importações disponíveis + lançamentos com diferença da conta
     Promise.all([
       sbFetch('importacoes?select=id,periodo_inicio,periodo_fim&order=periodo_fim.desc'),
-      sbFetch(
-        `lancamentos_conciliacao?conta_contabil=eq.${encodeURIComponent(conta)}` +
-        `&select=*&order=data_entrada_saida.desc`
-      )
+      sbFetch(`lancamentos_conciliacao?conta_contabil=eq.${encodeURIComponent(conta)}&select=*&order=data_entrada_saida.desc`),
     ])
     .then(([imps, lancs]) => {
-      // Agrupa lançamentos por importação
       const grupos = (imps || []).map(imp => {
-        const notas = (lancs || []).filter(l => l.importacao_id === imp.id)
+        const notas  = (lancs || []).filter(l => l.importacao_id === imp.id)
         if (!notas.length) return null
         const comDif = notas.filter(n => n.classe_divergencia !== 'OK')
         const [y, m] = imp.periodo_fim.split('-')
-        const meses  = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
         return {
           mesKey:  `${y}-${m}`,
-          label:   `${meses[parseInt(m)-1]}/${y}`,
-          periodo: `${imp.periodo_inicio} → ${imp.periodo_fim}`,
+          label:   `${MESES_BR[parseInt(m) - 1]}/${y}`,
           impId:   imp.id,
           notas,
           comDif,
-          somaDif: comDif.reduce((s,n)=>s+Number(n.diferenca||0),0),
+          somaDif: comDif.reduce((s, n) => s + Number(n.diferenca || 0), 0),
         }
       }).filter(Boolean)
 
-      // Abre o mês mais recente com diferença automaticamente
+      // Abre automaticamente o mês mais recente com diferença
       const primeiro = grupos.find(g => g.comDif.length > 0)
       if (primeiro) setMesAberto(primeiro.mesKey)
       setPorMes(grupos)
@@ -56,148 +97,168 @@ function PainelNotas({ conta, importacaoId, dataFechamento, onClose, onNota }) {
     .catch(() => setFase('erro'))
   }, [conta])
 
-  const totalDif = porMes.reduce((s,g)=>s+g.somaDif,0)
-  const MESES_BR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-  const mesFechamento = dataFechamento ? dataFechamento.slice(0,7) : null
-  const labelMesFechamento = mesFechamento
-    ? MESES_BR[parseInt(mesFechamento.split('-')[1])-1] + '/' + mesFechamento.split('-')[0]
-    : 'Mes'
+  const totalDif      = porMes.reduce((s, g) => s + g.somaDif, 0)
   const mesSelecionado = porMes.find(g => g.mesKey === mesFechamento)
-  const toggleOk = (key) => setMostrarOk(p=>({...p,[key]:!p[key]}))
+  const totalDifMes   = mesSelecionado?.somaDif || 0
+  const qtdDifMes     = mesSelecionado?.comDif.length || 0
+  const qtdDifTotal   = porMes.reduce((s, g) => s + g.comDif.length, 0)
 
   return (
-    <div style={{
-      position:'fixed', top:0, right:0, bottom:0, width:'min(560px,92vw)',
+    <div style={{ position:'fixed', top:0, right:0, bottom:0, width:'min(560px,92vw)',
       background:'#fff', borderLeft:'1px solid #E5E7EB', zIndex:35,
       display:'flex', flexDirection:'column',
-      boxShadow:'-6px 0 30px rgba(16,24,40,.12)',
-    }}>
+      boxShadow:'-6px 0 30px rgba(16,24,40,.12)' }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
       {/* Header */}
-      <div style={{padding:'16px 20px',borderBottom:'1px solid #F3F4F6',flexShrink:0}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+      <div style={{ padding:'16px 20px', borderBottom:'1px solid #F3F4F6', flexShrink:0 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
           <div>
-            <div style={{fontSize:11,color:'#9CA3AF',marginBottom:4}}>NOTAS COM DIFERENÇA — CONTA</div>
-            <div style={{fontSize:18,fontWeight:800}}>{conta}</div>
+            <div style={{ fontSize:11, color:'#9CA3AF', marginBottom:3 }}>NOTAS DA CONTA</div>
+            <div style={{ fontSize:18, fontWeight:800 }}>{conta}</div>
           </div>
-          <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',padding:6,color:'#6B7280'}}>
-            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', padding:6, color:'#6B7280' }}>
+            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M18 6 6 18M6 6l12 12"/>
+            </svg>
           </button>
         </div>
 
-          {/* Resumo acumulado */}
-        {fase==='pronto' && (
-          <div style={{marginTop:10,padding:'9px 12px',background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:8}}>
-            <div style={{fontSize:10.5,color:'#92400E',fontWeight:600,marginBottom:2}}>Diferença acumulada (todos os meses)</div>
-            <div style={{fontSize:15,fontWeight:800,color:'#B54708',fontVariantNumeric:'tabular-nums'}}>
-              {totalDif>0?'+':''}R$ {brl(totalDif)}
+        {/* Diferença acumulada */}
+        {fase === 'pronto' && (
+          <div style={{ padding:'9px 12px', background:'#FEF3C7', border:'1px solid #FDE68A', borderRadius:8, marginBottom:12 }}>
+            <div style={{ fontSize:10.5, color:'#92400E', fontWeight:600, marginBottom:2 }}>
+              Diferença acumulada (todos os meses)
             </div>
+            <div style={{ fontSize:15, fontWeight:800, color:'#B54708', fontVariantNumeric:'tabular-nums' }}>
+              {totalDif > 0 ? '+' : ''}R$ {brl(totalDif)}
+            </div>
+          </div>
+        )}
+
+        {/* Abas */}
+        {fase === 'pronto' && (
+          <div style={{ display:'flex', borderBottom:'1px solid #E5E7EB' }}>
+            {[
+              { id:'mes',   label: labelMes,         qtd: qtdDifMes   },
+              { id:'todos', label: 'Todos os meses', qtd: qtdDifTotal },
+            ].map(a => (
+              <button key={a.id} onClick={() => setAba(a.id)} style={{
+                flex:1, padding:'8px 4px', fontSize:12.5, fontWeight: aba === a.id ? 700 : 400,
+                border:'none', borderBottom:`2px solid ${aba === a.id ? '#1D5BBF' : 'transparent'}`,
+                background:'none', cursor:'pointer', fontFamily:'inherit',
+                color: aba === a.id ? '#1D5BBF' : '#6B7280',
+              }}>
+                {a.label}
+                {a.qtd > 0 && (
+                  <span style={{ marginLeft:5, fontSize:10, fontWeight:700, padding:'1px 5px',
+                    borderRadius:8, background:'#FEF3C7', color:'#B54708' }}>
+                    {a.qtd}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Accordion por mês */}
-      <div style={{flex:1,overflowY:'auto'}}>
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-        {fase==='carregando' && (
-          <div style={{display:'flex',alignItems:'center',gap:10,padding:'32px 20px',color:'#9CA3AF',fontSize:13}}>
-            <div style={{width:20,height:20,border:'3px solid #E5E7EB',borderTopColor:'#1D5BBF',borderRadius:'50%',animation:'spin .8s linear infinite'}}/>
+      {/* Conteúdo */}
+      <div style={{ flex:1, overflowY:'auto' }}>
+        {fase === 'carregando' && (
+          <div style={{ display:'flex', alignItems:'center', gap:10, padding:'32px 20px', color:'#9CA3AF', fontSize:13 }}>
+            <div style={{ width:20, height:20, border:'3px solid #E5E7EB', borderTopColor:'#1D5BBF',
+              borderRadius:'50%', animation:'spin .8s linear infinite' }}/>
             Carregando…
           </div>
         )}
 
-        {fase==='pronto' && abaVista==='todos' && porMes.map(g => {
-          const aberto = mesAberto === g.mesKey
-          const verOk  = mostrarOk[g.mesKey]
-          const lista  = verOk ? g.notas : g.comDif
-          const temDif = g.comDif.length > 0
-
+        {/* ABA: mês selecionado */}
+        {fase === 'pronto' && aba === 'mes' && (() => {
+          const g = mesSelecionado
+          if (!g) return (
+            <div style={{ padding:'32px 20px', textAlign:'center', color:'#9CA3AF', fontSize:13 }}>
+              Sem dados de conciliação para {labelMes}.
+            </div>
+          )
+          const verOk = verOkMes['__mes__']
+          const lista = verOk ? g.notas : g.comDif
           return (
-            <div key={g.mesKey} style={{borderBottom:'2px solid #F3F4F6'}}>
-              {/* Cabeçalho do mês — clicável */}
-              <button onClick={()=>setMesAberto(aberto?null:g.mesKey)}
-                style={{
-                  width:'100%',padding:'12px 20px',background:aberto?'#F0F7FF':'#fff',
-                  border:'none',borderBottom:`1px solid ${aberto?'#DBEAFE':'transparent'}`,
-                  cursor:'pointer',textAlign:'left',fontFamily:'inherit',
-                  display:'flex',justifyContent:'space-between',alignItems:'center',
-                }}
-                onMouseOver={e=>{ if(!aberto) e.currentTarget.style.background='#F9FAFB' }}
-                onMouseOut={e=>{ if(!aberto) e.currentTarget.style.background='#fff' }}
+            <div>
+              {lista.length === 0 && !verOk && (
+                <div style={{ margin:'16px', padding:'20px', textAlign:'center',
+                  background:'#F0FDF4', borderRadius:8, fontSize:13, color:'#166534' }}>
+                  ✅ Nenhuma nota com diferença em {labelMes}.
+                </div>
+              )}
+              {lista.map((nota, i) => <CardNota key={nota.id || i} nota={nota} onNota={onNota} />)}
+              {g.notas.length > g.comDif.length && (
+                <button onClick={() => setVerOkMes(p => ({ ...p, '__mes__': !p['__mes__'] }))}
+                  style={{ width:'100%', padding:'9px 20px', background:'#F9FAFB', border:'none',
+                    borderTop:'1px solid #F3F4F6', cursor:'pointer', textAlign:'left',
+                    fontFamily:'inherit', fontSize:11.5, color:'#9CA3AF' }}>
+                  {verOk
+                    ? `▲ Ocultar conciliadas (${g.notas.length - g.comDif.length})`
+                    : `▼ Ver conciliadas (${g.notas.length - g.comDif.length})`}
+                </button>
+              )}
+            </div>
+          )
+        })()}
+
+        {/* ABA: todos os meses (accordion) */}
+        {fase === 'pronto' && aba === 'todos' && porMes.map(g => {
+          const aberto = mesAberto === g.mesKey
+          const verOk  = verOkMes[g.mesKey]
+          const lista  = verOk ? g.notas : g.comDif
+          return (
+            <div key={g.mesKey} style={{ borderBottom:'2px solid #F3F4F6' }}>
+              {/* Cabeçalho do mês */}
+              <button onClick={() => setMesAberto(aberto ? null : g.mesKey)}
+                style={{ width:'100%', padding:'12px 20px',
+                  background: aberto ? '#F0F7FF' : '#fff',
+                  border:'none', borderBottom:`1px solid ${aberto ? '#DBEAFE' : 'transparent'}`,
+                  cursor:'pointer', textAlign:'left', fontFamily:'inherit',
+                  display:'flex', justifyContent:'space-between', alignItems:'center' }}
+                onMouseOver={e => { if (!aberto) e.currentTarget.style.background = '#F9FAFB' }}
+                onMouseOut={e  => { if (!aberto) e.currentTarget.style.background = '#fff' }}
               >
-                <div style={{display:'flex',alignItems:'center',gap:10}}>
-                  <span style={{fontSize:13,fontWeight:700,color:aberto?'#1D5BBF':'#101828'}}>{g.label}</span>
-                  {temDif
-                    ? <span style={{fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:4,background:'#FEF3C7',color:'#B54708'}}>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <span style={{ fontSize:13, fontWeight:700, color: aberto ? '#1D5BBF' : '#101828' }}>
+                    {g.label}
+                  </span>
+                  {g.comDif.length > 0
+                    ? <span style={{ fontSize:11, fontWeight:700, padding:'2px 7px', borderRadius:4,
+                        background:'#FEF3C7', color:'#B54708' }}>
                         {g.comDif.length} com diferença
                       </span>
-                    : <span style={{fontSize:11,padding:'2px 8px',borderRadius:4,background:'#D1FAE5',color:'#12805C'}}>✓ conciliado</span>
+                    : <span style={{ fontSize:11, padding:'2px 7px', borderRadius:4,
+                        background:'#D1FAE5', color:'#12805C' }}>✓ conciliado</span>
                   }
                 </div>
-                <div style={{display:'flex',alignItems:'center',gap:14}}>
-                  {temDif && (
-                    <span style={{fontSize:13,fontWeight:700,color:'#B54708',fontVariantNumeric:'tabular-nums'}}>
-                      {g.somaDif>0?'+':''}R$ {brl(g.somaDif)}
+                <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                  {g.comDif.length > 0 && (
+                    <span style={{ fontSize:13, fontWeight:700, color:'#B54708', fontVariantNumeric:'tabular-nums' }}>
+                      {g.somaDif > 0 ? '+' : ''}R$ {brl(g.somaDif)}
                     </span>
                   )}
-                  <span style={{fontSize:12,color:'#9CA3AF'}}>{aberto?'▲':'▼'}</span>
+                  <span style={{ fontSize:12, color:'#9CA3AF' }}>{aberto ? '▲' : '▼'}</span>
                 </div>
               </button>
 
               {/* Notas do mês */}
               {aberto && (
                 <div>
-                  {lista.map((nota,i) => {
-                    const cls = classeDe(nota.classe_divergencia)
-                    const dif = Number(nota.diferenca||0)
-                    return (
-                      <button key={nota.id||i} onClick={()=>onNota(nota)}
-                        style={{
-                          display:'grid',gridTemplateColumns:'1fr auto',gap:10,
-                          width:'100%',padding:'11px 20px 11px 28px',
-                          background:'none',border:'none',
-                          borderBottom:'1px solid #F3F4F6',
-                          cursor:'pointer',textAlign:'left',fontFamily:'inherit',
-                        }}
-                        onMouseOver={e=>e.currentTarget.style.background='#F9FAFB'}
-                        onMouseOut={e=>e.currentTarget.style.background='none'}
-                      >
-                        <div>
-                          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
-                            <span style={{fontSize:13,fontWeight:700}}>NF {nota.nota_fiscal}</span>
-                            <span style={{fontSize:10.5,fontWeight:700,padding:'2px 6px',borderRadius:4,
-                              background:cls.bg,color:cls.cor}}>{cls.icone} {cls.rot}</span>
-                          </div>
-                          <div style={{fontSize:11.5,color:'#6B7280'}}>{nota.descr_top}</div>
-                          <div style={{fontSize:11,color:'#9CA3AF',marginTop:1}}>{dBR(nota.data_entrada_saida)}</div>
-                          {nota.motivo_calculado && nota.classe_divergencia!=='OK' && (
-                            <div style={{fontSize:11,color:cls.cor,marginTop:2}}>{nota.motivo_calculado}</div>
-                          )}
-                        </div>
-                        <div style={{textAlign:'right',flexShrink:0}}>
-                          <div style={{fontSize:11,color:'#9CA3AF',marginBottom:2,whiteSpace:'nowrap'}}>Custo / Contábil</div>
-                          <div style={{fontSize:11.5,fontVariantNumeric:'tabular-nums',color:'#374151',whiteSpace:'nowrap'}}>
-                            {brl(nota.saldo_dash)} / {brl(nota.saldo_contabil)}
-                          </div>
-                          {Math.abs(dif)>0.005 && (
-                            <div style={{fontSize:13,fontWeight:700,fontVariantNumeric:'tabular-nums',
-                              color:cls.cor,whiteSpace:'nowrap'}}>
-                              {dif>0?'+':''}R$ {brl(dif)}
-                            </div>
-                          )}
-                          <div style={{fontSize:10.5,color:'#1D5BBF',marginTop:3}}>ver detalhes →</div>
-                        </div>
-                      </button>
-                    )
-                  })}
-
-                  {/* Botão ver conciliadas */}
+                  {lista.length === 0 && !verOk && (
+                    <div style={{ padding:'16px 20px', fontSize:12.5, color:'#12805C' }}>
+                      ✅ Nenhuma nota com diferença neste mês.
+                    </div>
+                  )}
+                  {lista.map((nota, i) => <CardNota key={nota.id || i} nota={nota} onNota={onNota} />)}
                   {g.notas.length > g.comDif.length && (
-                    <button onClick={()=>toggleOk(g.mesKey)} style={{
-                      width:'100%',padding:'8px 20px 8px 28px',background:'#F9FAFB',
-                      border:'none',borderTop:'1px solid #F3F4F6',
-                      cursor:'pointer',textAlign:'left',fontFamily:'inherit',
-                      fontSize:11.5,color:'#9CA3AF',
-                    }}>
+                    <button onClick={() => setVerOkMes(p => ({ ...p, [g.mesKey]: !p[g.mesKey] }))}
+                      style={{ width:'100%', padding:'8px 20px 8px 28px', background:'#F9FAFB', border:'none',
+                        borderTop:'1px solid #F3F4F6', cursor:'pointer', textAlign:'left',
+                        fontFamily:'inherit', fontSize:11.5, color:'#9CA3AF' }}>
                       {verOk
                         ? `▲ Ocultar conciliadas (${g.notas.length - g.comDif.length})`
                         : `▼ Ver conciliadas (${g.notas.length - g.comDif.length})`}
@@ -209,8 +270,8 @@ function PainelNotas({ conta, importacaoId, dataFechamento, onClose, onNota }) {
           )
         })}
 
-        {fase==='pronto' && !porMes.length && (
-          <div style={{padding:'32px',textAlign:'center',color:'#9CA3AF',fontSize:13}}>
+        {fase === 'pronto' && !porMes.length && (
+          <div style={{ padding:'32px', textAlign:'center', color:'#9CA3AF', fontSize:13 }}>
             Nenhum lançamento encontrado para esta conta.
           </div>
         )}
@@ -221,23 +282,18 @@ function PainelNotas({ conta, importacaoId, dataFechamento, onClose, onNota }) {
 
 // ─── Tela principal de Fechamento ─────────────────────────────────────────────
 export default function Fechamento() {
-  const [fase,       setFase]       = useState('carregando')
-  const [erro,       setErro]       = useState('')
-  const [datas,      setDatas]      = useState([])
-  const [data,       setData]       = useState('')
-  const [linhas,     setLinhas]     = useState([])
+  const [fase,        setFase]        = useState('carregando')
+  const [erro,        setErro]        = useState('')
+  const [datas,       setDatas]       = useState([])
+  const [data,        setData]        = useState('')
+  const [linhas,      setLinhas]      = useState([])
   const [contaAberta, setContaAberta] = useState(null)
   const [notaAberta,  setNotaAberta]  = useState(null)
-  const [importacoes, setImportacoes] = useState([]) // importações de conciliação
 
   useEffect(() => {
-    // Carrega lista de importações de conciliação para cruzar com a data
-    sbFetch('importacoes?select=id,periodo_inicio,periodo_fim&order=periodo_fim.desc')
-      .then(r => setImportacoes(r || []))
-      .catch(() => {})
     sbFetch('fechamento_saldos?select=data_posicao&order=data_posicao.desc')
       .then(r => {
-        const u = [...new Set((r||[]).map(x=>x.data_posicao))]
+        const u = [...new Set((r || []).map(x => x.data_posicao))]
         setDatas(u)
         if (u.length) setData(u[0])
         else setFase('vazio')
@@ -249,169 +305,174 @@ export default function Fechamento() {
     if (!data) return
     setFase('carregando')
     sbFetch(`fechamento_analitico?data_posicao=eq.${data}&select=*&order=grupo.asc`)
-      .then(r => { setLinhas(r||[]); setFase('pronto') })
+      .then(r => { setLinhas(r || []); setFase('pronto') })
       .catch(e => { setErro(e.message); setFase('erro') })
   }, [data])
 
   const tot = useMemo(() => {
-    const est  = linhas.reduce((s,l)=>s+Number(l.saldo_estoque||0),0)
-    const ctb  = linhas.reduce((s,l)=>s+Number(l.saldo_contabil||0),0)
-    return { est, ctb, dif:est-ctb, conferem:linhas.filter(l=>l.confere).length }
+    const est = linhas.reduce((s, l) => s + Number(l.saldo_estoque || 0), 0)
+    const ctb = linhas.reduce((s, l) => s + Number(l.saldo_contabil || 0), 0)
+    return { est, ctb, dif: est - ctb, conferem: linhas.filter(l => l.confere).length }
   }, [linhas])
 
-  const fechou = Math.abs(tot.dif)<0.10 && tot.conferem===linhas.length
-  const maxDif = Math.max(1,...linhas.map(l=>Math.abs(Number(l.diferenca)||0)))
+  const fechou  = Math.abs(tot.dif) < 0.10 && tot.conferem === linhas.length
+  const maxDif  = Math.max(1, ...linhas.map(l => Math.abs(Number(l.diferenca) || 0)))
+  const fmt     = s => { const [y,m,d] = String(s).slice(0,10).split('-'); return `${d}/${m}/${y}` }
 
   const exportar = () => {
-    const cols=['contas','descr_conta','descr_local','saldo_estoque','saldo_contabil','diferenca','acao']
-    const csv=[cols.join(';'),...linhas.map(l=>cols.map(k=>String(l[k]??'').replace(/;/g,',')).join(';'))].join('\n')
-    const url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}))
-    const a=document.createElement('a'); a.href=url; a.download=`fechamento-${data}.csv`; a.click()
+    const cols = ['contas','descr_conta','descr_local','saldo_estoque','saldo_contabil','diferenca','acao']
+    const csv  = [cols.join(';'), ...linhas.map(l => cols.map(k => String(l[k]??'').replace(/;/g,',')).join(';'))].join('\n')
+    const url  = URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}))
+    const a    = document.createElement('a'); a.href=url; a.download=`fechamento-${data}.csv`; a.click()
     URL.revokeObjectURL(url)
   }
 
-  const fmt = s => { const [y,m,d]=String(s).slice(0,10).split('-'); return `${d}/${m}/${y}` }
-
-  // Encontra a importação de conciliação cujo período contém a data do fechamento
-  const importacaoId = useMemo(() => {
-    if (!data || !importacoes.length) return null
-    // Prefere a importação cujo periodo_fim está no mesmo mês/ano da data de fechamento
-    const [ano, mes] = data.slice(0,7).split('-')
-    const mesAno = `${ano}-${mes}`
-    const match = importacoes.find(i => i.periodo_fim?.startsWith(mesAno))
-    return match?.id || importacoes[0]?.id
-  }, [data, importacoes])
-
   return (
-    <div style={{display:'flex',flexDirection:'column',gap:18}}>
+    <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
 
       {/* Seletor de data */}
-      {datas.length>1 && (
-        <div style={{display:'flex',gap:10,alignItems:'center'}}>
-          <label style={{fontSize:12,color:'#6B7280'}}>Posição em:</label>
-          <select value={data} onChange={e=>setData(e.target.value)} style={{
-            fontFamily:'inherit',fontSize:13,padding:'6px 10px',border:'1px solid #E5E7EB',borderRadius:6,
+      {datas.length > 1 && (
+        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+          <label style={{ fontSize:12, color:'#6B7280' }}>Posição em:</label>
+          <select value={data} onChange={e => setData(e.target.value)} style={{
+            fontFamily:'inherit', fontSize:13, padding:'6px 10px',
+            border:'1px solid #E5E7EB', borderRadius:6,
           }}>
-            {datas.map(d=><option key={d} value={d}>{fmt(d)}</option>)}
+            {datas.map(d => <option key={d} value={d}>{fmt(d)}</option>)}
           </select>
         </div>
       )}
 
-      {fase==='carregando' && <Spinner/>}
-      {fase==='erro' && <div style={{background:'#FEF2F2',border:'1px solid #FECACA',borderRadius:8,padding:16,color:'#B42318'}}>Erro: {erro}</div>}
+      {fase === 'carregando' && <Spinner/>}
+      {fase === 'erro' && (
+        <div style={{ background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:8, padding:16, color:'#B42318' }}>
+          Erro: {erro}
+        </div>
+      )}
 
-      {fase==='pronto' && (
+      {fase === 'pronto' && (
         <>
           {/* Veredito */}
           <div style={{
-            background:fechou?'#F0FDF4':'#FFFBEB',
-            border:`1px solid ${fechou?'#BBF7D0':'#FDE68A'}`,
-            borderRadius:8,padding:'16px 20px',
-            display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:14,
+            background: fechou ? '#F0FDF4' : '#FFFBEB',
+            border:`1px solid ${fechou ? '#BBF7D0' : '#FDE68A'}`,
+            borderRadius:8, padding:'16px 20px',
+            display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:14,
           }}>
             <div>
-              <div style={{fontSize:16,fontWeight:700,color:fechou?'#166534':'#92400E',marginBottom:3}}>
-                {fechou?`✅ Fechamento conciliado — posição de ${fmt(data)}`:`⚙ ${linhas.filter(l=>!l.confere).length} conta(s) pendente(s) de ajuste`}
+              <div style={{ fontSize:16, fontWeight:700, color: fechou ? '#166534' : '#92400E', marginBottom:3 }}>
+                {fechou
+                  ? `✅ Fechamento conciliado — posição de ${fmt(data)}`
+                  : `⚙ ${linhas.filter(l => !l.confere).length} conta(s) pendente(s)`}
               </div>
-              <div style={{fontSize:12.5,color:fechou?'#166534':'#92400E',opacity:.85}}>
-                {tot.conferem} de {linhas.length} contas conferem · Clique em qualquer conta para ver as notas
+              <div style={{ fontSize:12.5, color: fechou ? '#166534' : '#92400E', opacity:.85 }}>
+                {tot.conferem} de {linhas.length} contas conferem · clique numa conta para ver as notas
               </div>
             </div>
-            <div style={{textAlign:'right'}}>
-              <div style={{fontSize:10.5,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'.08em'}}>Diferença geral</div>
-              <div style={{fontSize:25,fontWeight:800,fontVariantNumeric:'tabular-nums',color:fechou?'#12805C':'#B54708'}}>
-                {tot.dif>0?'+':''}R$ {brl(tot.dif)}
+            <div style={{ textAlign:'right' }}>
+              <div style={{ fontSize:10.5, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'.08em' }}>Diferença geral</div>
+              <div style={{ fontSize:25, fontWeight:800, fontVariantNumeric:'tabular-nums',
+                color: fechou ? '#12805C' : '#B54708' }}>
+                {tot.dif > 0 ? '+' : ''}R$ {brl(tot.dif)}
               </div>
             </div>
           </div>
 
           {/* Totais */}
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1px 1fr',background:'#fff',border:'1px solid #E5E7EB',borderRadius:8,padding:'16px 22px'}}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1px 1fr', background:'#fff',
+            border:'1px solid #E5E7EB', borderRadius:8, padding:'16px 22px' }}>
             <div>
-              <div style={{fontSize:10.5,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:5}}>Estoque · posição apurada</div>
-              <div style={{fontSize:24,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>R$ {brl(tot.est)}</div>
+              <div style={{ fontSize:10.5, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:5 }}>
+                Estoque · posição apurada
+              </div>
+              <div style={{ fontSize:24, fontWeight:700, fontVariantNumeric:'tabular-nums' }}>R$ {brl(tot.est)}</div>
             </div>
-            <div style={{background:'#E5E7EB'}}/>
-            <div style={{paddingLeft:22}}>
-              <div style={{fontSize:10.5,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:5}}>Contabilidade · saldo do razão</div>
-              <div style={{fontSize:24,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>R$ {brl(tot.ctb)}</div>
+            <div style={{ background:'#E5E7EB' }}/>
+            <div style={{ paddingLeft:22 }}>
+              <div style={{ fontSize:10.5, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:5 }}>
+                Contabilidade · saldo do razão
+              </div>
+              <div style={{ fontSize:24, fontWeight:700, fontVariantNumeric:'tabular-nums' }}>R$ {brl(tot.ctb)}</div>
             </div>
           </div>
 
-          {/* Tabela de contas — cada linha é clicável */}
-          <div style={{background:'#fff',border:'1px solid #E5E7EB',borderRadius:8,overflow:'hidden'}}>
-            <div style={{padding:'14px 18px',borderBottom:'1px solid #F3F4F6',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          {/* Tabela de contas */}
+          <div style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:8, overflow:'hidden' }}>
+            <div style={{ padding:'14px 18px', borderBottom:'1px solid #F3F4F6',
+              display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div>
-                <span style={{fontSize:14,fontWeight:600}}>Conciliação por conta</span>
-                <span style={{fontSize:12,color:'#9CA3AF',marginLeft:10}}>clique numa conta para ver as notas</span>
+                <span style={{ fontSize:14, fontWeight:600 }}>Conciliação por conta</span>
+                <span style={{ fontSize:12, color:'#9CA3AF', marginLeft:10 }}>clique para ver as notas</span>
               </div>
               <Btn small onClick={exportar}>↓ CSV</Btn>
             </div>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
               <thead>
                 <tr>
-                  {['Conta','Descrição','Estoque','Contábil','Diferença','','Ação'].map((h,k)=>(
+                  {['Conta','Descrição','Estoque','Contábil','Diferença','','Ação'].map((h, k) => (
                     <th key={k} style={{
-                      padding:'10px 14px',background:'#F9FAFB',borderBottom:'1px solid #E5E7EB',
-                      textAlign:['Estoque','Contábil','Diferença'].includes(h)?'right':'left',
-                      fontSize:10.5,fontWeight:600,color:'#6B7280',textTransform:'uppercase',
-                      letterSpacing:'.04em',whiteSpace:'nowrap',
+                      padding:'10px 14px', background:'#F9FAFB', borderBottom:'1px solid #E5E7EB',
+                      textAlign:['Estoque','Contábil','Diferença'].includes(h) ? 'right' : 'left',
+                      fontSize:10.5, fontWeight:600, color:'#6B7280',
+                      textTransform:'uppercase', letterSpacing:'.04em', whiteSpace:'nowrap',
                     }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {linhas.map(l => {
-                  const dif=Number(l.diferenca||0)
-                  const est=ACAO_ESTILO[l.acao]||ACAO_ESTILO['CONFERE']
-                  const ativa=contaAberta===l.contas
+                  const dif   = Number(l.diferenca || 0)
+                  const est   = ACAO_ESTILO[l.acao] || ACAO_ESTILO['CONFERE']
+                  const ativa = contaAberta === l.contas
                   return (
                     <tr key={l.grupo}
-                      onClick={()=>setContaAberta(ativa?null:l.contas)}
+                      onClick={() => setContaAberta(ativa ? null : l.contas)}
                       style={{
-                        background:ativa?'#EBF2FC':l.confere?'#fff':'#FFFDF7',
+                        background: ativa ? '#EBF2FC' : l.confere ? '#fff' : '#FFFDF7',
                         cursor:'pointer',
-                        borderLeft:`3px solid ${ativa?'#1D5BBF':'transparent'}`,
+                        borderLeft:`3px solid ${ativa ? '#1D5BBF' : 'transparent'}`,
                       }}
-                      onMouseOver={e=>{ if(!ativa) e.currentTarget.style.background='#F9FAFB' }}
-                      onMouseOut={e=>{ if(!ativa) e.currentTarget.style.background=l.confere?'#fff':'#FFFDF7' }}
+                      onMouseOver={e => { if (!ativa) e.currentTarget.style.background = '#F9FAFB' }}
+                      onMouseOut={e  => { if (!ativa) e.currentTarget.style.background = l.confere ? '#fff' : '#FFFDF7' }}
                     >
-                      <td style={{...TD,fontWeight:700,fontVariantNumeric:'tabular-nums',fontSize:12,whiteSpace:'nowrap'}}>
+                      <td style={{ ...TD, fontWeight:700, fontVariantNumeric:'tabular-nums', fontSize:12, whiteSpace:'nowrap' }}>
                         {l.contas}
                       </td>
                       <td style={TD}>
-                        <div style={{fontWeight:500}}>{l.descr_conta}</div>
-                        {l.descr_local&&<div style={{fontSize:11,color:'#9CA3AF'}}>{l.descr_local}</div>}
+                        <div style={{ fontWeight:500 }}>{l.descr_conta}</div>
+                        {l.descr_local && <div style={{ fontSize:11, color:'#9CA3AF' }}>{l.descr_local}</div>}
                       </td>
-                      <td style={{...TD,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>R$ {brl(l.saldo_estoque)}</td>
-                      <td style={{...TD,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>R$ {brl(l.saldo_contabil)}</td>
-                      <td style={{...TD,textAlign:'right',fontWeight:700,fontVariantNumeric:'tabular-nums',
-                        color:l.confere?'#12805C':'#B54708'}}>
-                        {dif>0?'+':''}R$ {brl(dif)}
+                      <td style={{ ...TD, textAlign:'right', fontVariantNumeric:'tabular-nums' }}>R$ {brl(l.saldo_estoque)}</td>
+                      <td style={{ ...TD, textAlign:'right', fontVariantNumeric:'tabular-nums' }}>R$ {brl(l.saldo_contabil)}</td>
+                      <td style={{ ...TD, textAlign:'right', fontWeight:700, fontVariantNumeric:'tabular-nums',
+                        color: l.confere ? '#12805C' : '#B54708' }}>
+                        {dif > 0 ? '+' : ''}R$ {brl(dif)}
                       </td>
-                      <td style={{...TD,width:80,padding:'10px 6px'}}>
-                        <div style={{height:5,background:'#F3F4F6',borderRadius:3,overflow:'hidden'}}>
-                          <div style={{height:'100%',borderRadius:3,
-                            width:`${Math.min(100,(Math.abs(dif)/maxDif)*100)}%`,
-                            background:l.confere?'#12805C':'#B54708'}}/>
+                      <td style={{ ...TD, width:80, padding:'10px 6px' }}>
+                        <div style={{ height:5, background:'#F3F4F6', borderRadius:3, overflow:'hidden' }}>
+                          <div style={{ height:'100%', borderRadius:3,
+                            width:`${Math.min(100, (Math.abs(dif) / maxDif) * 100)}%`,
+                            background: l.confere ? '#12805C' : '#B54708' }}/>
                         </div>
                       </td>
                       <td style={TD}>
-                        <span style={{fontSize:10.5,fontWeight:700,padding:'3px 8px',borderRadius:5,
-                          background:est.bg,color:est.cor,whiteSpace:'nowrap'}}>{est.icone} {l.acao}</span>
+                        <span style={{ fontSize:10.5, fontWeight:700, padding:'3px 8px', borderRadius:5,
+                          background:est.bg, color:est.cor, whiteSpace:'nowrap' }}>
+                          {est.icone} {l.acao}
+                        </span>
                       </td>
                     </tr>
                   )
                 })}
               </tbody>
               <tfoot>
-                <tr style={{background:'#F9FAFB',fontWeight:700}}>
-                  <td style={{...TD,borderTop:'2px solid #E5E7EB'}} colSpan={2}>TOTAL GERAL</td>
-                  <td style={{...TD,borderTop:'2px solid #E5E7EB',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>R$ {brl(tot.est)}</td>
-                  <td style={{...TD,borderTop:'2px solid #E5E7EB',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>R$ {brl(tot.ctb)}</td>
-                  <td style={{...TD,borderTop:'2px solid #E5E7EB',textAlign:'right',fontVariantNumeric:'tabular-nums',
-                    color:fechou?'#12805C':'#B54708'}}>R$ {brl(tot.dif)}</td>
-                  <td style={{...TD,borderTop:'2px solid #E5E7EB'}} colSpan={2}/>
+                <tr style={{ background:'#F9FAFB', fontWeight:700 }}>
+                  <td style={{ ...TD, borderTop:'2px solid #E5E7EB' }} colSpan={2}>TOTAL GERAL</td>
+                  <td style={{ ...TD, borderTop:'2px solid #E5E7EB', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>R$ {brl(tot.est)}</td>
+                  <td style={{ ...TD, borderTop:'2px solid #E5E7EB', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>R$ {brl(tot.ctb)}</td>
+                  <td style={{ ...TD, borderTop:'2px solid #E5E7EB', textAlign:'right', fontVariantNumeric:'tabular-nums',
+                    color: fechou ? '#12805C' : '#B54708' }}>R$ {brl(tot.dif)}</td>
+                  <td style={{ ...TD, borderTop:'2px solid #E5E7EB' }} colSpan={2}/>
                 </tr>
               </tfoot>
             </table>
@@ -419,27 +480,26 @@ export default function Fechamento() {
         </>
       )}
 
-      {/* Overlay para fechar painel */}
+      {/* Overlay */}
       {contaAberta && (
-        <div onClick={()=>setContaAberta(null)}
-          style={{position:'fixed',inset:0,background:'rgba(16,24,40,.2)',zIndex:34}}/>
+        <div onClick={() => setContaAberta(null)}
+          style={{ position:'fixed', inset:0, background:'rgba(16,24,40,.2)', zIndex:34 }}/>
       )}
 
-      {/* Painel de notas da conta */}
+      {/* Painel lateral de notas */}
       {contaAberta && (
         <PainelNotas
           conta={contaAberta}
-          importacaoId={importacaoId}
           dataFechamento={data}
-          onClose={()=>setContaAberta(null)}
-          onNota={nota=>{ setContaAberta(null); setNotaAberta(nota) }}
+          onClose={() => setContaAberta(null)}
+          onNota={nota => { setContaAberta(null); setNotaAberta(nota) }}
         />
       )}
 
-      {/* Drawer de detalhe da nota */}
-      <DrawerDetalhe nota={notaAberta} onClose={()=>setNotaAberta(null)}/>
+      {/* Drawer de detalhe */}
+      <DrawerDetalhe nota={notaAberta} onClose={() => setNotaAberta(null)} />
     </div>
   )
 }
 
-const TD={padding:'10px 14px',borderBottom:'1px solid #F3F4F6',fontSize:13}
+const TD = { padding:'10px 14px', borderBottom:'1px solid #F3F4F6', fontSize:13 }
