@@ -7,9 +7,11 @@ import Fechamento from './pages/Fechamento.jsx'
 import Razao from './pages/Razao.jsx'
 import { Contas, Historico } from './pages/ContasHistorico.jsx'
 import Sincronizacao from './pages/Sincronizacao.jsx'
+import Divergencias from './pages/Divergencias.jsx'
 
 const MENU = [
   { id: 'visao',      label: 'Visão geral',         icon: '▦' },
+  { id: 'divergencias',label: 'Divergências',         icon: '⚠', badge: true },
   { id: 'lancamentos',label: 'Lançamentos',          icon: '≡' },
   { id: 'fechamento', label: 'Fechamento',           icon: '⚖' },
   { id: 'razao',      label: 'Razão de estoque',     icon: '📋' },
@@ -77,9 +79,7 @@ export default function App() {
   }
 
   // badge: só investigar + críticos (ajuste de custo fecha no saldo, não é pendência)
-  const badgeCount = lancamentos.filter(r =>
-    ['INVESTIGAR', 'CRITICO'].includes(r.classe_divergencia)
-  ).length
+  const badgeCount = lancamentos.filter(r => r.classe_divergencia === 'INVESTIGAR').length
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F4F6F8' }}>
@@ -114,7 +114,7 @@ export default function App() {
             >
               <span style={{ width: 18, textAlign: 'center', fontSize: 14, opacity: .7 }}>{icon}</span>
               <span style={{ flex: 1 }}>{label}</span>
-              {id === 'visao' && badgeCount > 0 && fase === 'pronto' && (
+              {id === 'divergencias' && badgeCount > 0 && fase === 'pronto' && (
                 <span style={{ background: '#B54708', color: '#fff', fontSize: 10.5, fontWeight: 700,
                   padding: '1px 6px', borderRadius: 9 }}>{badgeCount}</span>
               )}
@@ -187,6 +187,7 @@ export default function App() {
                   onDetalhe={setDetalhe}
                 />
               )}
+              {pagina === 'divergencias' && <Divergencias lancamentos={lancamentos} />}
               {pagina === 'lancamentos' && (
                 <Lancamentos lancamentos={lancamentos} />
               )}
