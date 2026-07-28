@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { sbFetch, brl, brlK, int, dBR, isZero, classeDe } from '../config.js'
 import { Panel, Select, SearchInput, Spinner, Btn } from '../components/UI.jsx'
+import DrawerDetalhe from '../components/DrawerDetalhe.jsx'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 function fmtPeriodo(inicio, fim) {
@@ -10,6 +11,7 @@ function fmtPeriodo(inicio, fim) {
 
 // ─── Aba 1: Dash × Razão ─────────────────────────────────────────────────────
 function DashRazao({ importacoes }) {
+  const [notaAberta, setNotaAberta] = useState(null)
   const [impId,   setImpId]   = useState('')
   const [fase,    setFase]    = useState('idle')
   const [dados,   setDados]   = useState([])
@@ -151,7 +153,12 @@ function DashRazao({ importacoes }) {
                     const cls=classeDe(r.classe_divergencia)
                     const dif=Number(r.diferenca)||0
                     return (
-                      <tr key={r.id||i} style={{background:r.classe_divergencia==='OK'?'#fff':'#FFFEF7'}}>
+                      <tr key={r.id||i}
+                        onClick={()=>setNotaAberta(r)}
+                        style={{background:r.classe_divergencia==='OK'?'#fff':'#FFFEF7',cursor:'pointer'}}
+                        onMouseOver={e=>e.currentTarget.querySelectorAll('td').forEach(td=>td.style.background='#F0F7FF')}
+                        onMouseOut={e=>e.currentTarget.querySelectorAll('td').forEach(td=>td.style.background='')}
+                      >
                         <td style={TD}>{r.conta_contabil}</td>
                         <td style={{...TD,fontWeight:600}}>{r.nota_fiscal}</td>
                         <td style={{...TD,color:'#6B7280',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.descr_local}</td>
@@ -184,6 +191,7 @@ function DashRazao({ importacoes }) {
           </Panel>
         </>
       )}
+      <DrawerDetalhe nota={notaAberta} onClose={()=>setNotaAberta(null)} />
     </div>
   )
 }

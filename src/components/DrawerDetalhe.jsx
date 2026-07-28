@@ -103,7 +103,7 @@ export default function DrawerDetalhe({ nota, onClose }) {
 
         {/* Abas */}
         <div style={{display:'flex',gap:2,padding:'10px 22px 0',borderBottom:'1px solid #F3F4F6',flexShrink:0}}>
-          {[{id:'itens',label:'📦 Itens da nota'},{id:'lanc',label:'📒 Lançamentos contábeis'},{id:'ia',label:'🤖 Análise IA'}].map(a=>(
+          {[{id:'itens',label:'📦 Itens da nota'},{id:'lanc',label:'📒 Lançamentos contábeis'},{id:'vinculos',label:'🔗 Vínculos'},{id:'ia',label:'🤖 Análise IA'}].map(a=>(
             <button key={a.id} onClick={()=>setAba(a.id)} style={{
               padding:'7px 14px',fontSize:13,fontWeight:abaAtiva===a.id?600:400,
               border:'none',borderBottom:`2px solid ${abaAtiva===a.id?'#1D5BBF':'transparent'}`,
@@ -227,6 +227,89 @@ export default function DrawerDetalhe({ nota, onClose }) {
                         </div>
                       </div>
                     </>
+                  )}
+                </div>
+              )}
+
+              {/* ABA VÍNCULOS */}
+              {abaAtiva==='vinculos' && (
+                <div>
+                  {/* Pedido de compra */}
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontSize:12,fontWeight:700,color:'#374151',marginBottom:10,display:'flex',alignItems:'center',gap:6}}>
+                      📄 Pedido de compra (OC)
+                    </div>
+                    {dados.pedidos && dados.pedidos.length > 0 ? (
+                      <div style={{border:'1px solid #E5E7EB',borderRadius:8,overflow:'hidden'}}>
+                        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12.5}}>
+                          <thead>
+                            <tr>{['Pedido OC','Data','Produto','Qtd. atendida'].map(h=>(
+                              <th key={h} style={{padding:'8px 10px',background:'#F9FAFB',
+                                textAlign:h==='Qtd. atendida'?'right':'left',
+                                fontSize:10.5,fontWeight:600,color:'#6B7280',borderBottom:'1px solid #E5E7EB',
+                                textTransform:'uppercase',letterSpacing:'.04em'}}>{h}</th>
+                            ))}</tr>
+                          </thead>
+                          <tbody>
+                            {dados.pedidos.map((p,i)=>(
+                              <tr key={i} style={{borderBottom:'1px solid #F9FAFB'}}>
+                                <td style={{padding:'8px 10px',fontWeight:700}}>{p.pedido_oc}</td>
+                                <td style={{padding:'8px 10px',color:'#9CA3AF'}}>{p.data_oc}</td>
+                                <td style={{padding:'8px 10px',fontVariantNumeric:'tabular-nums'}}>{p.codprod}</td>
+                                <td style={{padding:'8px 10px',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>{p.qtd_atendida}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div style={{padding:'14px',background:'#F9FAFB',borderRadius:8,fontSize:12.5,color:'#9CA3AF'}}>
+                        Nenhum pedido de compra vinculado a esta nota.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* CT-e */}
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:'#374151',marginBottom:10,display:'flex',alignItems:'center',gap:6}}>
+                      🚚 CT-e (frete) vinculado
+                    </div>
+                    {dados.ctes && dados.ctes.length > 0 ? (
+                      <div style={{border:'1px solid #E5E7EB',borderRadius:8,overflow:'hidden'}}>
+                        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12.5}}>
+                          <thead>
+                            <tr>{['CT-e','Transportadora','Data','Valor'].map(h=>(
+                              <th key={h} style={{padding:'8px 10px',background:'#F9FAFB',
+                                textAlign:h==='Valor'?'right':'left',
+                                fontSize:10.5,fontWeight:600,color:'#6B7280',borderBottom:'1px solid #E5E7EB',
+                                textTransform:'uppercase',letterSpacing:'.04em'}}>{h}</th>
+                            ))}</tr>
+                          </thead>
+                          <tbody>
+                            {dados.ctes.map((c,i)=>(
+                              <tr key={i} style={{borderBottom:'1px solid #F9FAFB'}}>
+                                <td style={{padding:'8px 10px',fontWeight:700}}>{c.num_cte}</td>
+                                <td style={{padding:'8px 10px',color:'#6B7280'}}>{c.transportadora}</td>
+                                <td style={{padding:'8px 10px',color:'#9CA3AF'}}>{c.data_cte}</td>
+                                <td style={{padding:'8px 10px',textAlign:'right',fontVariantNumeric:'tabular-nums',fontWeight:600}}>R$ {brl(c.vlr_cte)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div style={{padding:'14px',background:'#F9FAFB',borderRadius:8,fontSize:12.5,color:'#9CA3AF'}}>
+                        Nenhum CT-e vinculado a esta nota — não houve rateio de frete registrado.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Chave de acesso */}
+                  {dados.cab?.chavenfe && (
+                    <div style={{marginTop:20,padding:'10px 12px',background:'#F9FAFB',borderRadius:6}}>
+                      <div style={{fontSize:10.5,color:'#9CA3AF',marginBottom:3}}>Chave de acesso da NF-e</div>
+                      <div style={{fontSize:11.5,fontFamily:'monospace',color:'#374151',wordBreak:'break-all'}}>{dados.cab.chavenfe}</div>
+                    </div>
                   )}
                 </div>
               )}
