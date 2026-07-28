@@ -1,5 +1,76 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { SUPABASE_URL, SUPABASE_ANON_KEY, sbFetch, brl, int, dBR, classeDe } from '../config.js'
+const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
+
+async function analisarComIA(nota, dados) {
+  const itens = dados.itens.map(i => ({
+    produto: i.codprod,
+    descricao: i.descrprod.slice(0, 60),
+    quantidade: i.qtdneg,
+    unidade: i.codvol,
+    vlr_unit_nf: i.vlr_unit_nota,
+    custo_sem_icms: i.custo_sem_icms,
+    diff_unit: Math.abs(i.vlr_unit_nota - i.custo_sem_icms).toFixed(4),
+    custo_total: i.custo_total,
+  }))
+
+  const lancs = dados.lancamentos.map(l => ({
+    conta: l.codctactb,
+    descricao: l.descrcta,
+    dc: l.tiplanc === 'D' ? 'Débito' : 'Crédito',
+    valor: l.vlrlanc,
+    data: l.dtmov,
+  }))
+
+  const prompt = `Você é um analista de custos sênior especialista em sistema Sankhya.
+
+Analise a seguinte divergência entre o custo apurado no módulo de estoque e o lançamento contábil:
+
+NOTA FISCAL: ${nota.nota_fiscal}
+OPERAÇÃO: ${nota.descr_top} (TOP ${nota.cod_top})
+DATA: ${nota.data_entrada_saida}
+CONTA CONTÁBIL: ${nota.conta_contabil} — ${nota.descr_local}
+
+VALORES:
+- Custo apurado (Dash): R$ ${brl_str(nota.saldo_dash)}
+- Saldo contábil (Razão): R$ ${brl_str(nota.saldo_contabil)}
+- Diferença: R$ ${brl_str(nota.diferenca)}
+
+ITENS DA NOTA:
+${JSON.stringify(itens, null, 2)}
+
+LANÇAMENTOS CONTÁBEIS GERADOS:
+${JSON.stringify(lancs, null, 2)}
+
+TOTAL CUSTO DOS ITENS: R$ ${brl_str(dados.totalCusto)}
+TOTAL CONTABILIZADO: R$ ${brl_str(dados.totalContab)}
+
+Com base nesses dados, responda em português (máximo 200 palavras):
+1. Qual é a causa exata desta diferença?
+2. O que o analista deve fazer para corrigir?
+3. Esta diferença é esperada ou indica um problema real?
+
+Seja direto e específico. Use os valores reais.`
+
+  const res = await fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1000,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  })
+  const data = await res.json()
+  if (data.error) throw new Error(data.error.message)
+  return data.content?.[0]?.text || 'Sem resposta'
+}
+
+function brl_str(n) {
+  return (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+
 
 const SYNC_KEY = 'kb2026sync!'
 
@@ -25,10 +96,23 @@ function DrawerDetalhe({ nota, onClose }) {
   const [dados,  setDados]  = useState(null)
   const [erro,   setErro]   = useState('')
   const [abaAtiva, setAba]  = useState('itens')
+  const [iaFase,  setIaFase] = useState('idle') // idle | rodando | pronto | erro
+  const [iaTexto, setIaTexto] = useState('')
+  const [iaErro,  setIaErro]  = useState('')
+
+  const rodarIA = async () => {
+    if (!dados || iaFase === 'rodando') return
+    setIaFase('rodando'); setIaTexto(''); setIaErro('')
+    try {
+      const txt = await analisarComIA(nota, dados)
+      setIaTexto(txt); setIaFase('pronto')
+    } catch(e) { setIaErro(e.message); setIaFase('erro') }
+  }
 
   useEffect(() => {
     if (!nota) return
     setFase('carregando'); setDados(null); setErro('')
+    setIaFase('idle'); setIaTexto(''); setIaErro('')
     buscarDetalhe(nota.nunota)
       .then(d => { setDados(d); setFase('pronto') })
       .catch(e => { setErro(e.message); setFase('erro') })
@@ -105,6 +189,7 @@ function DrawerDetalhe({ nota, onClose }) {
           {[
             {id:'itens', label:'Itens da nota'},
             {id:'lanc',  label:'Lançamentos contábeis'},
+      {id:'ia',    label:'🤖 Análise inteligente'},
           ].map(a=>(
             <button key={a.id} onClick={()=>setAba(a.id)} style={{
               padding:'7px 16px',fontSize:13,fontWeight:abaAtiva===a.id?600:400,
@@ -283,6 +368,62 @@ function DrawerDetalhe({ nota, onClose }) {
                   )}
                 </div>
               )}
+
+              {/* ABA: ANÁLISE INTELIGENTE */}
+              {abaAtiva==='ia' && (
+                <div>
+                  <div style={{padding:'14px',background:'#F9FAFB',borderRadius:8,marginBottom:16,
+                    fontSize:12.5,color:'#6B7280',lineHeight:1.6}}>
+                    A IA analisa os itens da nota, o custo registrado vs valor da NF e os lançamentos contábeis
+                    para identificar a causa exata da diferença e sugerir a correção.
+                    <strong style={{color:'#374151'}}> Uma chamada por análise.</strong>
+                  </div>
+
+                  {iaFase==='idle' && (
+                    <button onClick={rodarIA} style={{
+                      width:'100%',padding:'12px',background:'#101828',color:'#fff',
+                      border:'none',borderRadius:8,fontSize:14,fontWeight:600,
+                      cursor:'pointer',fontFamily:'inherit',
+                    }}>
+                      🤖 Analisar esta nota com IA
+                    </button>
+                  )}
+
+                  {iaFase==='rodando' && (
+                    <div style={{display:'flex',alignItems:'center',gap:12,padding:'20px',
+                      background:'#EBF2FC',borderRadius:8,color:'#1D5BBF',fontSize:13}}>
+                      <div style={{width:20,height:20,border:'3px solid #BFDBFE',borderTopColor:'#1D5BBF',
+                        borderRadius:'50%',animation:'spin 0.8s linear infinite',flexShrink:0}}/>
+                      Analisando os dados da nota no Sankhya…
+                    </div>
+                  )}
+
+                  {iaFase==='erro' && (
+                    <div style={{padding:'14px',background:'#FEF2F2',border:'1px solid #FECACA',
+                      borderRadius:8,color:'#B42318',fontSize:13,marginBottom:12}}>
+                      Erro: {iaErro}
+                    </div>
+                  )}
+
+                  {iaFase==='pronto' && (
+                    <div>
+                      <div style={{padding:'18px',background:'#F0FDF4',border:'1px solid #BBF7D0',
+                        borderRadius:8,marginBottom:12}}>
+                        <div style={{fontSize:11,fontWeight:700,color:'#166534',textTransform:'uppercase',
+                          letterSpacing:'.08em',marginBottom:10}}>🤖 Análise da IA</div>
+                        <div style={{fontSize:13.5,color:'#1a1a1a',lineHeight:1.7,whiteSpace:'pre-wrap'}}>
+                          {iaTexto}
+                        </div>
+                      </div>
+                      <button onClick={()=>setIaFase('idle')} style={{
+                        fontSize:12,color:'#6B7280',background:'none',border:'1px solid #E5E7EB',
+                        borderRadius:6,padding:'6px 12px',cursor:'pointer',fontFamily:'inherit',
+                      }}>↺ Analisar novamente</button>
+                    </div>
+                  )}
+                </div>
+              )}
+
             </>
           )}
         </div>
