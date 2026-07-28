@@ -16,7 +16,7 @@ const MENU = [
   { id: 'divergencias',label: 'Divergências',         icon: '⚠', badge: true },
   { id: 'lancamentos',label: 'Lançamentos',          icon: '≡' },
   { id: 'painel',     label: 'Dashboard',            icon: '📊' },
-  { id: 'fechamento', label: 'Fechamento',           icon: '⚖' },
+  { id: 'fechamento', label: 'Comp. Saldo de Estoque', icon: '⚖' },
   { id: 'razao',      label: 'Razão de estoque',     icon: '📋' },
   { id: 'contas',     label: 'Contas contábeis',     icon: '⊞' },
   { id: 'historico',  label: 'Histórico',            icon: '⊙' },

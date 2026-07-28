@@ -415,7 +415,7 @@ export default function Fechamento() {
             <div>
               <div style={{ fontSize:16, fontWeight:700, color: fechou ? '#166534' : '#92400E', marginBottom:3 }}>
                 {fechou
-                  ? `✅ Fechamento conciliado — posição de ${fmt(data)}`
+                  ? `✅ Saldo conciliado — posição de ${fmt(data)}`
                   : `⚙ ${linhas.filter(l => !l.confere).length} conta(s) pendente(s)`}
               </div>
               <div style={{ fontSize:12.5, color: fechou ? '#166534' : '#92400E', opacity:.85 }}>
