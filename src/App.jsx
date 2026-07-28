@@ -14,7 +14,7 @@ import Divergencias from './pages/Divergencias.jsx'
 const MENU = [
   { id: 'visao',      label: 'Visão geral',         icon: '▦' },
   { id: 'divergencias',label: 'Divergências',         icon: '⚠', badge: true },
-  { id: 'lancamentos',label: 'Lançamentos',          icon: '≡' },
+  { id: 'lancamentos',label: 'Movimentos',           icon: '≡' },
   { id: 'painel',     label: 'Dashboard',            icon: '📊' },
   { id: 'fechamento', label: 'Comp. Saldo de Estoque', icon: '⚖' },
   { id: 'razao',      label: 'Razão de estoque',     icon: '📋' },
