@@ -38,12 +38,12 @@ export default function App() {
   const carregar = useCallback(async () => {
     try {
       // 1. importações
-      const rs = await sbFetch('resumo_analitico?select=*&order=criado_em.asc')
+      const rs = await sbFetch('resumo_analitico?select=*&order=periodo_fim.asc,criado_em.asc')
       setResumos(rs || [])
       if (!rs?.length) return setFase('vazio')
 
-      // pega a mais recente
-      const ult = rs[rs.length - 1]
+      // pega o período mais recente (por periodo_fim, não por data de criação/sincronização)
+      const ult = [...rs].sort((a, b) => new Date(b.periodo_fim) - new Date(a.periodo_fim))[0]
       setUltima(ult)
 
       // 2. lançamentos da importação mais recente
