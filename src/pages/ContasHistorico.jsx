@@ -33,7 +33,12 @@ export function Contas({ lancamentos, onFiltrarConta }) {
       if (['CRITICO','INVESTIGAR'].includes(r.classe_divergencia)) g[k].divergentes++
     })
     return Object.values(g).map(x => ({ ...x, diff: x.custo - x.ctb }))
-      .sort((a,b) => Math.abs(b.diff) - Math.abs(a.diff))
+      .sort((a,b) => {
+        const na = parseFloat(String(a.conta).replace(/[^\d.-]/g, ''))
+        const nb = parseFloat(String(b.conta).replace(/[^\d.-]/g, ''))
+        if (!isNaN(na) && !isNaN(nb)) return na - nb
+        return String(a.conta).localeCompare(String(b.conta))
+      })
   }, [lancamentos])
 
   const max = Math.max(1, ...porConta.map(c => Math.abs(c.diff)))
