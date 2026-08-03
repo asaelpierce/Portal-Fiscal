@@ -2,15 +2,35 @@ export const SUPABASE_URL = 'https://sqsrvhlpvnojatlqnred.supabase.co'
 export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxc3J2aGxwdm5vamF0bHFucmVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjAzMzQsImV4cCI6MjEwMDczNjMzNH0.Bc9GLwNe5BSv0qg3n0lBQVNJqpGmyneWrmom8ThlUss'
 
 export async function sbFetch(path) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      Range: '0-29999',
-    },
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status} — ${path.split('?')[0]}`)
-  return res.json()
+  const PAGE = 1000 // o projeto tem "Max Rows" = 1000 no Data API; paginamos por baixo disso
+  let offset = 0
+  let todos = []
+
+  while (true) {
+    const sep = path.includes('?') ? '&' : '?'
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        Range: `${offset}-${offset + PAGE - 1}`,
+        Prefer: 'count=exact',
+      },
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status} — ${path.split('?')[0]}`)
+    const pagina = await res.json()
+    todos = todos.concat(pagina)
+
+    // Content-Range: 0-999/2205 -> extrai o total real de linhas
+    const contentRange = res.headers.get('content-range') || ''
+    const total = parseInt(contentRange.split('/')[1], 10)
+
+    if (!pagina.length || pagina.length < PAGE || (Number.isFinite(total) && todos.length >= total)) {
+      break
+    }
+    offset += PAGE
+  }
+
+  return todos
 }
 
 export const brl = (n) =>
