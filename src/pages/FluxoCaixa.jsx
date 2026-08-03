@@ -233,7 +233,7 @@ export default function FluxoCaixa() {
       <p style={{ fontSize:12, color:'#9CA3AF', margin:0, lineHeight:1.6 }}>
         <strong>Como funciona:</strong> parcelas calculadas a partir dos pedidos de compra e sua condição de pagamento.
         Pedidos que já têm nota fiscal de entrada usam a data da NF como referência; pedidos ainda sem NF usam a data
-        de embarque prevista. Dados a partir de janeiro/2026.
+        de embarque prevista. Dados a partir de janeiro/2026. Pedidos sem NF com embarque previsto ha mais de 60 dias sao ignorados (provavelmente ja resolvidos ou cancelados).
       </p>
     </div>
   )
