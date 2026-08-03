@@ -31,6 +31,7 @@ export default function FluxoCaixa() {
   const [porMes, setPorMes] = useState([])
   const [fFornecedor, setFFornecedor] = useState('')
   const [fFonte, setFFonte] = useState('')
+  const [fStatus, setFStatus] = useState('')
   const [busca,  setBusca]  = useState('')
   const [dtIni,  setDtIni]  = useState('')
   const [dtFim,  setDtFim]  = useState('')
@@ -57,6 +58,7 @@ export default function FluxoCaixa() {
     return dados.filter(r => {
       if (fFornecedor && r.fornecedor !== fFornecedor) return false
       if (fFonte && r.fonte !== fFonte) return false
+      if (fStatus && r.status_pagamento !== fStatus) return false
       if (dtIni && r.data_prevista < dtIni) return false
       if (dtFim && r.data_prevista > dtFim) return false
       if (q) {
@@ -65,7 +67,7 @@ export default function FluxoCaixa() {
       }
       return true
     })
-  }, [dados, fFornecedor, fFonte, dtIni, dtFim, busca])
+  }, [dados, fFornecedor, fFonte, fStatus, dtIni, dtFim, busca])
 
   const ordenados = useMemo(() => {
     const a = [...filtrados]
@@ -80,21 +82,24 @@ export default function FluxoCaixa() {
 
   const kpi = useMemo(() => ({
     total: filtrados.reduce((s,r) => s + Number(r.valor_parcela||0), 0),
-    comNf: filtrados.filter(r => r.fonte==='NF').reduce((s,r) => s + Number(r.valor_parcela||0), 0),
+    pago: filtrados.filter(r => r.status_pagamento==='PAGO').reduce((s,r) => s + Number(r.valor_parcela||0), 0),
+    aberto: filtrados.filter(r => r.status_pagamento==='ABERTO').reduce((s,r) => s + Number(r.valor_parcela||0), 0),
     semNf: filtrados.filter(r => r.fonte==='EMBARQUE').reduce((s,r) => s + Number(r.valor_parcela||0), 0),
     qtd: filtrados.length,
+    qtdPago: filtrados.filter(r => r.status_pagamento==='PAGO').length,
     fornecedores: new Set(filtrados.map(r=>r.fornecedor)).size,
   }), [filtrados])
 
   const dadosGrafico = useMemo(() => porMes.map(m => ({
     mes: fmtMesAno(m.mes),
-    comNf: Number(m.total_com_nf||0),
-    semNf: Number(m.total_sem_nf||0),
+    pago: Number(m.total_pago||0),
+    aberto: Number(m.total_aberto||0),
   })), [porMes])
 
   const exportar = () => {
     const cols = ['numnota_oc','nf_entrada','fornecedor','descr_tipvenda','sequencia_parcela',
-                  'prazo_dias','percentual','valor_parcela','data_referencia','data_prevista','fonte']
+                  'prazo_dias','percentual','valor_parcela','data_referencia','data_prevista','fonte',
+                  'status_pagamento','data_pagamento','valor_pago']
     const csv = [cols.join(';'), ...ordenados.map(r=>cols.map(c=>String(r[c]??'').replace(/;/g,',')).join(';'))].join('\n')
     const url = URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}))
     const a = document.createElement('a'); a.href=url; a.download='fluxo-caixa-previsto.csv'; a.click()
@@ -102,7 +107,7 @@ export default function FluxoCaixa() {
   }
 
   const ord = col => setOrdem(p => p.col===col ? {col,dir:p.dir*-1} : {col,dir:1})
-  const temFiltro = fFornecedor || fFonte || dtIni || dtFim || busca
+  const temFiltro = fFornecedor || fFonte || fStatus || dtIni || dtFim || busca
 
   if (fase === 'carregando') return <Spinner/>
   if (fase === 'erro') return (
@@ -118,8 +123,8 @@ export default function FluxoCaixa() {
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
         {[
           { label:'Total previsto', valor:`R$ ${brl(kpi.total)}`, sub:`${int(kpi.qtd)} parcelas`, cor:'#101828' },
-          { label:'Com nota fiscal', valor:`R$ ${brl(kpi.comNf)}`, sub:'já entrou, aguarda pagamento', cor:'#1D5BBF' },
-          { label:'Aguardando NF', valor:`R$ ${brl(kpi.semNf)}`, sub:'previsão via data de embarque', cor:'#B54708' },
+          { label:'Já pago', valor:`R$ ${brl(kpi.pago)}`, sub:`${int(kpi.qtdPago)} parcelas baixadas`, cor:'#12805C' },
+          { label:'Em aberto', valor:`R$ ${brl(kpi.aberto)}`, sub:'ainda não pago', cor:'#B54708' },
           { label:'Fornecedores', valor: int(kpi.fornecedores), sub:'no período filtrado', cor:'#101828' },
         ].map((k,i) => (
           <div key={i} style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:8, padding:'16px 18px' }}>
@@ -138,13 +143,13 @@ export default function FluxoCaixa() {
             <XAxis dataKey="mes" tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false}/>
             <YAxis tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false} tickFormatter={brlK}/>
             <Tooltip content={<TooltipCard/>}/>
-            <Bar dataKey="comNf" name="Com NF (confirmado)" stackId="a" fill="#1D5BBF" radius={[0,0,0,0]}/>
-            <Bar dataKey="semNf" name="Aguardando NF (estimado)" stackId="a" fill="#F59E0B" radius={[4,4,0,0]}/>
+            <Bar dataKey="pago" name="Já pago" stackId="a" fill="#12805C" radius={[0,0,0,0]}/>
+            <Bar dataKey="aberto" name="Em aberto" stackId="a" fill="#B54708" radius={[4,4,0,0]}/>
           </BarChart>
         </ResponsiveContainer>
         <div style={{ display:'flex', gap:16, marginTop:10, fontSize:12, color:'#6B7280' }}>
-          <span><span style={{display:'inline-block',width:9,height:9,background:'#1D5BBF',borderRadius:2,marginRight:5}}/>Com NF — já recebeu a nota, valor confirmado</span>
-          <span><span style={{display:'inline-block',width:9,height:9,background:'#F59E0B',borderRadius:2,marginRight:5}}/>Aguardando NF — estimado pela data de embarque</span>
+          <span><span style={{display:'inline-block',width:9,height:9,background:'#12805C',borderRadius:2,marginRight:5}}/>Já pago — baixado no financeiro (TGFFIN)</span>
+          <span><span style={{display:'inline-block',width:9,height:9,background:'#B54708',borderRadius:2,marginRight:5}}/>Em aberto — ainda não pago</span>
         </div>
       </Panel>
 
@@ -153,7 +158,7 @@ export default function FluxoCaixa() {
         title={`${int(ordenados.length)} de ${int(dados.length)} parcelas`}
         action={
           <div style={{ display:'flex', gap:8 }}>
-            {temFiltro && <Btn small onClick={()=>{setFFornecedor('');setFFonte('');setDtIni('');setDtFim('');setBusca('')}}>✕ Limpar</Btn>}
+            {temFiltro && <Btn small onClick={()=>{setFFornecedor('');setFFonte('');setFStatus('');setDtIni('');setDtFim('');setBusca('')}}>✕ Limpar</Btn>}
             <Btn small onClick={carregar}>↻ Atualizar</Btn>
             <Btn small onClick={exportar}>↓ CSV</Btn>
           </div>
@@ -162,6 +167,7 @@ export default function FluxoCaixa() {
         <div style={{ display:'flex', gap:12, flexWrap:'wrap', marginBottom:14, alignItems:'flex-end' }}>
           <Select label="Fornecedor" value={fFornecedor} onChange={setFFornecedor} options={opcoes.fornecedores}/>
           <Select label="Origem" value={fFonte} onChange={setFFonte} options={['NF','EMBARQUE']} placeholder="Todas"/>
+          <Select label="Status" value={fStatus} onChange={setFStatus} options={['PAGO','ABERTO']} placeholder="Todos"/>
           <div>
             <label style={{ fontSize:11, color:'#6B7280', fontWeight:500, display:'block', marginBottom:5 }}>De</label>
             <input type="date" value={dtIni} onChange={e=>setDtIni(e.target.value)}
@@ -182,8 +188,8 @@ export default function FluxoCaixa() {
                 {[
                   ['numnota_oc','Pedido'], ['nf_entrada','NF'], ['fornecedor','Fornecedor'],
                   ['descr_tipvenda','Condição pgto'], ['sequencia_parcela','Parc.'],
-                  ['valor_parcela','Valor',true], ['data_referencia','Data ref.'],
-                  ['data_prevista','Prev. pagamento'], ['fonte','Origem'],
+                  ['valor_parcela','Valor',true], ['data_prevista','Prev. pagamento'],
+                  ['status_pagamento','Status'], ['data_pagamento','Data pgto'],
                 ].map(([k,label,num]) => (
                   <th key={k} onClick={()=>ord(k)} style={{
                     position:'sticky', top:0, background:'#F9FAFB', zIndex:1,
@@ -199,22 +205,22 @@ export default function FluxoCaixa() {
             </thead>
             <tbody>
               {ordenados.slice(0,500).map((r,i) => (
-                <tr key={r.id||i} style={{ background: r.fonte==='EMBARQUE' ? '#FFFBEB' : '#fff' }}>
+                <tr key={r.id||i} style={{ background: r.status_pagamento==='PAGO' ? '#F0FDF4' : '#fff' }}>
                   <td style={{ padding:'8px 12px', fontWeight:600 }}>{r.numnota_oc}</td>
                   <td style={{ padding:'8px 12px', color: r.nf_entrada ? '#374151' : '#9CA3AF' }}>{r.nf_entrada || '—'}</td>
                   <td style={{ padding:'8px 12px', color:'#6B7280', maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={r.fornecedor}>{r.fornecedor}</td>
                   <td style={{ padding:'8px 12px', color:'#6B7280', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={r.descr_tipvenda}>{r.descr_tipvenda}</td>
                   <td style={{ padding:'8px 12px', textAlign:'center' }}>{r.sequencia_parcela}</td>
                   <td style={{ padding:'8px 12px', textAlign:'right', fontWeight:700, fontVariantNumeric:'tabular-nums' }}>R$ {brl(r.valor_parcela)}</td>
-                  <td style={{ padding:'8px 12px', color:'#9CA3AF', whiteSpace:'nowrap' }}>{dBR(r.data_referencia)}</td>
                   <td style={{ padding:'8px 12px', fontWeight:600, whiteSpace:'nowrap' }}>{dBR(r.data_prevista)}</td>
                   <td style={{ padding:'8px 12px' }}>
                     <span style={{ fontSize:10.5, fontWeight:700, padding:'2px 7px', borderRadius:4,
-                      background: r.fonte==='NF' ? '#DBEAFE' : '#FEF3C7',
-                      color: r.fonte==='NF' ? '#1D5BBF' : '#B54708' }}>
-                      {r.fonte==='NF' ? 'Com NF' : 'Embarque'}
+                      background: r.status_pagamento==='PAGO' ? '#D1FAE5' : '#FEF3C7',
+                      color: r.status_pagamento==='PAGO' ? '#12805C' : '#B54708' }}>
+                      {r.status_pagamento==='PAGO' ? '✓ Pago' : 'Aberto'}
                     </span>
                   </td>
+                  <td style={{ padding:'8px 12px', color:'#9CA3AF', whiteSpace:'nowrap' }}>{r.data_pagamento ? dBR(r.data_pagamento) : '—'}</td>
                 </tr>
               ))}
               {!ordenados.length && (
