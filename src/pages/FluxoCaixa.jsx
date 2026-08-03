@@ -36,6 +36,17 @@ export default function FluxoCaixa() {
   const [dtIni,  setDtIni]  = useState('')
   const [dtFim,  setDtFim]  = useState('')
   const [ordem,  setOrdem]  = useState({ col:'data_prevista', dir:1 })
+  const tabelaRef = React.useRef(null)
+
+  const clicarBarra = (mesISO, status) => {
+    const [y, m] = mesISO.split('-')
+    const ultimoDia = new Date(Number(y), Number(m), 0).getDate()
+    setDtIni(`${y}-${m}-01`)
+    setDtFim(`${y}-${m}-${String(ultimoDia).padStart(2,'0')}`)
+    setFStatus(status)
+    setFFornecedor(''); setFFonte(''); setBusca('')
+    tabelaRef.current?.scrollIntoView({ behavior:'smooth', block:'start' })
+  }
 
   const carregar = () => {
     setFase('carregando')
@@ -91,6 +102,7 @@ export default function FluxoCaixa() {
   }), [filtrados])
 
   const dadosGrafico = useMemo(() => porMes.map(m => ({
+    mesISO: m.mes,
     mes: fmtMesAno(m.mes),
     pago: Number(m.total_pago||0),
     aberto: Number(m.total_aberto||0),
@@ -143,17 +155,21 @@ export default function FluxoCaixa() {
             <XAxis dataKey="mes" tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false}/>
             <YAxis tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false} tickFormatter={brlK}/>
             <Tooltip content={<TooltipCard/>}/>
-            <Bar dataKey="pago" name="Já pago" stackId="a" fill="#12805C" radius={[0,0,0,0]}/>
-            <Bar dataKey="aberto" name="Em aberto" stackId="a" fill="#B54708" radius={[4,4,0,0]}/>
+            <Bar dataKey="pago" name="Já pago" stackId="a" fill="#12805C" radius={[0,0,0,0]}
+              cursor="pointer" onClick={(d)=>clicarBarra(d.mesISO,'PAGO')}/>
+            <Bar dataKey="aberto" name="Em aberto" stackId="a" fill="#B54708" radius={[4,4,0,0]}
+              cursor="pointer" onClick={(d)=>clicarBarra(d.mesISO,'ABERTO')}/>
           </BarChart>
         </ResponsiveContainer>
         <div style={{ display:'flex', gap:16, marginTop:10, fontSize:12, color:'#6B7280' }}>
           <span><span style={{display:'inline-block',width:9,height:9,background:'#12805C',borderRadius:2,marginRight:5}}/>Já pago — baixado no financeiro (TGFFIN)</span>
           <span><span style={{display:'inline-block',width:9,height:9,background:'#B54708',borderRadius:2,marginRight:5}}/>Em aberto — ainda não pago</span>
+          <span style={{ color:'#9CA3AF' }}>· clique numa barra para ver as parcelas do mês</span>
         </div>
       </Panel>
 
       {/* Tabela detalhada */}
+      <div ref={tabelaRef}>
       <Panel
         title={`${int(ordenados.length)} de ${int(dados.length)} parcelas`}
         action={
@@ -235,6 +251,7 @@ export default function FluxoCaixa() {
           </table>
         </div>
       </Panel>
+      </div>
 
       <p style={{ fontSize:12, color:'#9CA3AF', margin:0, lineHeight:1.6 }}>
         <strong>Como funciona:</strong> parcelas calculadas a partir dos pedidos de compra e sua condição de pagamento.
