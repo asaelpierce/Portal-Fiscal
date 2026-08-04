@@ -9,6 +9,7 @@ import { Contas, Historico } from './pages/ContasHistorico.jsx'
 import Sincronizacao from './pages/Sincronizacao.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import FluxoCaixa from './pages/FluxoCaixa.jsx'
+import ConferenciaFaturamento from './pages/ConferenciaFaturamento.jsx'
 import Divergencias from './pages/Divergencias.jsx'
 
 const MENU = [
@@ -16,6 +17,7 @@ const MENU = [
   { id: 'divergencias',label: 'Divergências',         icon: '⚠', badge: true },
   { id: 'painel',     label: 'Dashboard',            icon: '📊' },
   { id: 'fluxocaixa', label: 'Fluxo de Caixa',       icon: '💰' },
+  { id: 'compfiscal', label: 'Comp Fiscal',          icon: '🧾' },
   { id: 'fechamento', label: 'Comp. Saldo de Estoque', icon: '⚖' },
   { id: 'razao',      label: 'Movimentos',           icon: '📋' },
   { id: 'contas',     label: 'Contas contábeis',     icon: '⊞' },
@@ -163,14 +165,14 @@ export default function App() {
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
               {MENU.find(m => m.id === pagina)?.label}
             </h1>
-            {periodoAtual && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa'].includes(pagina) && (
+            {periodoAtual && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal'].includes(pagina) && (
               <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9CA3AF' }}>
                 Período {dBR(periodoAtual.periodo_inicio)} a {dBR(periodoAtual.periodo_fim)}
               </p>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {resumos.length > 1 && !['fechamento', 'razao', 'sync', 'fluxocaixa'].includes(pagina) && (
+            {resumos.length > 1 && !['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal'].includes(pagina) && (
               <select
                 value={periodoId || ''}
                 onChange={e => setPeriodoId(e.target.value)}
@@ -217,6 +219,7 @@ export default function App() {
               {pagina === 'divergencias' && <Divergencias lancamentos={lancamentos} />}
               {pagina === 'painel'     && <Dashboard />}
               {pagina === 'fluxocaixa' && <FluxoCaixa />}
+              {pagina === 'compfiscal' && <ConferenciaFaturamento />}
               {pagina === 'fechamento' && <Fechamento />}
               {pagina === 'razao'      && <Razao />}
               {pagina === 'contas'     && (
