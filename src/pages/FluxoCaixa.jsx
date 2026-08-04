@@ -64,7 +64,8 @@ export default function FluxoCaixa() {
 
   useEffect(() => { carregar() }, [])
 
-  const dadosComPrevisao = useMemo(() => dados.filter(r => r.fonte !== 'SEM_PREVISAO'), [dados])
+  const dadosComPrevisao = useMemo(() => dados.filter(r => r.fonte !== 'SEM_PREVISAO' && r.fonte !== 'IMPORTACAO_SEM_EMBARQUE'), [dados])
+  const dadosImportacaoSemEmbarque = useMemo(() => dados.filter(r => r.fonte === 'IMPORTACAO_SEM_EMBARQUE'), [dados])
   const dadosSemPrevisao = useMemo(() => dados.filter(r => r.fonte === 'SEM_PREVISAO'), [dados])
 
   const opcoes = useMemo(() => ({
@@ -144,7 +145,7 @@ export default function FluxoCaixa() {
           { label:'Total previsto', valor:`R$ ${brl(kpi.total)}`, sub:`${int(kpi.qtd)} parcelas`, cor:'#101828' },
           { label:'Já pago', valor:`R$ ${brl(kpi.pago)}`, sub:`${int(kpi.qtdPago)} parcelas baixadas`, cor:'#12805C' },
           { label:'Em aberto', valor:`R$ ${brl(kpi.aberto)}`, sub:'ainda não pago', cor:'#B54708' },
-          { label:'Sem previsão de data', valor:`R$ ${brl(dadosSemPrevisao.reduce((s,r)=>s+Number(r.valor_parcela||0),0))}`, sub:`${int(dadosSemPrevisao.length)} pedidos sem embarque/NF`, cor: dadosSemPrevisao.length ? '#6B21A8' : '#12805C' },
+          { label:'Aguardando embarque/pedido', valor:`R$ ${brl(dadosImportacaoSemEmbarque.reduce((s,r)=>s+Number(r.valor_parcela||0),0) + dadosSemPrevisao.reduce((s,r)=>s+Number(r.valor_parcela||0),0))}`, sub:`${int(dadosImportacaoSemEmbarque.length)} importação · ${int(dadosSemPrevisao.length)} outros`, cor: (dadosImportacaoSemEmbarque.length+dadosSemPrevisao.length) ? '#6B21A8' : '#12805C' },
           { label:'Fornecedores', valor: int(kpi.fornecedores), sub:'no período filtrado', cor:'#101828' },
         ].map((k,i) => (
           <div key={i} style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:8, padding:'16px 18px' }}>
@@ -176,13 +177,51 @@ export default function FluxoCaixa() {
         </div>
       </Panel>
 
-      {/* Pedidos sem previsão de data (sem embarque e sem NF) */}
+      {/* Importação aguardando embarque (TOP 2001/2050/2052, sem embarque ainda) */}
+      {dadosImportacaoSemEmbarque.length > 0 && (
+        <Panel title={`🚢 ${dadosImportacaoSemEmbarque.length} importação(ões) aguardando embarque — R$ ${brl(dadosImportacaoSemEmbarque.reduce((s,r)=>s+Number(r.valor_parcela||0),0))}`}>
+          <p style={{ margin:'0 0 12px', fontSize:12.5, color:'#6B7280', lineHeight:1.6 }}>
+            Pedidos de compra exterior (importação/nacionalização) que ainda não têm data de embarque
+            preenchida. É esperado levar mais tempo por conta do processo de transporte internacional
+            e desembaraço aduaneiro — assim que a data de embarque for preenchida no Sankhya, a estimativa
+            de pagamento aparece automaticamente na aba principal.
+          </p>
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
+              <thead>
+                <tr>
+                  {['Pedido','Fornecedor','Condição pgto','Data do pedido','Valor'].map((h,i)=>(
+                    <th key={h} style={{
+                      padding:'8px 12px', background:'#F9FAFB', textAlign:i===4?'right':'left',
+                      fontSize:10.5, fontWeight:600, color:'#6B7280', textTransform:'uppercase',
+                      letterSpacing:'.04em', borderBottom:'1px solid #E5E7EB', whiteSpace:'nowrap',
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dadosImportacaoSemEmbarque.map((r,i)=>(
+                  <tr key={r.id||i} style={{ background:'#EFF6FF' }}>
+                    <td style={{ padding:'8px 12px', fontWeight:600 }}>{r.numnota_oc}</td>
+                    <td style={{ padding:'8px 12px', color:'#6B7280', maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={r.fornecedor}>{r.fornecedor}</td>
+                    <td style={{ padding:'8px 12px', color:'#6B7280', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={r.descr_tipvenda}>{r.descr_tipvenda}</td>
+                    <td style={{ padding:'8px 12px', color:'#9CA3AF', whiteSpace:'nowrap' }}>{dBR(r.data_referencia)}</td>
+                    <td style={{ padding:'8px 12px', textAlign:'right', fontWeight:700, fontVariantNumeric:'tabular-nums' }}>R$ {brl(r.valor_parcela)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
+
+      {/* Pedidos genuinamente sem previsão (sem embarque, sem NF, não é importação) */}
       {dadosSemPrevisao.length > 0 && (
         <Panel title={`⚠ ${dadosSemPrevisao.length} pedido(s) sem previsão de data — R$ ${brl(dadosSemPrevisao.reduce((s,r)=>s+Number(r.valor_parcela||0),0))}`}>
           <p style={{ margin:'0 0 12px', fontSize:12.5, color:'#6B7280', lineHeight:1.6 }}>
-            Pedidos de compra sem data de embarque preenchida e ainda sem nota fiscal. Não temos como estimar
-            quando vão virar título financeiro, mas o valor está comprometido — vale acompanhar com quem
-            fez o pedido.
+            Pedidos de compra nacional sem data de embarque preenchida e ainda sem nota fiscal. Diferente da
+            importação, aqui não há um motivo estrutural para a demora — vale confirmar com quem fez o pedido
+            se ainda está em andamento.
           </p>
           <div style={{ overflowX:'auto' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
