@@ -60,13 +60,16 @@ export default function FluxoCaixa() {
 
   useEffect(() => { carregar() }, [])
 
+  const dadosComPrevisao = useMemo(() => dados.filter(r => r.fonte !== 'SEM_PREVISAO'), [dados])
+  const dadosSemPrevisao = useMemo(() => dados.filter(r => r.fonte === 'SEM_PREVISAO'), [dados])
+
   const opcoes = useMemo(() => ({
-    fornecedores: [...new Set(dados.map(r => r.fornecedor).filter(Boolean))].sort(),
-  }), [dados])
+    fornecedores: [...new Set(dadosComPrevisao.map(r => r.fornecedor).filter(Boolean))].sort(),
+  }), [dadosComPrevisao])
 
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase()
-    return dados.filter(r => {
+    return dadosComPrevisao.filter(r => {
       if (fFornecedor && r.fornecedor !== fFornecedor) return false
       if (fFonte && r.fonte !== fFonte) return false
       if (fStatus && r.status_pagamento !== fStatus) return false
@@ -78,7 +81,7 @@ export default function FluxoCaixa() {
       }
       return true
     })
-  }, [dados, fFornecedor, fFonte, fStatus, dtIni, dtFim, busca])
+  }, [dadosComPrevisao, fFornecedor, fFonte, fStatus, dtIni, dtFim, busca])
 
   const ordenados = useMemo(() => {
     const a = [...filtrados]
@@ -132,11 +135,12 @@ export default function FluxoCaixa() {
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
 
       {/* KPIs */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:14 }}>
         {[
           { label:'Total previsto', valor:`R$ ${brl(kpi.total)}`, sub:`${int(kpi.qtd)} parcelas`, cor:'#101828' },
           { label:'Já pago', valor:`R$ ${brl(kpi.pago)}`, sub:`${int(kpi.qtdPago)} parcelas baixadas`, cor:'#12805C' },
           { label:'Em aberto', valor:`R$ ${brl(kpi.aberto)}`, sub:'ainda não pago', cor:'#B54708' },
+          { label:'Sem previsão de data', valor:`R$ ${brl(dadosSemPrevisao.reduce((s,r)=>s+Number(r.valor_parcela||0),0))}`, sub:`${int(dadosSemPrevisao.length)} pedidos sem embarque/NF`, cor: dadosSemPrevisao.length ? '#6B21A8' : '#12805C' },
           { label:'Fornecedores', valor: int(kpi.fornecedores), sub:'no período filtrado', cor:'#101828' },
         ].map((k,i) => (
           <div key={i} style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:8, padding:'16px 18px' }}>
@@ -167,6 +171,43 @@ export default function FluxoCaixa() {
           <span style={{ color:'#9CA3AF' }}>· clique numa barra para ver as parcelas do mês</span>
         </div>
       </Panel>
+
+      {/* Pedidos sem previsão de data (sem embarque e sem NF) */}
+      {dadosSemPrevisao.length > 0 && (
+        <Panel title={`⚠ ${dadosSemPrevisao.length} pedido(s) sem previsão de data — R$ ${brl(dadosSemPrevisao.reduce((s,r)=>s+Number(r.valor_parcela||0),0))}`}>
+          <p style={{ margin:'0 0 12px', fontSize:12.5, color:'#6B7280', lineHeight:1.6 }}>
+            Pedidos de compra sem data de embarque preenchida e ainda sem nota fiscal. Não temos como estimar
+            quando vão virar título financeiro, mas o valor está comprometido — vale acompanhar com quem
+            fez o pedido.
+          </p>
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
+              <thead>
+                <tr>
+                  {['Pedido','Fornecedor','Condição pgto','Data do pedido','Valor'].map((h,i)=>(
+                    <th key={h} style={{
+                      padding:'8px 12px', background:'#F9FAFB', textAlign:i===4?'right':'left',
+                      fontSize:10.5, fontWeight:600, color:'#6B7280', textTransform:'uppercase',
+                      letterSpacing:'.04em', borderBottom:'1px solid #E5E7EB', whiteSpace:'nowrap',
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dadosSemPrevisao.map((r,i)=>(
+                  <tr key={r.id||i} style={{ background:'#FAF5FF' }}>
+                    <td style={{ padding:'8px 12px', fontWeight:600 }}>{r.numnota_oc}</td>
+                    <td style={{ padding:'8px 12px', color:'#6B7280', maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={r.fornecedor}>{r.fornecedor}</td>
+                    <td style={{ padding:'8px 12px', color:'#6B7280', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={r.descr_tipvenda}>{r.descr_tipvenda}</td>
+                    <td style={{ padding:'8px 12px', color:'#9CA3AF', whiteSpace:'nowrap' }}>{dBR(r.data_referencia)}</td>
+                    <td style={{ padding:'8px 12px', textAlign:'right', fontWeight:700, fontVariantNumeric:'tabular-nums' }}>R$ {brl(r.valor_parcela)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
 
       {/* Tabela detalhada */}
       <div ref={tabelaRef}>
@@ -254,9 +295,13 @@ export default function FluxoCaixa() {
       </div>
 
       <p style={{ fontSize:12, color:'#9CA3AF', margin:0, lineHeight:1.6 }}>
-        <strong>Como funciona:</strong> parcelas calculadas a partir dos pedidos de compra e sua condição de pagamento.
-        Pedidos que já têm nota fiscal de entrada usam a data da NF como referência; pedidos ainda sem NF usam a data
-        de embarque prevista. Dados a partir de janeiro/2026. Pedidos sem NF com embarque previsto ha mais de 60 dias sao ignorados (provavelmente ja resolvidos ou cancelados).
+        <strong>Como funciona:</strong> este painel mostra o que os <strong>pedidos de compra</strong> ainda vão gerar de
+        obrigação financeira, para o financeiro se antecipar antes da nota chegar. Quando já existe título financeiro
+        real no Sankhya, usamos ele diretamente (fonte mais confiável). Sem título ainda, estimamos pela condição de
+        pagamento. Notas de remessa/venda à ordem sem título são ignoradas (o pagamento real vai para outro fornecedor).
+        Pedidos sem NF com embarque há mais de 60 dias são ignorados, exceto para nacionalização/importação (TOPs 2001,
+        2050, 2052), que legitimamente demoram mais. Pedidos sem embarque e sem NF aparecem à parte, sem data estimada.
+        Dados a partir de janeiro/2026.
       </p>
     </div>
   )
