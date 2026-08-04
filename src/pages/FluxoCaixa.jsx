@@ -6,7 +6,11 @@ import { sbFetch, brl, brlK, int, dBR } from '../config.js'
 import { Panel, Select, SearchInput, Spinner, Btn } from '../components/UI.jsx'
 
 const MESES_BR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-const fmtMesAno = (yyyyMM) => { const [y,m] = yyyyMM.split('-'); return `${MESES_BR[parseInt(m)-1]}/${y.slice(2)}` }
+const fmtMesAno = (yyyyMM) => {
+  if (!yyyyMM) return '—'
+  const [y,m] = yyyyMM.split('-')
+  return `${MESES_BR[parseInt(m)-1]}/${y.slice(2)}`
+}
 
 function TooltipCard({ active, payload, label }) {
   if (!active || !payload?.length) return null
@@ -104,7 +108,7 @@ export default function FluxoCaixa() {
     fornecedores: new Set(filtrados.map(r=>r.fornecedor)).size,
   }), [filtrados])
 
-  const dadosGrafico = useMemo(() => porMes.map(m => ({
+  const dadosGrafico = useMemo(() => porMes.filter(m => m.mes).map(m => ({
     mesISO: m.mes,
     mes: fmtMesAno(m.mes),
     pago: Number(m.total_pago||0),
