@@ -37,17 +37,17 @@ async function analisarComIA(nota, dados) {
 }
 
 export default function DrawerDetalhe({ nota, onClose }) {
-  const [fase,     setFase]     = useState('carregando')
-  const [dados,    setDados]    = useState(null)
-  const [erro,     setErro]     = useState('')
-  const [abaAtiva, setAba]      = useState('itens')
-  const [iaFase,   setIaFase]   = useState('idle')
-  const [iaTexto,  setIaTexto]  = useState('')
-  const [iaErro,   setIaErro]   = useState('')
+  const [fase, setFase] = useState('carregando')
+  const [dados, setDados] = useState(null)
+  const [erro, setErro] = useState('')
+  const [abaAtiva, setAba] = useState('itens')
+  const [iaFase, setIaFase] = useState('idle')
+  const [iaTexto, setIaTexto] = useState('')
+  const [iaErro, setIaErro] = useState('')
   const [cteAberto, setCteAberto] = useState(null)
-  const [cteFase,   setCteFase]   = useState('idle')
-  const [cteDados,  setCteDados]  = useState(null)
-  const [cteErro,   setCteErro]   = useState('')
+  const [cteFase, setCteFase] = useState('idle')
+  const [cteDados, setCteDados] = useState(null)
+  const [cteErro, setCteErro] = useState('')
 
   useEffect(() => {
     if (!nota) return
@@ -439,10 +439,10 @@ export default function DrawerDetalhe({ nota, onClose }) {
                     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
                       {[
                         ['Valor total do CT-e', cteDados.cab.vlrnota, '#101828'],
-                        ['Frete líquido',        cteDados.cab.vlrfreteliquido, '#12805C'],
-                        ['ICMS sobre frete',      cteDados.cab.icmsfrete, '#B54708'],
-                        ['PIS sobre frete',       cteDados.cab.pisfrete, '#B54708'],
-                        ['COFINS sobre frete',    cteDados.cab.cofinsfrete, '#B54708'],
+                        ['Frete líquido', cteDados.cab.vlrfreteliquido, '#12805C'],
+                        ['ICMS sobre frete', cteDados.cab.icmsfrete, '#B54708'],
+                        ['PIS sobre frete', cteDados.cab.pisfrete, '#B54708'],
+                        ['COFINS sobre frete', cteDados.cab.cofinsfrete, '#B54708'],
                       ].map(([l,v,c])=>(
                         <div key={l} style={{padding:'12px 14px',background:'#F9FAFB',borderRadius:8}}>
                           <div style={{fontSize:10.5,color:'#9CA3AF',marginBottom:3}}>{l}</div>
