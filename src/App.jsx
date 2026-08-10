@@ -14,30 +14,30 @@ import ConferenciaFiscal from './pages/ConferenciaFiscal.jsx'
 import Divergencias from './pages/Divergencias.jsx'
 
 const MENU = [
-  { id: 'visao',      label: 'Visão geral',         icon: '▦' },
-  { id: 'divergencias',label: 'Divergências',         icon: '⚠', badge: true },
-  { id: 'painel',     label: 'Dashboard',            icon: '📊' },
-  { id: 'fluxocaixa', label: 'Fluxo de Caixa',       icon: '💰' },
-  { id: 'compfiscal', label: 'Comp Fiscal',          icon: '🧾' },
-  { id: 'confiscal',  label: 'Conferência Fiscal',   icon: '📑' },
+  { id: 'visao', label: 'Visão geral', icon: '▦' },
+  { id: 'divergencias',label: 'Divergências', icon: '⚠', badge: true },
+  { id: 'painel', label: 'Dashboard', icon: '📊' },
+  { id: 'fluxocaixa', label: 'Fluxo de Caixa', icon: '💰' },
+  { id: 'compfiscal', label: 'Comp Fiscal', icon: '🧾' },
+  { id: 'confiscal', label: 'Conferência Fiscal', icon: '📑' },
   { id: 'fechamento', label: 'Comp. Saldo de Estoque', icon: '⚖' },
-  { id: 'razao',      label: 'Movimentos',           icon: '📋' },
-  { id: 'contas',     label: 'Contas contábeis',     icon: '⊞' },
-  { id: 'historico',  label: 'Histórico',            icon: '⊙' },
-  { id: 'sync',       label: 'Importar período',      icon: '↻' },
+  { id: 'razao', label: 'Movimentos', icon: '📋' },
+  { id: 'contas', label: 'Contas contábeis', icon: '⊞' },
+  { id: 'historico', label: 'Histórico', icon: '⊙' },
+  { id: 'sync', label: 'Importar período', icon: '↻' },
 ]
 
 export default function App() {
-  const [pagina,      setPagina]      = useState('visao')
-  const [fase,        setFase]        = useState('carregando')
-  const [erro,        setErro]        = useState('')
+  const [pagina, setPagina] = useState('visao')
+  const [fase, setFase] = useState('carregando')
+  const [erro, setErro] = useState('')
   const [lancamentos, setLancamentos] = useState([])
-  const [resumos,     setResumos]     = useState([])
-  const [ultima,      setUltima]      = useState(null)
-  const [periodoId,   setPeriodoId]   = useState(null) // importacao_id selecionado no filtro global
-  const [fechamento,  setFechamento]  = useState(null)
+  const [resumos, setResumos] = useState([])
+  const [ultima, setUltima] = useState(null)
+  const [periodoId, setPeriodoId] = useState(null) // importacao_id selecionado no filtro global
+  const [fechamento, setFechamento] = useState(null)
   const [atualizando, setAtualizando] = useState(false)
-  const [detalhe,     setDetalhe]     = useState(null)
+  const [detalhe, setDetalhe] = useState(null)
 
   // período selecionado no filtro global (objeto resumo correspondente)
   const periodoAtual = resumos.find(r => r.importacao_id === periodoId) || ultima
@@ -49,8 +49,12 @@ export default function App() {
       setResumos(rs || [])
       if (!rs?.length) return setFase('vazio')
 
-      // pega o período mais recente (por periodo_fim, não por data de criação/sincronização)
-      const ult = [...rs].sort((a, b) => new Date(b.periodo_fim) - new Date(a.periodo_fim))[0]
+      // FIX: pega o período mais recente por CRIADO_EM (a sincronização mais
+      // recente de fato), não por periodo_fim. Ordenar por periodo_fim fazia
+      // uma sincronização antiga e praticamente vazia (ex.: um teste com
+      // período "01/07 a 31/08") ganhar da sincronização real e completa de
+      // julho, só porque a data final do período dela era mais distante.
+      const ult = [...rs].sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em))[0]
       setUltima(ult)
       setPeriodoId(prev => prev && rs.some(r => r.importacao_id === prev) ? prev : ult.importacao_id)
 
@@ -183,7 +187,7 @@ export default function App() {
                   border: '1px solid #E5E7EB', borderRadius: 6, background: '#fff', color: '#374151',
                 }}
               >
-                {[...resumos].sort((a, b) => new Date(b.periodo_fim) - new Date(a.periodo_fim)).map(r => (
+                {[...resumos].sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em)).map(r => (
                   <option key={r.importacao_id} value={r.importacao_id}>
                     {dBR(r.periodo_inicio)} a {dBR(r.periodo_fim)}
                   </option>
@@ -219,18 +223,18 @@ export default function App() {
                 />
               )}
               {pagina === 'divergencias' && <Divergencias lancamentos={lancamentos} />}
-              {pagina === 'painel'     && <Dashboard />}
+              {pagina === 'painel' && <Dashboard />}
               {pagina === 'fluxocaixa' && <FluxoCaixa />}
               {pagina === 'compfiscal' && <ConferenciaFaturamento />}
-              {pagina === 'confiscal'  && <ConferenciaFiscal />}
+              {pagina === 'confiscal' && <ConferenciaFiscal />}
               {pagina === 'fechamento' && <Fechamento />}
-              {pagina === 'razao'      && <Razao />}
-              {pagina === 'contas'     && (
+              {pagina === 'razao' && <Razao />}
+              {pagina === 'contas' && (
                 <Contas lancamentos={lancamentos}
                   onFiltrarConta={() => setPagina('razao')} />
               )}
-              {pagina === 'historico'  && <Historico resumos={resumos} />}
-              {pagina === 'sync'        && <Sincronizacao />}
+              {pagina === 'historico' && <Historico resumos={resumos} />}
+              {pagina === 'sync' && <Sincronizacao />}
             </>
           )}
         </div>
