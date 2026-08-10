@@ -3,11 +3,11 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, brl, dBR, classeDe } from '../config.j
 
 const SYNC_KEY = 'kb2026sync!'
 
-async function buscarDetalhe(nunota) {
+async function buscarDetalhe(nunota, contaContabil) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/nota-detalhe`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
-    body: JSON.stringify({ nunota, _key: SYNC_KEY }),
+    body: JSON.stringify({ nunota, conta_contabil: contaContabil, _key: SYNC_KEY }),
   })
   const data = await res.json()
   if (!data.ok) throw new Error(data.erro || 'Erro ao buscar detalhe')
@@ -53,7 +53,7 @@ export default function DrawerDetalhe({ nota, onClose }) {
     if (!nota) return
     setFase('carregando'); setDados(null); setErro('')
     setIaFase('idle'); setIaTexto(''); setIaErro(''); setAba('itens')
-    buscarDetalhe(nota.nunota)
+    buscarDetalhe(nota.nunota, nota.conta_contabil)
       .then(d => { setDados(d); setFase('pronto') })
       .catch(e => { setErro(e.message); setFase('erro') })
   }, [nota?.nunota])
