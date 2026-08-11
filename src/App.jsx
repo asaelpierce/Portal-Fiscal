@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { sbFetch, brl, int, dBR, isZero } from './config.js'
 import { Spinner, EmptyState, Btn } from './components/UI.jsx'
 import DrawerDetalhe from './components/DrawerDetalhe.jsx'
+import Login from './components/Login.jsx'
 import VIsaoGeral from './pages/VIsaoGeral.jsx'
 import Fechamento from './pages/Fechamento.jsx'
 import Razao from './pages/Razao.jsx'
@@ -13,7 +14,7 @@ import ConferenciaFaturamento from './pages/ConferenciaFaturamento.jsx'
 import ConferenciaFiscal from './pages/ConferenciaFiscal.jsx'
 import Divergencias from './pages/Divergencias.jsx'
 
-const MENU = [
+const MENU_COMPLETO = [
   { id: 'visao', label: 'Visão geral', icon: '▦' },
   { id: 'divergencias',label: 'Divergências', icon: '⚠', badge: true },
   { id: 'painel', label: 'Dashboard', icon: '📊' },
@@ -27,42 +28,61 @@ const MENU = [
   { id: 'sync', label: 'Importar período', icon: '↻' },
 ]
 
+function carregarSessaoSalva() {
+  try {
+    const raw = localStorage.getItem('kb_sessao')
+    if (!raw) return null
+    const s = JSON.parse(raw)
+    if (!s?.access_token || !s?.expira_em || Date.now() > s.expira_em) {
+      localStorage.removeItem('kb_sessao')
+      return null
+    }
+    return s
+  } catch { return null }
+}
+
 export default function App() {
-  const [pagina, setPagina] = useState('visao')
+  const [sessao, setSessao] = useState(carregarSessaoSalva)
+
+  if (!sessao) {
+    return <Login onLogin={setSessao} />
+  }
+
+  return <AppAutenticado sessao={sessao} onLogout={() => {
+    localStorage.removeItem('kb_sessao')
+    setSessao(null)
+  }} />
+}
+
+function AppAutenticado({ sessao, onLogout }) {
+  // Menu filtrado só com as páginas liberadas para esse usuário
+  const MENU = MENU_COMPLETO.filter(m => sessao.paginas.includes(m.id))
+
+  const [pagina, setPagina] = useState(MENU[0]?.id || 'visao')
   const [fase, setFase] = useState('carregando')
   const [erro, setErro] = useState('')
   const [lancamentos, setLancamentos] = useState([])
   const [resumos, setResumos] = useState([])
   const [ultima, setUltima] = useState(null)
-  const [periodoId, setPeriodoId] = useState(null) // importacao_id selecionado no filtro global
+  const [periodoId, setPeriodoId] = useState(null)
   const [fechamento, setFechamento] = useState(null)
   const [atualizando, setAtualizando] = useState(false)
   const [detalhe, setDetalhe] = useState(null)
 
-  // período selecionado no filtro global (objeto resumo correspondente)
   const periodoAtual = resumos.find(r => r.importacao_id === periodoId) || ultima
 
   const carregar = useCallback(async () => {
     try {
-      // 1. importações
       const rs = await sbFetch('resumo_analitico?select=*&order=periodo_fim.asc,criado_em.asc')
       setResumos(rs || [])
       if (!rs?.length) return setFase('vazio')
 
-      // FIX: pega o período mais recente por CRIADO_EM (a sincronização mais
-      // recente de fato), não por periodo_fim. Ordenar por periodo_fim fazia
-      // uma sincronização antiga e praticamente vazia (ex.: um teste com
-      // período "01/07 a 31/08") ganhar da sincronização real e completa de
-      // julho, só porque a data final do período dela era mais distante.
       const ult = [...rs].sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em))[0]
       setUltima(ult)
       setPeriodoId(prev => prev && rs.some(r => r.importacao_id === prev) ? prev : ult.importacao_id)
 
-      // 3. fechamento mais recente (se existir)
       try {
-        const fds = await sbFetch(
-          'fechamento_analitico?select=*&order=data_posicao.desc'
-        )
+        const fds = await sbFetch('fechamento_analitico?select=*&order=data_posicao.desc')
         if (fds?.length) {
           const dataMaisRecente = fds[0].data_posicao
           const linhas = fds.filter(f => f.data_posicao === dataMaisRecente)
@@ -80,7 +100,6 @@ export default function App() {
 
   useEffect(() => { carregar() }, [carregar])
 
-  // recarrega os lançamentos sempre que o período selecionado mudar
   useEffect(() => {
     if (!periodoId) return
     sbFetch(`lancamentos_conciliacao?importacao_id=eq.${periodoId}&select=*&order=prioridade.asc`)
@@ -95,7 +114,6 @@ export default function App() {
     setAtualizando(false)
   }
 
-  // badge: só investigar + críticos (ajuste de custo fecha no saldo, não é pendência)
   const badgeCount = lancamentos.filter(r => r.classe_divergencia === 'INVESTIGAR').length
 
   return (
@@ -158,6 +176,21 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* Usuário logado + sair */}
+        <div style={{ padding: '12px 14px', borderTop: '1px solid #F3F4F6', display: 'flex',
+          alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ fontSize: 11.5, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            title={sessao.email}>
+            {sessao.email}
+          </div>
+          <button onClick={onLogout} style={{
+            fontSize: 11, color: '#B42318', background: 'none', border: 'none', cursor: 'pointer',
+            fontFamily: 'inherit', flexShrink: 0, fontWeight: 600,
+          }}>
+            Sair
+          </button>
+        </div>
       </aside>
 
       {/* ── Conteúdo ── */}
