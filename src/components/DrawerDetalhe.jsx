@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { SUPABASE_URL, SUPABASE_ANON_KEY, brl, dBR, classeDe } from '../config.js'
+import { SUPABASE_URL, SUPABASE_ANON_KEY, brl, dBR, classeDe, linkSankhyaNota } from '../config.js'
 
 const SYNC_KEY = 'kb2026sync!'
 
@@ -76,6 +76,13 @@ export default function DrawerDetalhe({ nota, onClose }) {
   if (!nota) return null
   const cls = classeDe(nota.classe_divergencia)
 
+  // Link direto pra abrir essa mesma nota dentro do Sankhya, na Central de
+  // Notas. Só disponível depois que os dados carregam (precisamos do TIPMOV e
+  // do CODTIPOPER exatos vindos de lá).
+  const urlSankhya = dados?.cab?.nunota
+    ? linkSankhyaNota({ nunota: dados.cab.nunota, tipmov: dados.cab.tipmov, codtipoper: dados.cab.codtipoper })
+    : null
+
   return (
     <>
       <div onClick={onClose} style={{ position:'fixed',inset:0,background:'rgba(16,24,40,.4)',zIndex:40 }}/>
@@ -96,7 +103,18 @@ export default function DrawerDetalhe({ nota, onClose }) {
                 </span>
                 <span style={{fontSize:11.5,color:'#9CA3AF'}}>TOP {nota.cod_top} · {nota.descr_top}</span>
               </div>
-              <h2 style={{margin:0,fontSize:18,fontWeight:700}}>Nota fiscal {nota.nota_fiscal}</h2>
+              <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                <h2 style={{margin:0,fontSize:18,fontWeight:700}}>Nota fiscal {nota.nota_fiscal}</h2>
+                {urlSankhya && (
+                  <a href={urlSankhya} target="_blank" rel="noopener noreferrer" style={{
+                    fontSize:11.5,fontWeight:600,color:'#1D5BBF',textDecoration:'none',
+                    display:'inline-flex',alignItems:'center',gap:4,padding:'3px 9px',
+                    background:'#EBF2FC',borderRadius:5,border:'1px solid #BFDBFE',
+                  }}>
+                    ↗ Abrir no Sankhya
+                  </a>
+                )}
+              </div>
               {dados?.cab && <div style={{fontSize:12.5,color:'#6B7280',marginTop:3}}>{dados.cab.parceiro} · {dados.cab.dtentsai}</div>}
             </div>
             <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',padding:6,color:'#6B7280',flexShrink:0}}>
