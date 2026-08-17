@@ -1,14 +1,43 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { sbFetch, brl, int, dBR, classeDe } from '../config.js'
+import { sbFetch, SUPABASE_URL, SUPABASE_ANON_KEY, brl, int, dBR, classeDe } from '../config.js'
 import { Spinner, Btn } from '../components/UI.jsx'
 import DrawerDetalhe from '../components/DrawerDetalhe.jsx'
 
+const SYNC_KEY = 'kb2026sync!'
+
 const ACAO_ESTILO = {
-  'CONFERE':        { cor:'#12805C', bg:'#D1FAE5', icone:'✓' },
+  'CONFERE': { cor:'#12805C', bg:'#D1FAE5', icone:'✓' },
   'AUMENTAR CUSTO': { cor:'#1D5BBF', bg:'#DBEAFE', icone:'▲' },
   'DIMINUIR CUSTO': { cor:'#B54708', bg:'#FEF3C7', icone:'▼' },
 }
 const MESES_BR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+
+// ─── helpers de data ──────────────────────────────────────────────────────────
+function isoParaBR(iso) {
+  const [y,m,d] = String(iso).slice(0,10).split('-')
+  return `${d}/${m}/${y}`
+}
+function hojeISO() {
+  const h = new Date()
+  return `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}-${String(h.getDate()).padStart(2,'0')}`
+}
+function primeiroDiaDoMes(iso) {
+  return `${String(iso).slice(0,7)}-01`
+}
+
+// Chama o fechamento-sync sob demanda pra uma data que ainda não foi
+// sincronizada (o usuário escolheu no seletor de período uma posição que
+// não existia previamente em fechamento_saldos).
+async function sincronizarPosicao(dataISO) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/fechamento-sync`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, 'x-api-key': SYNC_KEY },
+    body: JSON.stringify({ data_posicao: isoParaBR(dataISO) }),
+  })
+  const dados = await res.json()
+  if (!dados.ok) throw new Error(dados.erro || 'Erro ao sincronizar posição')
+  return dados
+}
 
 // ─── Card de nota clicável ────────────────────────────────────────────────────
 function CardNota({ nota, onNota }) {
@@ -20,7 +49,7 @@ function CardNota({ nota, onNota }) {
         padding:'11px 20px', background:'none', border:'none',
         borderBottom:'1px solid #F3F4F6', cursor:'pointer', textAlign:'left', fontFamily:'inherit' }}
       onMouseOver={e => e.currentTarget.style.background = '#F9FAFB'}
-      onMouseOut={e  => e.currentTarget.style.background = 'none'}
+      onMouseOut={e => e.currentTarget.style.background = 'none'}
     >
       <div>
         <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
@@ -53,11 +82,11 @@ function CardNota({ nota, onNota }) {
 
 // ─── Painel lateral de notas da conta ────────────────────────────────────────
 function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
-  const [fase,      setFase]      = useState('carregando')
-  const [porMes,    setPorMes]    = useState([])
+  const [fase, setFase] = useState('carregando')
+  const [porMes, setPorMes] = useState([])
   const [mesAberto, setMesAberto] = useState(null)
-  const [verOkMes,  setVerOkMes]  = useState({}) // {mesKey: bool}
-  const [aba,       setAba]       = useState('mes') // 'mes' | 'todos'
+  const [verOkMes, setVerOkMes] = useState({}) // {mesKey: bool}
+  const [aba, setAba] = useState('mes') // 'mes' | 'todos'
 
   // Mês do fechamento selecionado: '2026-07'
   const mesFechamento = dataFechamento ? dataFechamento.slice(0, 7) : null
@@ -72,40 +101,40 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
       sbFetch('importacoes?select=id,periodo_inicio,periodo_fim&order=periodo_fim.desc'),
       sbFetch(`lancamentos_conciliacao?conta_contabil=eq.${encodeURIComponent(conta)}&select=*&order=data_entrada_saida.desc`),
     ])
-    .then(([imps, lancs]) => {
-      const grupos = (imps || []).map(imp => {
-        const notas  = (lancs || []).filter(l => l.importacao_id === imp.id)
-        if (!notas.length) return null
-        const comDif    = notas.filter(n => n.classe_divergencia !== 'OK')
-        // Separa: problema real (investigar/critico) vs ajuste de custo medio (esperado, ja no saldo)
-        const investigar = comDif.filter(n => ['INVESTIGAR','CRITICO'].includes(n.classe_divergencia))
-        const ajuste      = comDif.filter(n => n.classe_divergencia === 'AJUSTE_CUSTO')
-        const [y, m] = imp.periodo_fim.split('-')
-        return {
-          mesKey:  `${y}-${m}`,
-          label:   `${MESES_BR[parseInt(m) - 1]}/${y}`,
-          impId:   imp.id,
-          notas,
-          comDif,
-          investigar,
-          ajuste,
-          somaDif:        comDif.reduce((s, n) => s + Number(n.diferenca || 0), 0),
-          somaInvestigar: investigar.reduce((s, n) => s + Number(n.diferenca || 0), 0),
-          somaAjuste:     ajuste.reduce((s, n) => s + Number(n.diferenca || 0), 0),
-        }
-      }).filter(Boolean)
+      .then(([imps, lancs]) => {
+        const grupos = (imps || []).map(imp => {
+          const notas = (lancs || []).filter(l => l.importacao_id === imp.id)
+          if (!notas.length) return null
+          const comDif = notas.filter(n => n.classe_divergencia !== 'OK')
+          // Separa: problema real (investigar/critico) vs ajuste de custo medio (esperado, ja no saldo)
+          const investigar = comDif.filter(n => ['INVESTIGAR','CRITICO'].includes(n.classe_divergencia))
+          const ajuste = comDif.filter(n => n.classe_divergencia === 'AJUSTE_CUSTO')
+          const [y, m] = imp.periodo_fim.split('-')
+          return {
+            mesKey: `${y}-${m}`,
+            label: `${MESES_BR[parseInt(m) - 1]}/${y}`,
+            impId: imp.id,
+            notas,
+            comDif,
+            investigar,
+            ajuste,
+            somaDif: comDif.reduce((s, n) => s + Number(n.diferenca || 0), 0),
+            somaInvestigar: investigar.reduce((s, n) => s + Number(n.diferenca || 0), 0),
+            somaAjuste: ajuste.reduce((s, n) => s + Number(n.diferenca || 0), 0),
+          }
+        }).filter(Boolean)
 
-      // Abre automaticamente o mês mais recente com diferença
-      const primeiro = grupos.find(g => g.comDif.length > 0)
-      if (primeiro) setMesAberto(primeiro.mesKey)
-      setPorMes(grupos)
-      setFase('pronto')
-    })
-    .catch(() => setFase('erro'))
+        // Abre automaticamente o mês mais recente com diferença
+        const primeiro = grupos.find(g => g.comDif.length > 0)
+        if (primeiro) setMesAberto(primeiro.mesKey)
+        setPorMes(grupos)
+        setFase('pronto')
+      })
+      .catch(() => setFase('erro'))
   }, [conta])
 
-  const totalDif        = porMes.reduce((s, g) => s + g.somaDif, 0)
-  const mesSelecionado  = porMes.find(g => g.mesKey === mesFechamento)
+  const totalDif = porMes.reduce((s, g) => s + g.somaDif, 0)
+  const mesSelecionado = porMes.find(g => g.mesKey === mesFechamento)
   const qtdInvestigarMes = mesSelecionado?.investigar.length || 0
   const qtdInvestigarTotal = porMes.reduce((s, g) => s + g.investigar.length, 0)
 
@@ -146,7 +175,7 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
         {fase === 'pronto' && (
           <div style={{ display:'flex', borderBottom:'1px solid #E5E7EB' }}>
             {[
-              { id:'mes',   label: labelMes,         qtd: qtdInvestigarMes   },
+              { id:'mes', label: labelMes, qtd: qtdInvestigarMes },
               { id:'todos', label: 'Todos os meses', qtd: qtdInvestigarTotal },
             ].map(a => (
               <button key={a.id} onClick={() => setAba(a.id)} style={{
@@ -245,7 +274,7 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
         {/* ABA: todos os meses (accordion) */}
         {fase === 'pronto' && aba === 'todos' && porMes.map(g => {
           const aberto = mesAberto === g.mesKey
-          const verOk  = verOkMes[g.mesKey]
+          const verOk = verOkMes[g.mesKey]
           return (
             <div key={g.mesKey} style={{ borderBottom:'2px solid #F3F4F6' }}>
               {/* Cabeçalho do mês */}
@@ -256,7 +285,7 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
                   cursor:'pointer', textAlign:'left', fontFamily:'inherit',
                   display:'flex', justifyContent:'space-between', alignItems:'center' }}
                 onMouseOver={e => { if (!aberto) e.currentTarget.style.background = '#F9FAFB' }}
-                onMouseOut={e  => { if (!aberto) e.currentTarget.style.background = '#fff' }}
+                onMouseOut={e => { if (!aberto) e.currentTarget.style.background = '#fff' }}
               >
                 <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                   <span style={{ fontSize:13, fontWeight:700, color: aberto ? '#1D5BBF' : '#101828' }}>
@@ -335,32 +364,81 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
 
 // ─── Tela principal de Fechamento ─────────────────────────────────────────────
 export default function Fechamento() {
-  const [fase,        setFase]        = useState('carregando')
-  const [erro,        setErro]        = useState('')
-  const [datas,       setDatas]       = useState([])
-  const [data,        setData]        = useState('')
-  const [linhas,      setLinhas]      = useState([])
+  const [fase, setFase] = useState('carregando')
+  const [erro, setErro] = useState('')
+  const [datas, setDatas] = useState([])           // datas já sincronizadas (existem em fechamento_saldos)
+  // Período escolhido pelo usuário. "fim" é a posição que realmente importa
+  // pro cálculo (cumulativo até essa data); "inicio" é só pra rotular o
+  // período visualmente, não muda o resultado.
+  const [periodoInicio, setPeriodoInicio] = useState(primeiroDiaDoMes(hojeISO()))
+  const [periodoFim, setPeriodoFim] = useState(hojeISO())
+  const [data, setData] = useState('')             // data efetivamente carregada (fechamento_analitico)
+  const [linhas, setLinhas] = useState([])
   const [contaAberta, setContaAberta] = useState(null)
-  const [notaAberta,  setNotaAberta]  = useState(null)
+  const [notaAberta, setNotaAberta] = useState(null)
+  const [sincronizando, setSincronizando] = useState(false)
+  const [erroSync, setErroSync] = useState('')
+  const [datasCarregadas, setDatasCarregadas] = useState(false)
 
+  // Carrega a lista de datas já sincronizadas (pra saber se precisa sincronizar
+  // sob demanda ou se já pode carregar direto do banco).
   useEffect(() => {
     sbFetch('fechamento_saldos?select=data_posicao&order=data_posicao.desc')
       .then(r => {
         const u = [...new Set((r || []).map(x => x.data_posicao))]
         setDatas(u)
-        if (u.length) setData(u[0])
-        else setFase('vazio')
+        if (u.length) {
+          setPeriodoFim(u[0])
+          setPeriodoInicio(primeiroDiaDoMes(u[0]))
+        } else {
+          setFase('vazio')
+        }
+        setDatasCarregadas(true)
       })
       .catch(e => { setErro(e.message); setFase('erro') })
   }, [])
 
+  // Sempre que o "até" do período mudar, garante que essa posição existe —
+  // sincroniza na hora com o Sankhya se ainda não tiver sido calculada antes.
+  // Só roda depois que a lista inicial de datas já carregou, senão dispararia
+  // uma sincronização desnecessária logo de cara (achando que nada existe
+  // ainda, porque "datas" começa vazio antes do primeiro fetch terminar).
   useEffect(() => {
-    if (!data) return
-    setFase('carregando')
-    sbFetch(`fechamento_analitico?data_posicao=eq.${data}&select=*&order=grupo.asc`)
-      .then(r => { setLinhas(r || []); setFase('pronto') })
-      .catch(e => { setErro(e.message); setFase('erro') })
-  }, [data])
+    if (!periodoFim || !datasCarregadas) return
+    let cancelado = false
+
+    async function carregar() {
+      setErroSync('')
+      const jaExiste = datas.includes(periodoFim)
+
+      if (!jaExiste) {
+        setSincronizando(true)
+        try {
+          await sincronizarPosicao(periodoFim)
+          if (cancelado) return
+          setDatas(prev => prev.includes(periodoFim) ? prev : [periodoFim, ...prev])
+        } catch (e) {
+          if (!cancelado) { setErroSync(e.message); setSincronizando(false) }
+          return
+        }
+        setSincronizando(false)
+      }
+
+      setFase('carregando')
+      try {
+        const r = await sbFetch(`fechamento_analitico?data_posicao=eq.${periodoFim}&select=*&order=grupo.asc`)
+        if (cancelado) return
+        setLinhas(r || [])
+        setData(periodoFim)
+        setFase('pronto')
+      } catch (e) {
+        if (!cancelado) { setErro(e.message); setFase('erro') }
+      }
+    }
+
+    carregar()
+    return () => { cancelado = true }
+  }, [periodoFim, datasCarregadas]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const tot = useMemo(() => {
     const est = linhas.reduce((s, l) => s + Number(l.saldo_estoque || 0), 0)
@@ -368,35 +446,54 @@ export default function Fechamento() {
     return { est, ctb, dif: est - ctb, conferem: linhas.filter(l => l.confere).length }
   }, [linhas])
 
-  const fechou  = Math.abs(tot.dif) < 0.10 && tot.conferem === linhas.length
-  const maxDif  = Math.max(1, ...linhas.map(l => Math.abs(Number(l.diferenca) || 0)))
-  const fmt     = s => { const [y,m,d] = String(s).slice(0,10).split('-'); return `${d}/${m}/${y}` }
+  const fechou = Math.abs(tot.dif) < 0.10 && tot.conferem === linhas.length
+  const maxDif = Math.max(1, ...linhas.map(l => Math.abs(Number(l.diferenca) || 0)))
+  const fmt = s => isoParaBR(s)
 
   const exportar = () => {
     const cols = ['contas','descr_conta','descr_local','saldo_estoque','saldo_contabil','diferenca','acao']
-    const csv  = [cols.join(';'), ...linhas.map(l => cols.map(k => String(l[k]??'').replace(/;/g,',')).join(';'))].join('\n')
-    const url  = URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}))
-    const a    = document.createElement('a'); a.href=url; a.download=`fechamento-${data}.csv`; a.click()
+    const csv = [cols.join(';'), ...linhas.map(l => cols.map(k => String(l[k]??'').replace(/;/g,',')).join(';'))].join('\n')
+    const url = URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}))
+    const a = document.createElement('a'); a.href=url; a.download=`fechamento-${data}.csv`; a.click()
     URL.revokeObjectURL(url)
   }
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
 
-      {/* Seletor de data */}
-      {datas.length > 1 && (
-        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-          <label style={{ fontSize:12, color:'#6B7280' }}>Posição em:</label>
-          <select value={data} onChange={e => setData(e.target.value)} style={{
-            fontFamily:'inherit', fontSize:13, padding:'6px 10px',
-            border:'1px solid #E5E7EB', borderRadius:6,
-          }}>
-            {datas.map(d => <option key={d} value={d}>{fmt(d)}</option>)}
-          </select>
+      {/* Seletor de período — "De" só rotula o período; "Até" é a posição
+          calculada (cumulativa desde sempre até essa data). Se a data
+          escolhida em "Até" ainda não tiver sido sincronizada, o sistema
+          sincroniza automaticamente com o Sankhya antes de mostrar. */}
+      <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+        <label style={{ fontSize:12, color:'#6B7280' }}>Período:</label>
+        <span style={{ fontSize:12, color:'#9CA3AF' }}>de</span>
+        <input type="date" value={periodoInicio} max={periodoFim}
+          onChange={e => setPeriodoInicio(e.target.value)}
+          style={{ fontFamily:'inherit', fontSize:13, padding:'6px 10px', border:'1px solid #E5E7EB', borderRadius:6 }}
+        />
+        <span style={{ fontSize:12, color:'#9CA3AF' }}>até</span>
+        <input type="date" value={periodoFim} max={hojeISO()}
+          onChange={e => setPeriodoFim(e.target.value)}
+          style={{ fontFamily:'inherit', fontSize:13, padding:'6px 10px', border:'1px solid #E5E7EB', borderRadius:6 }}
+        />
+        {sincronizando && (
+          <span style={{ fontSize:12, color:'#1D5BBF', display:'flex', alignItems:'center', gap:6 }}>
+            <span style={{ width:12, height:12, border:'2px solid #BFDBFE', borderTopColor:'#1D5BBF',
+              borderRadius:'50%', animation:'spin .8s linear infinite', display:'inline-block' }}/>
+            Sincronizando posição de {fmt(periodoFim)} com o Sankhya… pode levar um minuto.
+          </span>
+        )}
+      </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
+      {erroSync && (
+        <div style={{ background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:8, padding:'10px 14px', color:'#B42318', fontSize:12.5 }}>
+          Não foi possível sincronizar essa posição: {erroSync}
         </div>
       )}
 
-      {fase === 'carregando' && <Spinner/>}
+      {fase === 'carregando' && !sincronizando && <Spinner/>}
       {fase === 'erro' && (
         <div style={{ background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:8, padding:16, color:'#B42318' }}>
           Erro: {erro}
@@ -474,8 +571,8 @@ export default function Fechamento() {
               </thead>
               <tbody>
                 {linhas.map(l => {
-                  const dif   = Number(l.diferenca || 0)
-                  const est   = ACAO_ESTILO[l.acao] || ACAO_ESTILO['CONFERE']
+                  const dif = Number(l.diferenca || 0)
+                  const est = ACAO_ESTILO[l.acao] || ACAO_ESTILO['CONFERE']
                   const ativa = contaAberta === l.contas
                   return (
                     <tr key={l.grupo}
@@ -486,7 +583,7 @@ export default function Fechamento() {
                         borderLeft:`3px solid ${ativa ? '#1D5BBF' : 'transparent'}`,
                       }}
                       onMouseOver={e => { if (!ativa) e.currentTarget.style.background = '#F9FAFB' }}
-                      onMouseOut={e  => { if (!ativa) e.currentTarget.style.background = l.confere ? '#fff' : '#FFFDF7' }}
+                      onMouseOut={e => { if (!ativa) e.currentTarget.style.background = l.confere ? '#fff' : '#FFFDF7' }}
                     >
                       <td style={{ ...TD, fontWeight:700, fontVariantNumeric:'tabular-nums', fontSize:12, whiteSpace:'nowrap' }}>
                         {l.contas}
