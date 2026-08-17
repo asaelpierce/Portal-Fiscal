@@ -12,14 +12,54 @@ function fmtPeriodo(inicio, fim) {
 const TD = { padding:'7px 11px', borderBottom:'1px solid #F3F4F6', verticalAlign:'top', fontSize:12 }
 const KPI_LABEL = { fontSize:10.5, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:4 }
 
-// ─── Aba 1: Dash × Razão (movimentos, com saldo acumulado por produto/local) ─
+// Definição das colunas da tabela de movimentos: cada uma sabe extrair seu
+// próprio texto (pro filtro por coluna) e, se for numérica, tem uma chave de
+// soma pro subtotal do rodapé.
+const COLUNAS_MOV = [
+  { id:'data', label:'Data', num:false, texto:r=>dBR(r.data_mov) },
+  { id:'produto', label:'Produto', num:false, texto:r=>`${r.codprod||''} ${r.descrprod||''}` },
+  { id:'local', label:'Local', num:false, texto:r=>`${r.codlocal||''} ${r.descrlocal||''}` },
+  { id:'nota', label:'Nota', num:false, texto:r=>String(r.numnota??'') },
+  { id:'tipo', label:'Tipo', num:false, texto:r=>r.tipo||'' },
+  { id:'operacao', label:'Operação', num:false, texto:r=>r.descroper||'' },
+  { id:'parceiro', label:'Parceiro', num:false, texto:r=>r.nomeparc||'' },
+  { id:'qtdmov', label:'Qtd mov.', num:true, texto:r=>String(r.qtdneg??''), soma:'qtdneg' },
+  { id:'custounit', label:'Custo unit.', num:true, texto:r=>String(r.custo_unitario??'') },
+  { id:'valormov', label:'Valor mov.', num:true, texto:r=>String(r.custototal??''), soma:'custototal' },
+  { id:'saldoantqtd', label:'Saldo ant. Qtd', num:true, texto:r=>String(r.saldo_antes_qtd??'') },
+  { id:'saldoantvlr', label:'Saldo ant. R$', num:true, texto:r=>String(r.saldo_antes_vlr??'') },
+  { id:'saldoapsqtd', label:'Saldo aps. Qtd', num:true, texto:r=>String(r.saldo_apos_qtd??'') },
+  { id:'saldoapsvlr', label:'Saldo aps. R$', num:true, texto:r=>String(r.saldo_apos_vlr??'') },
+  { id:'contactb', label:'Conta CTB', num:false, texto:r=>r.conta_contabil||'' },
+  { id:'lote', label:'Lote', num:false, texto:r=>r.lote||'' },
+]
+
+function InputFiltroColuna({ value, onChange, numeric }) {
+  return (
+    <input
+      value={value}
+      onChange={e=>onChange(e.target.value)}
+      placeholder="filtrar…"
+      style={{
+        width:'100%', boxSizing:'border-box', fontFamily:'inherit', fontSize:11,
+        padding:'4px 6px', border:'1px solid #E5E7EB', borderRadius:4,
+        textAlign:numeric?'right':'left', background:value?'#FFFBEB':'#fff',
+      }}
+    />
+  )
+}
+
+// ─── Aba 1: Dash × Razão (movimentos) ────────────────────────────────────────
 function DashRazao({ importacoes }) {
   const [impId, setImpId] = useState('')
   const [fase, setFase] = useState('idle')
   const [dados, setDados] = useState([])
-  const [fProd, setFProd] = useState('')
-  const [fLocal, setFLocal] = useState('')
-  const [busca, setBusca] = useState('')
+  // Filtro por coluna, estilo Excel: um valor de texto por coluna, aplicado
+  // em conjunto (AND) — digita em "Produto" e em "Tipo" ao mesmo tempo, por
+  // exemplo, e a tabela só mostra o que bate nos dois.
+  const [colFiltros, setColFiltros] = useState({})
+  const setFiltroCol = (id, v) => setColFiltros(prev => ({ ...prev, [id]: v }))
+  const limparFiltros = () => setColFiltros({})
 
   useEffect(() => {
     if (importacoes.length) setImpId(importacoes[0].id)
@@ -33,29 +73,19 @@ function DashRazao({ importacoes }) {
       .catch(() => setFase('erro'))
   }, [impId])
 
-  const opcoes = useMemo(() => ({
-    prods: [...new Set(dados.map(r=>r.codprod).filter(Boolean))].sort(),
-    locais: [...new Set(dados.map(r=>r.codlocal).filter(Boolean))].sort(),
-  }), [dados])
-
   const filtrados = useMemo(() => {
-    const q = busca.trim().toLowerCase()
-    return dados.filter(r => {
-      if (fProd && r.codprod !== fProd) return false
-      if (fLocal && r.codlocal !== fLocal) return false
-      if (q) {
-        const h = `${r.codprod} ${r.descrprod} ${r.numnota} ${r.nomeparc} ${r.descroper}`.toLowerCase()
-        if (!h.includes(q)) return false
-      }
-      return true
-    })
-  }, [dados, fProd, fLocal, busca])
+    const entradas = Object.entries(colFiltros).filter(([,v]) => v && v.trim())
+    if (!entradas.length) return dados
+    return dados.filter(r => entradas.every(([colId, v]) => {
+      const col = COLUNAS_MOV.find(c => c.id === colId)
+      if (!col) return true
+      return col.texto(r).toLowerCase().includes(v.trim().toLowerCase())
+    }))
+  }, [dados, colFiltros])
 
-  // FIX: antes somava tudo com Math.abs (entrada e saída juntas, sem sinal) -
-  // "valorTotal" ficava inflado e escondia se o movimento líquido do período
-  // foi positivo ou negativo. Agora separamos por TIPO (ENTRADA/SAÍDA), cada
-  // um mantendo seu sinal original (custototal de saída já vem negativo direto
-  // do banco), e mostramos os dois lados + o saldo líquido (soma dos dois).
+  // KPIs gerais (entrada/saída/saldo líquido) — sempre sobre TODO o período,
+  // não mudam com o filtro. Cada lado mantém seu próprio sinal (custototal de
+  // saída já vem negativo do banco), nunca somamos com Math.abs.
   const kpi = useMemo(() => {
     let entradaValor = 0, saidaValor = 0, entradaQtd = 0, saidaQtd = 0
     dados.forEach(r => {
@@ -63,12 +93,16 @@ function DashRazao({ importacoes }) {
       if (r.tipo === 'ENTRADA') { entradaValor += v; entradaQtd++ }
       else { saidaValor += v; saidaQtd++ }
     })
-    return {
-      entradaValor, saidaValor, entradaQtd, saidaQtd,
-      saldoNeto: entradaValor + saidaValor,
-      qtdMovimentos: dados.length,
-    }
+    return { entradaValor, saidaValor, entradaQtd, saidaQtd, saldoNeto: entradaValor+saidaValor, qtdMovimentos: dados.length }
   }, [dados])
+
+  // Subtotal do rodapé — igual Excel: soma só o que está sendo mostrado na
+  // tela agora (respeitando os filtros de coluna), não o total do período.
+  const subtotal = useMemo(() => ({
+    qtd: filtrados.reduce((s,r)=>s+(Number(r.qtdneg)||0),0),
+    valor: filtrados.reduce((s,r)=>s+(Number(r.custototal)||0),0),
+    linhas: filtrados.length,
+  }), [filtrados])
 
   const exportar = () => {
     const cols = ['codprod','descrprod','codlocal','descrlocal','numnota','data_mov','tipo','descroper',
@@ -80,6 +114,8 @@ function DashRazao({ importacoes }) {
     const a=document.createElement('a'); a.href=url; a.download=`dash-razao-${impId}.csv`; a.click()
     URL.revokeObjectURL(url)
   }
+
+  const temFiltro = Object.values(colFiltros).some(v => v && v.trim())
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:16}}>
@@ -101,30 +137,30 @@ function DashRazao({ importacoes }) {
       {fase==='carregando'&&<Spinner/>}
       {fase==='pronto'&&(
         <>
-          {/* KPIs: entradas e saídas separadas, saldo líquido, e quantidade total */}
+          {/* KPIs gerais do período (não mudam com o filtro) */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1px 1fr 1px 1fr 1px 1fr',background:'#fff',border:'1px solid #E5E7EB',borderRadius:8,padding:'14px 20px'}}>
             <div>
-              <div style={KPI_LABEL}>Entradas</div>
+              <div style={KPI_LABEL}>Entradas (período todo)</div>
               <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums',color:'#12805C'}}>+R$ {brl(kpi.entradaValor)}</div>
               <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>{int(kpi.entradaQtd)} movimentos</div>
             </div>
             <div style={{background:'#E5E7EB'}}/>
             <div style={{paddingLeft:20}}>
-              <div style={KPI_LABEL}>Saídas</div>
+              <div style={KPI_LABEL}>Saídas (período todo)</div>
               <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums',color:'#B42318'}}>R$ {brl(kpi.saidaValor)}</div>
               <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>{int(kpi.saidaQtd)} movimentos</div>
             </div>
             <div style={{background:'#E5E7EB'}}/>
             <div style={{paddingLeft:20}}>
-              <div style={KPI_LABEL}>Saldo líquido (entrada + saída)</div>
+              <div style={KPI_LABEL}>Saldo líquido (período todo)</div>
               <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>
                 {kpi.saldoNeto>0?'+':''}R$ {brl(kpi.saldoNeto)}
               </div>
-              <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>diferença entre os dois lados</div>
+              <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>entradas + saídas</div>
             </div>
             <div style={{background:'#E5E7EB'}}/>
             <div style={{paddingLeft:20}}>
-              <div style={KPI_LABEL}>Quantidade de movimentos (total)</div>
+              <div style={KPI_LABEL}>Quantidade (período todo)</div>
               <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{int(kpi.qtdMovimentos)}</div>
               <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>
                 {[...new Set(dados.map(r=>r.codprod))].length} produtos · {[...new Set(dados.map(r=>r.codlocal))].length} locais
@@ -136,40 +172,40 @@ function DashRazao({ importacoes }) {
             title={`${int(filtrados.length)} de ${int(dados.length)} movimentos`}
             action={
               <div style={{display:'flex',gap:8}}>
-                {(fProd||fLocal||busca)&&<Btn small onClick={()=>{setFProd('');setFLocal('');setBusca('')}}>✕ Limpar</Btn>}
+                {temFiltro && <Btn small onClick={limparFiltros}>✕ Limpar filtros</Btn>}
                 <Btn small onClick={exportar}>↓ CSV</Btn>
               </div>
             }
           >
-            <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:14}}>
-              <Select label="Produto" value={fProd} onChange={setFProd}
-                options={opcoes.prods.map(p=>{
-                  const d=dados.find(r=>r.codprod===p)
-                  return p+(d?.descrprod?' — '+d.descrprod.slice(0,35):'')
-                })}
-              />
-              <Select label="Local" value={fLocal} onChange={setFLocal} options={opcoes.locais}/>
-              <SearchInput value={busca} onChange={setBusca} placeholder="produto, nota, parceiro…"/>
+            <div style={{fontSize:11.5,color:'#9CA3AF',marginBottom:10}}>
+              Digite em qualquer coluna abaixo pra filtrar — funciona igual filtro de planilha, e pode combinar várias colunas ao mesmo tempo.
             </div>
 
-            <div style={{maxHeight:580,overflowX:'auto',overflowY:'auto',margin:'0 -18px -16px',borderTop:'1px solid #F3F4F6'}}>
+            <div style={{maxHeight:600,overflowX:'auto',overflowY:'auto',margin:'0 -18px -16px',borderTop:'1px solid #F3F4F6'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                 <thead>
                   <tr>
-                    {[
-                      ['Data',false],['Produto',false],['Local',false],['Nota',false],
-                      ['Tipo',false],['Operação',false],['Parceiro',false],
-                      ['Qtd mov.',true],['Custo unit.',true],['Valor mov.',true],
-                      ['Saldo ant. Qtd',true],['Saldo ant. R$',true],
-                      ['Saldo aps. Qtd',true],['Saldo aps. R$',true],
-                      ['Conta CTB',false],['Lote',false],
-                    ].map(([h,num])=>(
-                      <th key={h} style={{
-                        position:'sticky',top:0,background:'#F9FAFB',zIndex:1,
-                        padding:'8px 11px',textAlign:num?'right':'left',
+                    {COLUNAS_MOV.map(c=>(
+                      <th key={c.id} style={{
+                        position:'sticky',top:0,background:'#F9FAFB',zIndex:2,
+                        padding:'8px 11px 4px',textAlign:c.num?'right':'left',
                         fontSize:10.5,fontWeight:600,color:'#6B7280',textTransform:'uppercase',
-                        letterSpacing:'.04em',borderBottom:'1px solid #E5E7EB',whiteSpace:'nowrap',
-                      }}>{h}</th>
+                        letterSpacing:'.04em',borderBottom:'1px solid #F3F4F6',whiteSpace:'nowrap',
+                      }}>{c.label}</th>
+                    ))}
+                  </tr>
+                  <tr>
+                    {COLUNAS_MOV.map(c=>(
+                      <th key={c.id} style={{
+                        position:'sticky',top:24,background:'#F9FAFB',zIndex:2,
+                        padding:'0 6px 8px',borderBottom:'1px solid #E5E7EB',
+                      }}>
+                        <InputFiltroColuna
+                          value={colFiltros[c.id]||''}
+                          onChange={v=>setFiltroCol(c.id, v)}
+                          numeric={c.num}
+                        />
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -220,9 +256,29 @@ function DashRazao({ importacoes }) {
                     </td></tr>
                   )}
                   {!filtrados.length&&(
-                    <tr><td colSpan={16} style={{textAlign:'center',padding:'28px',color:'#9CA3AF'}}>Nenhum registro.</td></tr>
+                    <tr><td colSpan={16} style={{textAlign:'center',padding:'28px',color:'#9CA3AF'}}>Nenhum registro com esses filtros.</td></tr>
                   )}
                 </tbody>
+                {/* Subtotal — igual Excel: soma só o que está filtrado/visível agora */}
+                {filtrados.length > 0 && (
+                  <tfoot>
+                    <tr style={{background:'#F9FAFB',fontWeight:700,borderTop:'2px solid #E5E7EB'}}>
+                      <td colSpan={7} style={{padding:'9px 11px',fontSize:12}}>
+                        Subtotal ({int(subtotal.linhas)} {subtotal.linhas===1?'linha':'linhas'}{temFiltro?' filtradas':''})
+                      </td>
+                      <td style={{padding:'9px 11px',textAlign:'right',fontVariantNumeric:'tabular-nums',
+                        color:subtotal.qtd>0?'#12805C':subtotal.qtd<0?'#B42318':'#101828'}}>
+                        {subtotal.qtd>0?'+':''}{subtotal.qtd.toLocaleString('pt-BR',{minimumFractionDigits:2})}
+                      </td>
+                      <td/>
+                      <td style={{padding:'9px 11px',textAlign:'right',fontVariantNumeric:'tabular-nums',
+                        color:subtotal.valor>0?'#12805C':subtotal.valor<0?'#B42318':'#101828'}}>
+                        {subtotal.valor>0?'+':''}R$ {brl(subtotal.valor)}
+                      </td>
+                      <td colSpan={6}/>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </Panel>
@@ -297,9 +353,6 @@ function Comparativo({ importacoes }) {
     return a
   }, [filtrados, ordem])
 
-  // Aqui saldo_dash já vem com o sinal correto por conta+nota (entrada numa
-  // conta, saída na outra, cada uma já refletida como positivo/negativo pela
-  // própria consulta no Sankhya) — por isso somamos direto, sem Math.abs.
   const kpi = useMemo(() => ({
     custo: dados.reduce((s,r)=>s+Number(r.saldo_dash||0),0),
     ctb: dados.reduce((s,r)=>s+Number(r.saldo_contabil||0),0),
@@ -307,6 +360,13 @@ function Comparativo({ importacoes }) {
     inv: dados.filter(r=>r.classe_divergencia==='INVESTIGAR').length,
     adj: dados.filter(r=>r.classe_divergencia==='AJUSTE_CUSTO').length,
   }), [dados])
+
+  // Subtotal do que está filtrado agora (igual Excel)
+  const subtotal = useMemo(() => ({
+    custo: filtrados.reduce((s,r)=>s+Number(r.saldo_dash||0),0),
+    ctb: filtrados.reduce((s,r)=>s+Number(r.saldo_contabil||0),0),
+    linhas: filtrados.length,
+  }), [filtrados])
 
   const exportar = () => {
     const cols = ['conta_contabil','nota_fiscal','descr_local','data_entrada_saida',
@@ -359,19 +419,19 @@ function Comparativo({ importacoes }) {
           {/* KPIs */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1px 1fr 1px 1fr',background:'#fff',border:'1px solid #E5E7EB',borderRadius:8,padding:'14px 20px'}}>
             <div>
-              <div style={KPI_LABEL}>Valor do movimento</div>
+              <div style={KPI_LABEL}>Valor do movimento (período todo)</div>
               <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>R$ {brl(kpi.custo)}</div>
               <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>soma do fluxo do período (estoque)</div>
             </div>
             <div style={{background:'#E5E7EB'}}/>
             <div style={{paddingLeft:20}}>
-              <div style={KPI_LABEL}>Saldo contábil</div>
+              <div style={KPI_LABEL}>Saldo contábil (período todo)</div>
               <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>R$ {brl(kpi.ctb)}</div>
               <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>lançamentos TCBLAN no período</div>
             </div>
             <div style={{background:'#E5E7EB'}}/>
             <div style={{paddingLeft:20}}>
-              <div style={KPI_LABEL}>Diferença</div>
+              <div style={KPI_LABEL}>Diferença (período todo)</div>
               <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums',
                 color:isZero(kpi.custo-kpi.ctb)?'#12805C':'#B54708'}}>
                 R$ {brl(kpi.custo-kpi.ctb)}
@@ -476,6 +536,19 @@ function Comparativo({ importacoes }) {
                     </td></tr>
                   )}
                 </tbody>
+                {ordenados.length > 0 && (
+                  <tfoot>
+                    <tr style={{background:'#F9FAFB',fontWeight:700,borderTop:'2px solid #E5E7EB'}}>
+                      <td colSpan={5} style={{padding:'9px 12px',fontSize:12}}>
+                        Subtotal ({int(subtotal.linhas)} {subtotal.linhas===1?'linha':'linhas'}{temFiltro?' filtradas':''})
+                      </td>
+                      <td style={{padding:'9px 12px',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>R$ {brl(subtotal.custo)}</td>
+                      <td style={{padding:'9px 12px',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>R$ {brl(subtotal.ctb)}</td>
+                      <td style={{padding:'9px 12px',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>R$ {brl(subtotal.custo-subtotal.ctb)}</td>
+                      <td colSpan={4}/>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </Panel>
@@ -493,10 +566,15 @@ export default function Razao() {
   const [impRazao, setImpRazao] = useState([])
 
   useEffect(() => {
-    sbFetch('importacoes?select=importacao_id:id,periodo_inicio,periodo_fim,total:total_linhas&order=periodo_inicio.desc')
+    // FIX: ordenar por criado_em (quando a sincronizacao realmente rodou),
+    // nao por periodo_inicio - varias sincronizacoes (inclusive tentativas
+    // antigas que falharam e ficaram com 0 linhas) compartilham o mesmo
+    // periodo_inicio (ex.: sempre "01/08"), entao ordenar so por essa data
+    // podia trazer um registro errado/vazio pra frente do mais recente e bom.
+    sbFetch('importacoes?select=importacao_id:id,periodo_inicio,periodo_fim,total:total_linhas,criado_em&order=criado_em.desc')
       .then(r => setImpConcil(r||[]))
       .catch(()=>{})
-    sbFetch('razao_importacoes?select=*&order=periodo_inicio.desc')
+    sbFetch('razao_importacoes?select=*&order=criado_em.desc')
       .then(r => setImpRazao(r||[]))
       .catch(()=>{})
   }, [])
