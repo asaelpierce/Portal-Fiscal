@@ -13,6 +13,7 @@ import FluxoCaixa from './pages/FluxoCaixa.jsx'
 import ConferenciaFaturamento from './pages/ConferenciaFaturamento.jsx'
 import ConferenciaFiscal from './pages/ConferenciaFiscal.jsx'
 import Divergencias from './pages/Divergencias.jsx'
+import RateioCompras from './pages/RateioCompras.jsx'
 
 const MENU_COMPLETO = [
   { id: 'visao', label: 'Visão geral', icon: '▦' },
@@ -23,6 +24,7 @@ const MENU_COMPLETO = [
   { id: 'confiscal', label: 'Conferência Fiscal', icon: '📑' },
   { id: 'fechamento', label: 'Comp. Saldo de Estoque', icon: '⚖' },
   { id: 'razao', label: 'Movimentos', icon: '📋' },
+  { id: 'rateio', label: 'Rateio de Compras', icon: '➗' },
   { id: 'contas', label: 'Contas contábeis', icon: '⊞' },
   { id: 'historico', label: 'Histórico', icon: '⊙' },
   { id: 'sync', label: 'Importar período', icon: '↻' },
@@ -204,14 +206,14 @@ function AppAutenticado({ sessao, onLogout }) {
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
               {MENU.find(m => m.id === pagina)?.label}
             </h1>
-            {periodoAtual && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal'].includes(pagina) && (
+            {periodoAtual && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio'].includes(pagina) && (
               <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9CA3AF' }}>
                 Período {dBR(periodoAtual.periodo_inicio)} a {dBR(periodoAtual.periodo_fim)}
               </p>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {resumos.length > 1 && !['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal'].includes(pagina) && (
+            {resumos.length > 1 && !['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio'].includes(pagina) && (
               <select
                 value={periodoId || ''}
                 onChange={e => setPeriodoId(e.target.value)}
@@ -227,47 +229,58 @@ function AppAutenticado({ sessao, onLogout }) {
                 ))}
               </select>
             )}
-            <Btn primary onClick={atualizar} disabled={atualizando || fase === 'carregando'}>
-              {atualizando ? '↻ Atualizando…' : '↻ Atualizar dados'}
-            </Btn>
+            {pagina !== 'rateio' && (
+              <Btn primary onClick={atualizar} disabled={atualizando || fase === 'carregando'}>
+                {atualizando ? '↻ Atualizando…' : '↻ Atualizar dados'}
+              </Btn>
+            )}
           </div>
         </header>
 
         <div style={{ flex: 1, padding: '22px 26px 60px', overflowY: 'auto' }}>
-          {fase === 'carregando' && <Spinner />}
-          {fase === 'erro' && (
-            <EmptyState title="Erro ao carregar" text={erro}>
-              <Btn primary onClick={carregar}>Tentar novamente</Btn>
-            </EmptyState>
-          )}
-          {fase === 'vazio' && (
-            <EmptyState title="Nenhuma sincronização" text="Rode a função conciliacao-sync para importar dados.">
-              <Btn primary onClick={carregar}>Verificar de novo</Btn>
-            </EmptyState>
-          )}
-
-          {fase === 'pronto' && (
+          {/* Rateio de Compras não depende de nenhuma sincronização de período
+              — funciona direto com upload de PDF + chamada de API, então fica
+              disponível mesmo antes da primeira sincronização (fase !== 'pronto'). */}
+          {pagina === 'rateio' ? (
+            <RateioCompras />
+          ) : (
             <>
-              {pagina === 'visao' && (
-                <VIsaoGeral
-                  lancamentos={lancamentos}
-                  fechamento={fechamento}
-                  onDetalhe={setDetalhe}
-                />
+              {fase === 'carregando' && <Spinner />}
+              {fase === 'erro' && (
+                <EmptyState title="Erro ao carregar" text={erro}>
+                  <Btn primary onClick={carregar}>Tentar novamente</Btn>
+                </EmptyState>
               )}
-              {pagina === 'divergencias' && <Divergencias lancamentos={lancamentos} />}
-              {pagina === 'painel' && <Dashboard />}
-              {pagina === 'fluxocaixa' && <FluxoCaixa />}
-              {pagina === 'compfiscal' && <ConferenciaFaturamento />}
-              {pagina === 'confiscal' && <ConferenciaFiscal />}
-              {pagina === 'fechamento' && <Fechamento />}
-              {pagina === 'razao' && <Razao />}
-              {pagina === 'contas' && (
-                <Contas lancamentos={lancamentos}
-                  onFiltrarConta={() => setPagina('razao')} />
+              {fase === 'vazio' && (
+                <EmptyState title="Nenhuma sincronização" text="Rode a função conciliacao-sync para importar dados.">
+                  <Btn primary onClick={carregar}>Verificar de novo</Btn>
+                </EmptyState>
               )}
-              {pagina === 'historico' && <Historico resumos={resumos} />}
-              {pagina === 'sync' && <Sincronizacao />}
+
+              {fase === 'pronto' && (
+                <>
+                  {pagina === 'visao' && (
+                    <VIsaoGeral
+                      lancamentos={lancamentos}
+                      fechamento={fechamento}
+                      onDetalhe={setDetalhe}
+                    />
+                  )}
+                  {pagina === 'divergencias' && <Divergencias lancamentos={lancamentos} />}
+                  {pagina === 'painel' && <Dashboard />}
+                  {pagina === 'fluxocaixa' && <FluxoCaixa />}
+                  {pagina === 'compfiscal' && <ConferenciaFaturamento />}
+                  {pagina === 'confiscal' && <ConferenciaFiscal />}
+                  {pagina === 'fechamento' && <Fechamento />}
+                  {pagina === 'razao' && <Razao />}
+                  {pagina === 'contas' && (
+                    <Contas lancamentos={lancamentos}
+                      onFiltrarConta={() => setPagina('razao')} />
+                  )}
+                  {pagina === 'historico' && <Historico resumos={resumos} />}
+                  {pagina === 'sync' && <Sincronizacao />}
+                </>
+              )}
             </>
           )}
         </div>
