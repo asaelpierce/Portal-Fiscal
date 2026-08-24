@@ -9,17 +9,19 @@ const SYNC_KEY = 'kb2026sync!'
 
 // Mesma Edge Function já usada no DrawerDetalhe (fechamento/conciliação) —
 // reaproveitamos aqui pra mostrar os dados do pedido assim que o usuário
-// digita o Nro. Único, sem precisar esperar carregar o PDF.
-async function buscarDetalhePedido(nunota, signal) {
+// digita o número, sem precisar esperar carregar o PDF. Aceita busca por
+// Nro. Único (nunota) OU por Número do documento (numnota) — nunca os dois
+// ao mesmo tempo. Não lança erro aqui porque um retorno "não-ok" pode ser
+// um caso normal de múltiplos pedidos com o mesmo número de documento, que
+// o componente trata separadamente (não é uma falha de rede).
+async function buscarDetalhePedido({ nunota, numnota }, signal) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/nota-detalhe`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
-    body: JSON.stringify({ nunota, _key: SYNC_KEY }),
+    body: JSON.stringify({ nunota, numnota, _key: SYNC_KEY }),
     signal,
   })
-  const data = await res.json()
-  if (!data.ok) throw new Error(data.erro || 'Pedido não encontrado no Sankhya.')
-  return data
+  return res.json()
 }
 
 // Chama a Edge Function direto do navegador — mesmo padrão usado em todas
@@ -91,7 +93,17 @@ function TabelaDetalhe({ titulo, colunas, linhas, alinharDireita = [] }) {
 }
 
 export default function RateioCompras() {
-  const [nunota, setNunota] = useState('')
+  // 'nunota' = Nro. Único (sempre exclusivo de um pedido).
+  // 'numnota' = Número do documento (pode repetir entre pedidos diferentes,
+  // por isso às vezes precisa de uma etapa extra de desambiguação).
+  const [modoBusca, setModoBusca] = useState('nunota')
+  const [entradaPedido, setEntradaPedido] = useState('')
+  // Nro. Único já confirmado/resolvido — é sempre esse valor que vai pro
+  // Sankhya na hora de confirmar o rateio, nunca o texto digitado cru
+  // quando o modo de busca é por número de documento.
+  const [nunotaResolvido, setNunotaResolvido] = useState('')
+  const [opcoesMultiplas, setOpcoesMultiplas] = useState(null)
+
   const [tipoPadrao, setTipoPadrao] = useState(Object.keys(NATUREZAS_POR_TIPO)[0])
   const [linhas, setLinhas] = useState([])
   const [carregandoPdf, setCarregandoPdf] = useState(false)
@@ -101,22 +113,24 @@ export default function RateioCompras() {
   const [nomeArquivo, setNomeArquivo] = useState('')
 
   // Detalhes do pedido, buscados automaticamente enquanto o usuário digita
-  // o Nro. Único (com debounce, pra não disparar uma consulta a cada tecla).
+  // (com debounce, pra não disparar uma consulta a cada tecla).
   const [detalhePedido, setDetalhePedido] = useState(null)
   const [carregandoDetalhe, setCarregandoDetalhe] = useState(false)
   const [erroDetalhe, setErroDetalhe] = useState(null)
   const abortRef = useRef(null)
 
   useEffect(() => {
-    const numero = nunota.trim()
+    const valor = entradaPedido.trim()
     setDetalhePedido(null)
     setErroDetalhe(null)
+    setOpcoesMultiplas(null)
+    setNunotaResolvido(modoBusca === 'nunota' && /^\d{3,}$/.test(valor) ? valor : '')
 
     if (abortRef.current) abortRef.current.abort()
 
-    // Só busca quando parecer um número de pedido de verdade (evita disparo
-    // com "1", "12" etc. enquanto a pessoa ainda está digitando).
-    if (!/^\d{3,}$/.test(numero)) {
+    // Só busca quando parecer um número de verdade (evita disparo com "1",
+    // "12" etc. enquanto a pessoa ainda está digitando).
+    if (!/^\d{3,}$/.test(valor)) {
       setCarregandoDetalhe(false)
       return
     }
@@ -126,8 +140,23 @@ export default function RateioCompras() {
     setCarregandoDetalhe(true)
 
     const timer = setTimeout(() => {
-      buscarDetalhePedido(numero, controller.signal)
-        .then(dados => { setDetalhePedido(dados); setCarregandoDetalhe(false) })
+      const params = modoBusca === 'nunota' ? { nunota: valor } : { numnota: valor }
+      buscarDetalhePedido(params, controller.signal)
+        .then(dados => {
+          if (dados.multiplos) {
+            setOpcoesMultiplas(dados.opcoes)
+            setCarregandoDetalhe(false)
+            return
+          }
+          if (!dados.ok) {
+            setErroDetalhe(dados.erro || 'Pedido não encontrado no Sankhya.')
+            setCarregandoDetalhe(false)
+            return
+          }
+          setDetalhePedido(dados)
+          setNunotaResolvido(dados.cab?.nunota || (modoBusca === 'nunota' ? valor : ''))
+          setCarregandoDetalhe(false)
+        })
         .catch(err => {
           if (err.name === 'AbortError') return
           setErroDetalhe(err.message || String(err))
@@ -136,7 +165,29 @@ export default function RateioCompras() {
     }, 500) // espera 500ms sem digitar antes de consultar o Sankhya
 
     return () => clearTimeout(timer)
-  }, [nunota])
+  }, [entradaPedido, modoBusca])
+
+  // Quando o número do documento bate com mais de um pedido de compra, a
+  // pessoa escolhe qual é o certo aqui — buscamos o detalhe completo já
+  // pelo Nro. Único daquela opção (sem ambiguidade).
+  async function escolherOpcaoMultipla(opcao) {
+    setOpcoesMultiplas(null)
+    setErroDetalhe(null)
+    setCarregandoDetalhe(true)
+    try {
+      const dados = await buscarDetalhePedido({ nunota: opcao.nunota })
+      if (!dados.ok) {
+        setErroDetalhe(dados.erro || 'Erro ao buscar esse pedido.')
+        return
+      }
+      setDetalhePedido(dados)
+      setNunotaResolvido(dados.cab?.nunota || opcao.nunota)
+    } catch (err) {
+      setErroDetalhe(err.message || String(err))
+    } finally {
+      setCarregandoDetalhe(false)
+    }
+  }
 
   const codnatPadraoAtual = NATUREZAS_POR_TIPO[tipoPadrao] ?? ''
   const total = linhas.reduce((acc, l) => acc + l.valor, 0)
@@ -188,8 +239,13 @@ export default function RateioCompras() {
   }
 
   async function confirmarRateio() {
-    if (!nunota.trim()) {
-      setResultado({ ok: false, erro: 'Informe o Nro. Único do pedido.' })
+    if (!nunotaResolvido) {
+      setResultado({
+        ok: false,
+        erro: modoBusca === 'nunota'
+          ? 'Informe o Nro. Único do pedido.'
+          : 'Informe o Número do documento e aguarde localizar o pedido (ou escolha uma opção, se houver mais de um) antes de confirmar.',
+      })
       return
     }
     if (linhas.length === 0) {
@@ -204,7 +260,7 @@ export default function RateioCompras() {
     setEnviando(true)
     setResultado(null)
     try {
-      const dados = await confirmarRateioNoSankhya({ nunota, codnatPadrao: codnatPadraoAtual, linhas })
+      const dados = await confirmarRateioNoSankhya({ nunota: nunotaResolvido, codnatPadrao: codnatPadraoAtual, linhas })
       setResultado(dados)
     } catch (err) {
       setResultado({ ok: false, erro: err.message || String(err) })
@@ -214,7 +270,8 @@ export default function RateioCompras() {
   }
 
   function limparTudo() {
-    setNunota(''); setLinhas([]); setResultado(null); setErroLeitura(null); setNomeArquivo('')
+    setEntradaPedido(''); setNunotaResolvido(''); setOpcoesMultiplas(null)
+    setLinhas([]); setResultado(null); setErroLeitura(null); setNomeArquivo('')
   }
 
   return (
@@ -224,11 +281,30 @@ export default function RateioCompras() {
         <div style={{ display:'flex', gap:20, flexWrap:'wrap', alignItems:'flex-end' }}>
           <div>
             <label style={{ display:'block', fontSize:12, color:'#6B7280', fontWeight:600, marginBottom:5 }}>
-              Nro. Único do pedido
+              Buscar pedido por
             </label>
+            <div style={{ display:'flex', gap:14, marginBottom:7 }}>
+              <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:12.5, cursor:'pointer' }}>
+                <input
+                  type="radio" name="modo-busca"
+                  checked={modoBusca === 'nunota'}
+                  onChange={() => setModoBusca('nunota')}
+                />
+                Nro. Único
+              </label>
+              <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:12.5, cursor:'pointer' }}>
+                <input
+                  type="radio" name="modo-busca"
+                  checked={modoBusca === 'numnota'}
+                  onChange={() => setModoBusca('numnota')}
+                />
+                Número do documento
+              </label>
+            </div>
             <input
-              type="text" value={nunota} onChange={e => setNunota(e.target.value)}
-              placeholder="ex.: 119685" style={{ ...inputStyle, width: 180 }}
+              type="text" value={entradaPedido} onChange={e => setEntradaPedido(e.target.value)}
+              placeholder={modoBusca === 'nunota' ? 'ex.: 119685' : 'ex.: 10127'}
+              style={{ ...inputStyle, width: 180 }}
             />
           </div>
 
@@ -239,7 +315,7 @@ export default function RateioCompras() {
             <input type="file" accept="application/pdf" onChange={aoEscolherArquivo} style={{ fontSize:13 }} />
           </div>
 
-          {(nunota || linhas.length > 0) && (
+          {(entradaPedido || linhas.length > 0) && (
             <Btn small onClick={limparTudo}>✕ Limpar tudo</Btn>
           )}
         </div>
@@ -266,18 +342,42 @@ export default function RateioCompras() {
         </div>
       </Panel>
 
-      {(carregandoDetalhe || erroDetalhe || detalhePedido) && (
+      {(carregandoDetalhe || erroDetalhe || detalhePedido || opcoesMultiplas) && (
         <Panel title="Detalhes do pedido">
           {carregandoDetalhe && (
             <div style={{ display:'flex', alignItems:'center', gap:10, color:'#9CA3AF', fontSize:13 }}>
               <div style={{ width:16, height:16, border:'2.5px solid #E5E7EB', borderTopColor:'#1D5BBF', borderRadius:'50%', animation:'girar .8s linear infinite' }} />
-              Buscando pedido {nunota} no Sankhya…
+              Buscando pedido {entradaPedido} no Sankhya…
               <style>{`@keyframes girar{to{transform:rotate(360deg)}}`}</style>
             </div>
           )}
 
           {erroDetalhe && !carregandoDetalhe && (
             <div style={{ color:'#B42318', fontSize:13 }}>⚠ {erroDetalhe}</div>
+          )}
+
+          {opcoesMultiplas && !carregandoDetalhe && (
+            <div>
+              <div style={{ fontSize:12.5, color:'#B54708', marginBottom:10 }}>
+                ⚠ {opcoesMultiplas.length} pedidos de compra usam o documento nº {entradaPedido}. Qual deles é o certo?
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {opcoesMultiplas.map(op => (
+                  <button
+                    key={op.nunota}
+                    onClick={() => escolherOpcaoMultipla(op)}
+                    style={{
+                      display:'flex', justifyContent:'space-between', alignItems:'center',
+                      padding:'10px 14px', border:'1px solid #E5E7EB', borderRadius:8,
+                      background:'#fff', cursor:'pointer', fontFamily:'inherit', fontSize:13, textAlign:'left',
+                    }}
+                  >
+                    <span><strong>{op.parceiro}</strong> · {op.dtneg} · Nro. Único {op.nunota}</span>
+                    <span style={{ fontWeight:700 }}>R$ {brl(op.vlrnota)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           {detalhePedido?.cab && !carregandoDetalhe && (
