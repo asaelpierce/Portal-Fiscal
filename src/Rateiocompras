@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { SUPABASE_URL, SUPABASE_ANON_KEY, brl } from '../config.js'
 import { Panel, Btn, Spinner } from '../components/UI.jsx'
 import { lerRateioPdf } from '../lib/rateioPdfParser.js'
@@ -6,6 +6,21 @@ import { buscarCodigoCentroResultado } from '../lib/rateioCentrosResultado.js'
 import { NATUREZAS_POR_TIPO } from '../lib/rateioNaturezas.js'
 
 const SYNC_KEY = 'kb2026sync!'
+
+// Mesma Edge Function já usada no DrawerDetalhe (fechamento/conciliação) —
+// reaproveitamos aqui pra mostrar os dados do pedido assim que o usuário
+// digita o Nro. Único, sem precisar esperar carregar o PDF.
+async function buscarDetalhePedido(nunota, signal) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/nota-detalhe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    body: JSON.stringify({ nunota, _key: SYNC_KEY }),
+    signal,
+  })
+  const data = await res.json()
+  if (!data.ok) throw new Error(data.erro || 'Pedido não encontrado no Sankhya.')
+  return data
+}
 
 // Chama a Edge Function direto do navegador — mesmo padrão usado em todas
 // as outras telas deste app (a chave já fica exposta client-side em vários
@@ -43,6 +58,44 @@ export default function RateioCompras() {
   const [resultado, setResultado] = useState(null)
   const [erroLeitura, setErroLeitura] = useState(null)
   const [nomeArquivo, setNomeArquivo] = useState('')
+
+  // Detalhes do pedido, buscados automaticamente enquanto o usuário digita
+  // o Nro. Único (com debounce, pra não disparar uma consulta a cada tecla).
+  const [detalhePedido, setDetalhePedido] = useState(null)
+  const [carregandoDetalhe, setCarregandoDetalhe] = useState(false)
+  const [erroDetalhe, setErroDetalhe] = useState(null)
+  const abortRef = useRef(null)
+
+  useEffect(() => {
+    const numero = nunota.trim()
+    setDetalhePedido(null)
+    setErroDetalhe(null)
+
+    if (abortRef.current) abortRef.current.abort()
+
+    // Só busca quando parecer um número de pedido de verdade (evita disparo
+    // com "1", "12" etc. enquanto a pessoa ainda está digitando).
+    if (!/^\d{3,}$/.test(numero)) {
+      setCarregandoDetalhe(false)
+      return
+    }
+
+    const controller = new AbortController()
+    abortRef.current = controller
+    setCarregandoDetalhe(true)
+
+    const timer = setTimeout(() => {
+      buscarDetalhePedido(numero, controller.signal)
+        .then(dados => { setDetalhePedido(dados); setCarregandoDetalhe(false) })
+        .catch(err => {
+          if (err.name === 'AbortError') return
+          setErroDetalhe(err.message || String(err))
+          setCarregandoDetalhe(false)
+        })
+    }, 500) // espera 500ms sem digitar antes de consultar o Sankhya
+
+    return () => clearTimeout(timer)
+  }, [nunota])
 
   const codnatPadraoAtual = NATUREZAS_POR_TIPO[tipoPadrao] ?? ''
   const total = linhas.reduce((acc, l) => acc + l.valor, 0)
@@ -171,6 +224,70 @@ export default function RateioCompras() {
           </p>
         </div>
       </Panel>
+
+      {(carregandoDetalhe || erroDetalhe || detalhePedido) && (
+        <Panel title="Detalhes do pedido">
+          {carregandoDetalhe && (
+            <div style={{ display:'flex', alignItems:'center', gap:10, color:'#9CA3AF', fontSize:13 }}>
+              <div style={{ width:16, height:16, border:'2.5px solid #E5E7EB', borderTopColor:'#1D5BBF', borderRadius:'50%', animation:'girar .8s linear infinite' }} />
+              Buscando pedido {nunota} no Sankhya…
+              <style>{`@keyframes girar{to{transform:rotate(360deg)}}`}</style>
+            </div>
+          )}
+
+          {erroDetalhe && !carregandoDetalhe && (
+            <div style={{ color:'#B42318', fontSize:13 }}>⚠ {erroDetalhe}</div>
+          )}
+
+          {detalhePedido?.cab && !carregandoDetalhe && (
+            <>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))', gap:12, marginBottom: detalhePedido.itens?.length ? 16 : 0 }}>
+                {[
+                  ['Fornecedor', detalhePedido.cab.parceiro],
+                  ['CNPJ', detalhePedido.cab.cnpj],
+                  ['Data', detalhePedido.cab.dtentsai || detalhePedido.cab.dtneg],
+                  ['Operação', detalhePedido.cab.descroper],
+                  ['Natureza', detalhePedido.cab.descrnat],
+                  ['Valor da nota', `R$ ${brl(detalhePedido.cab.vlrnota)}`],
+                ].map(([label, valor]) => (
+                  <div key={label}>
+                    <div style={{ fontSize:10.5, color:'#9CA3AF', marginBottom:3, textTransform:'uppercase', letterSpacing:'.04em' }}>{label}</div>
+                    <div style={{ fontSize:13.5, fontWeight:600, color:'#101828' }}>{valor || '—'}</div>
+                  </div>
+                ))}
+              </div>
+
+              {detalhePedido.itens?.length > 0 && (
+                <div style={{ overflowX:'auto', margin:'0 -18px -14px', borderTop:'1px solid #F3F4F6' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
+                    <thead>
+                      <tr>
+                        {['Produto','Local','Qtd','Vlr. unit.'].map((h,i) => (
+                          <th key={h} style={{
+                            padding:'8px 14px', background:'#F9FAFB', borderBottom:'1px solid #E5E7EB',
+                            textAlign: i>=2 ? 'right' : 'left', fontSize:10.5, fontWeight:600, color:'#6B7280',
+                            textTransform:'uppercase', letterSpacing:'.04em', whiteSpace:'nowrap',
+                          }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detalhePedido.itens.map((it, i) => (
+                        <tr key={i} style={{ borderTop:'1px solid #F3F4F6' }}>
+                          <td style={{ padding:'7px 14px' }}>{it.descrprod}</td>
+                          <td style={{ padding:'7px 14px', color:'#6B7280' }}>{it.descrlocal}</td>
+                          <td style={{ padding:'7px 14px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{it.qtdneg} {it.codvol}</td>
+                          <td style={{ padding:'7px 14px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>R$ {brl(it.vlr_unit_nota)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </Panel>
+      )}
 
       {carregandoPdf && <Spinner />}
       {erroLeitura && (
