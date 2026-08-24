@@ -3,13 +3,8 @@
  * extrai pares Setor + Valor. Suporta PDFs com mais de uma tabela na
  * mesma página (soma cada uma separadamente por Total Geral).
  *
- * Depende do pacote "pdfjs-dist" (`npm install pdfjs-dist`). Antes de
- * usar, configure o worker uma vez no ponto de entrada do app (ex.:
- * src/main.jsx):
- *
- *   import * as pdfjsLib from 'pdfjs-dist'
- *   pdfjsLib.GlobalWorkerOptions.workerSrc =
- *     `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+ * Depende do pacote "pdfjs-dist" (`npm install pdfjs-dist`). O worker
+ * já é configurado uma vez em src/main.jsx — não precisa repetir aqui.
  */
 
 import * as pdfjsLib from 'pdfjs-dist'
