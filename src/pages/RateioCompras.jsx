@@ -238,6 +238,12 @@ export default function RateioCompras() {
     ))
   }
 
+  // Remove uma linha que o PDF trouxe errada (duplicada, de mais, etc.) —
+  // não mexe no arquivo original, só na lista que vai ser conferida/enviada.
+  function removerLinha(indice) {
+    setLinhas(atuais => atuais.filter((_, i) => i !== indice))
+  }
+
   async function confirmarRateio() {
     if (!nunotaResolvido) {
       setResultado({
@@ -490,10 +496,10 @@ export default function RateioCompras() {
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
               <thead>
                 <tr>
-                  {['Setor','Valor (R$)','Cód.Centro Resultado','Cód.Natureza'].map((h,i) => (
-                    <th key={h} style={{
+                  {['Setor','Valor (R$)','Cód.Centro Resultado','Cód.Natureza',''].map((h,i) => (
+                    <th key={h || 'acoes'} style={{
                       padding:'9px 14px', background:'#F9FAFB', borderBottom:'1px solid #E5E7EB',
-                      textAlign: i===1 ? 'right' : i>=2 ? 'center' : 'left',
+                      textAlign: i===1 ? 'right' : i>=2 && i<4 ? 'center' : i===4 ? 'center' : 'left',
                       fontSize:10.5, fontWeight:600, color:'#6B7280',
                       textTransform:'uppercase', letterSpacing:'.04em', whiteSpace:'nowrap',
                     }}>{h}</th>
@@ -523,6 +529,18 @@ export default function RateioCompras() {
                       />
                       {l.naturezaManual && <span style={{ fontSize:11, color:'#9CA3AF', marginLeft:4 }}>✎</span>}
                     </td>
+                    <td style={{ padding:'6px 14px', textAlign:'center' }}>
+                      <button
+                        onClick={() => removerLinha(i)}
+                        title="Remover esta linha do rateio"
+                        style={{
+                          border:'none', background:'none', cursor:'pointer',
+                          color:'#B42318', fontSize:16, lineHeight:1, padding:4,
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -532,11 +550,29 @@ export default function RateioCompras() {
                   <td style={{ padding:'9px 14px', borderTop:'2px solid #E5E7EB', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>
                     R$ {brl(total)}
                   </td>
-                  <td colSpan={2} style={{ borderTop:'2px solid #E5E7EB' }} />
+                  <td colSpan={3} style={{ borderTop:'2px solid #E5E7EB' }} />
                 </tr>
               </tfoot>
             </table>
           </div>
+
+          {detalhePedido?.cab?.vlrnota != null && (() => {
+            const diferenca = total - detalhePedido.cab.vlrnota
+            const bate = Math.abs(diferenca) < 0.01
+            return (
+              <div style={{
+                display:'flex', gap:24, marginTop:14, padding:'10px 14px', borderRadius:8,
+                background: bate ? '#F0FDF4' : '#FEF2F2', border:`1px solid ${bate ? '#BBF7D0' : '#FECACA'}`,
+                fontSize:12.5,
+              }}>
+                <div><span style={{ color:'#6B7280' }}>Total da tabela: </span><strong>R$ {brl(total)}</strong></div>
+                <div><span style={{ color:'#6B7280' }}>Valor da nota: </span><strong>R$ {brl(detalhePedido.cab.vlrnota)}</strong></div>
+                <div style={{ color: bate ? '#166534' : '#B42318', fontWeight:700 }}>
+                  {bate ? '✓ Bate certinho' : `⚠ Diferença de R$ ${brl(Math.abs(diferenca))} — ${diferenca > 0 ? 'sobrou linha (o PDF trouxe a mais)' : 'falta linha'}`}
+                </div>
+              </div>
+            )
+          })()}
 
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:16 }}>
             <div style={{ fontSize:12.5, color: semCentroResultado.length ? '#B42318' : '#6B7280' }}>
