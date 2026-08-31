@@ -80,7 +80,7 @@ export default function ConferenciaFiscal() {
           <label style={{ fontSize: 11, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 5 }}>
             XMLs importados a partir de
           </label>
-          <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)}
+          <input type="date" value={dataInicio} onChange={e => { setDataInicio(e.target.value); carregar(e.target.value) }}
             style={{ fontFamily: 'inherit', fontSize: 13, padding: '7px 10px', border: '1px solid #E5E7EB', borderRadius: 6 }} />
         </div>
         <Btn primary onClick={() => carregar(dataInicio)} disabled={fase === 'carregando'}>
