@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { sbFetch, brl, brlK, int, dBR, isZero, classeDe } from '../config.js'
 import { Panel, Select, SearchInput, Spinner, Btn } from '../components/UI.jsx'
 import DrawerDetalhe from '../components/DrawerDetalhe.jsx'
+import SeletorPeriodo from '../components/SeletorPeriodo.jsx'
+import { sincronizarConciliacao, sincronizarRazao } from '../lib/sync.js'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 function fmtPeriodo(inicio, fim) {
@@ -50,8 +52,11 @@ function InputFiltroColuna({ value, onChange, numeric }) {
 }
 
 // ─── Aba 1: Dash × Razão (movimentos) ────────────────────────────────────────
-function DashRazao({ importacoes }) {
+function DashRazao({ importacoes, onSincronizado }) {
   const [impId, setImpId] = useState('')
+  const [dtIni, setDtIni] = useState('')
+  const [dtFim, setDtFim] = useState('')
+  const [faseSync, setFaseSync] = useState('idle') // idle | verificando | sincronizando | pronto | erro
   const [fase, setFase] = useState('idle')
   const [dados, setDados] = useState([])
   // Filtro por coluna, estilo Excel: um valor de texto por coluna, aplicado
@@ -61,9 +66,37 @@ function DashRazao({ importacoes }) {
   const setFiltroCol = (id, v) => setColFiltros(prev => ({ ...prev, [id]: v }))
   const limparFiltros = () => setColFiltros({})
 
+  // Semeia o calendário com o período mais recente só na primeira vez.
   useEffect(() => {
-    if (importacoes.length) setImpId(importacoes[0].id)
-  }, [importacoes])
+    if (importacoes.length && !dtIni && !dtFim) {
+      const maisRecente = importacoes[0]
+      setImpId(maisRecente.id)
+      setDtIni(String(maisRecente.periodo_inicio).slice(0, 10))
+      setDtFim(String(maisRecente.periodo_fim).slice(0, 10))
+      setFaseSync('pronto')
+    }
+  }, [importacoes, dtIni, dtFim])
+
+  const selecionarPeriodo = async (novoDtIni, novoDtFim) => {
+    setDtIni(novoDtIni); setDtFim(novoDtFim)
+    if (!novoDtIni || !novoDtFim) return
+    setFaseSync('verificando')
+    try {
+      const existente = importacoes.find(i => String(i.periodo_inicio).slice(0,10) === novoDtIni && String(i.periodo_fim).slice(0,10) === novoDtFim)
+      if (existente) {
+        setImpId(existente.id)
+        setFaseSync('pronto')
+        return
+      }
+      setFaseSync('sincronizando')
+      const novo = await sincronizarRazao(novoDtIni, novoDtFim)
+      onSincronizado?.()
+      setImpId(novo.id)
+      setFaseSync('pronto')
+    } catch (e) {
+      setFaseSync('erro')
+    }
+  }
 
   useEffect(() => {
     if (!impId) return
@@ -123,19 +156,11 @@ function DashRazao({ importacoes }) {
       {/* Seletor de período */}
       <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
         <label style={{fontSize:12,color:'#6B7280',fontWeight:500}}>Período:</label>
-        <select value={impId} onChange={e=>setImpId(e.target.value)} style={{
-          fontFamily:'inherit',fontSize:13,padding:'7px 12px',border:'1px solid #E5E7EB',borderRadius:6,background:'#fff',
-        }}>
-          {importacoes.map(i=>(
-            <option key={i.id} value={i.id}>
-              {fmtPeriodo(i.periodo_inicio,i.periodo_fim)} · {int(i.total_movimentos)} movimentos
-            </option>
-          ))}
-        </select>
+        <SeletorPeriodo dtIni={dtIni} dtFim={dtFim} onChange={selecionarPeriodo} fase={faseSync} />
       </div>
 
-      {fase==='carregando'&&<Spinner/>}
-      {fase==='pronto'&&(
+      {(fase==='carregando' || faseSync==='sincronizando') && <Spinner/>}
+      {fase==='pronto' && faseSync!=='sincronizando' &&(
         <>
           {/* KPIs gerais do período (não mudam com o filtro) */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1px 1fr 1px 1fr 1px 1fr',background:'#fff',border:'1px solid #E5E7EB',borderRadius:8,padding:'14px 20px'}}>
@@ -289,9 +314,12 @@ function DashRazao({ importacoes }) {
 }
 
 // ─── Aba 2: Comparativo (custo apurado no estoque × saldo contábil) ─────────
-function Comparativo({ importacoes }) {
+function Comparativo({ importacoes, onSincronizado }) {
   const [notaAberta, setNotaAberta] = useState(null)
   const [impId, setImpId] = useState('')
+  const [dtIni, setDtIni] = useState('')
+  const [dtFim, setDtFim] = useState('')
+  const [faseSync, setFaseSync] = useState('idle')
   const [fase, setFase] = useState('idle')
   const [dados, setDados] = useState([])
   const [fConta, setFConta] = useState('')
@@ -304,8 +332,35 @@ function Comparativo({ importacoes }) {
   const [ordem, setOrdem] = useState({ col: null, dir: 1 })
 
   useEffect(() => {
-    if (importacoes.length) setImpId(importacoes[0].importacao_id)
-  }, [importacoes])
+    if (importacoes.length && !dtIni && !dtFim) {
+      const maisRecente = importacoes[0]
+      setImpId(maisRecente.importacao_id)
+      setDtIni(String(maisRecente.periodo_inicio).slice(0, 10))
+      setDtFim(String(maisRecente.periodo_fim).slice(0, 10))
+      setFaseSync('pronto')
+    }
+  }, [importacoes, dtIni, dtFim])
+
+  const selecionarPeriodo = async (novoDtIni, novoDtFim) => {
+    setDtIni(novoDtIni); setDtFim(novoDtFim)
+    if (!novoDtIni || !novoDtFim) return
+    setFaseSync('verificando')
+    try {
+      const existente = importacoes.find(i => String(i.periodo_inicio).slice(0,10) === novoDtIni && String(i.periodo_fim).slice(0,10) === novoDtFim)
+      if (existente) {
+        setImpId(existente.importacao_id)
+        setFaseSync('pronto')
+        return
+      }
+      setFaseSync('sincronizando')
+      const novo = await sincronizarConciliacao(novoDtIni, novoDtFim)
+      onSincronizado?.()
+      setImpId(novo.importacao_id)
+      setFaseSync('pronto')
+    } catch (e) {
+      setFaseSync('erro')
+    }
+  }
 
   useEffect(() => {
     if (!impId) return
@@ -402,19 +457,11 @@ function Comparativo({ importacoes }) {
       {/* Seletor de período */}
       <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
         <label style={{fontSize:12,color:'#6B7280',fontWeight:500}}>Período:</label>
-        <select value={impId} onChange={e=>setImpId(e.target.value)} style={{
-          fontFamily:'inherit',fontSize:13,padding:'7px 12px',border:'1px solid #E5E7EB',borderRadius:6,background:'#fff',
-        }}>
-          {importacoes.map(i=>(
-            <option key={i.importacao_id} value={i.importacao_id}>
-              {fmtPeriodo(i.periodo_inicio,i.periodo_fim)} · {int(i.total)} lançamentos
-            </option>
-          ))}
-        </select>
+        <SeletorPeriodo dtIni={dtIni} dtFim={dtFim} onChange={selecionarPeriodo} fase={faseSync} />
       </div>
 
-      {fase==='carregando' && <Spinner/>}
-      {fase==='pronto' && (
+      {(fase==='carregando' || faseSync==='sincronizando') && <Spinner/>}
+      {fase==='pronto' && faseSync!=='sincronizando' && (
         <>
           {/* KPIs */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1px 1fr 1px 1fr',background:'#fff',border:'1px solid #E5E7EB',borderRadius:8,padding:'14px 20px'}}>
@@ -565,18 +612,22 @@ export default function Razao() {
   const [impConcil, setImpConcil] = useState([])
   const [impRazao, setImpRazao] = useState([])
 
-  useEffect(() => {
-    // FIX: ordenar por criado_em (quando a sincronizacao realmente rodou),
-    // nao por periodo_inicio - varias sincronizacoes (inclusive tentativas
-    // antigas que falharam e ficaram com 0 linhas) compartilham o mesmo
-    // periodo_inicio (ex.: sempre "01/08"), entao ordenar so por essa data
-    // podia trazer um registro errado/vazio pra frente do mais recente e bom.
+  const recarregarListas = () => {
     sbFetch('importacoes?select=importacao_id:id,periodo_inicio,periodo_fim,total:total_linhas,criado_em&order=criado_em.desc')
       .then(r => setImpConcil(r||[]))
       .catch(()=>{})
     sbFetch('razao_importacoes?select=*&order=criado_em.desc')
       .then(r => setImpRazao(r||[]))
       .catch(()=>{})
+  }
+
+  useEffect(() => {
+    // FIX: ordenar por criado_em (quando a sincronizacao realmente rodou),
+    // nao por periodo_inicio - varias sincronizacoes (inclusive tentativas
+    // antigas que falharam e ficaram com 0 linhas) compartilham o mesmo
+    // periodo_inicio (ex.: sempre "01/08"), entao ordenar so por essa data
+    // podia trazer um registro errado/vazio pra frente do mais recente e bom.
+    recarregarListas()
   }, [])
 
   const abas = [
@@ -610,8 +661,8 @@ export default function Razao() {
       </div>
 
       {/* Conteúdo da aba */}
-      {aba==='dash' && <DashRazao importacoes={impRazao}/>}
-      {aba==='comparativo' && <Comparativo importacoes={impConcil}/>}
+      {aba==='dash' && <DashRazao importacoes={impRazao} onSincronizado={recarregarListas}/>}
+      {aba==='comparativo' && <Comparativo importacoes={impConcil} onSincronizado={recarregarListas}/>}
     </div>
   )
 }
