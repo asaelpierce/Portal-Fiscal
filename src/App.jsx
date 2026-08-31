@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { sbFetch, brl, int, dBR, isZero } from './config.js'
 import { Spinner, EmptyState, Btn } from './components/UI.jsx'
+import SeletorPeriodo from './components/SeletorPeriodo.jsx'
+import { sincronizarConciliacao } from './lib/sync.js'
 import DrawerDetalhe from './components/DrawerDetalhe.jsx'
 import Login from './components/Login.jsx'
 import VIsaoGeral from './pages/VIsaoGeral.jsx'
@@ -67,11 +69,41 @@ function AppAutenticado({ sessao, onLogout }) {
   const [resumos, setResumos] = useState([])
   const [ultima, setUltima] = useState(null)
   const [periodoId, setPeriodoId] = useState(null)
+  const [dtIniISO, setDtIniISO] = useState('')
+  const [dtFimISO, setDtFimISO] = useState('')
+  const [faseSync, setFaseSync] = useState('idle') // idle | verificando | sincronizando | pronto | erro
   const [fechamento, setFechamento] = useState(null)
   const [atualizando, setAtualizando] = useState(false)
   const [detalhe, setDetalhe] = useState(null)
 
   const periodoAtual = resumos.find(r => r.importacao_id === periodoId) || ultima
+
+  // Seleciona um período livremente escolhido no calendário: se já existir
+  // (mesmo intervalo exato já importado antes), só troca a visualização; se
+  // não existir, sincroniza sozinho com o Sankhya na hora — igual a tela de
+  // Comp. Saldo de Estoque já fazia.
+  const selecionarPeriodo = useCallback(async (dtIni, dtFim) => {
+    setDtIniISO(dtIni); setDtFimISO(dtFim)
+    if (!dtIni || !dtFim) return
+    setFaseSync('verificando')
+    try {
+      const existente = resumos.find(r => r.periodo_inicio === dtIni && r.periodo_fim === dtFim)
+      if (existente) {
+        setPeriodoId(existente.importacao_id)
+        setFaseSync('pronto')
+        return
+      }
+      setFaseSync('sincronizando')
+      const novo = await sincronizarConciliacao(dtIni, dtFim)
+      const rs = await sbFetch('resumo_analitico?select=*&order=periodo_fim.asc,criado_em.asc')
+      setResumos(rs || [])
+      setPeriodoId(novo.importacao_id)
+      setFaseSync('pronto')
+    } catch (e) {
+      setErro(e.message || String(e))
+      setFaseSync('erro')
+    }
+  }, [resumos])
 
   const carregar = useCallback(async () => {
     try {
@@ -101,6 +133,17 @@ function AppAutenticado({ sessao, onLogout }) {
   }, [])
 
   useEffect(() => { carregar() }, [carregar])
+
+  // Semeia o calendário com o período mais recente já sincronizado, só na
+  // primeira vez que ele fica disponível (depois disso quem manda é o
+  // usuário, escolhendo livremente no calendário).
+  useEffect(() => {
+    if (ultima && !dtIniISO && !dtFimISO) {
+      setDtIniISO(String(ultima.periodo_inicio).slice(0, 10))
+      setDtFimISO(String(ultima.periodo_fim).slice(0, 10))
+      setFaseSync('pronto')
+    }
+  }, [ultima, dtIniISO, dtFimISO])
 
   useEffect(() => {
     if (!periodoId) return
@@ -206,28 +249,19 @@ function AppAutenticado({ sessao, onLogout }) {
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
               {MENU.find(m => m.id === pagina)?.label}
             </h1>
-            {periodoAtual && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio'].includes(pagina) && (
+            {dtIniISO && dtFimISO && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio'].includes(pagina) && (
               <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9CA3AF' }}>
-                Período {dBR(periodoAtual.periodo_inicio)} a {dBR(periodoAtual.periodo_fim)}
+                Período {dBR(dtIniISO)} a {dBR(dtFimISO)}
               </p>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {resumos.length > 1 && !['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio'].includes(pagina) && (
-              <select
-                value={periodoId || ''}
-                onChange={e => setPeriodoId(e.target.value)}
-                style={{
-                  fontFamily: 'inherit', fontSize: 13, padding: '7px 10px',
-                  border: '1px solid #E5E7EB', borderRadius: 6, background: '#fff', color: '#374151',
-                }}
-              >
-                {[...resumos].sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em)).map(r => (
-                  <option key={r.importacao_id} value={r.importacao_id}>
-                    {dBR(r.periodo_inicio)} a {dBR(r.periodo_fim)}
-                  </option>
-                ))}
-              </select>
+            {!['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio'].includes(pagina) && (
+              <SeletorPeriodo
+                dtIni={dtIniISO} dtFim={dtFimISO}
+                onChange={selecionarPeriodo}
+                fase={faseSync}
+              />
             )}
             {pagina !== 'rateio' && (
               <Btn primary onClick={atualizar} disabled={atualizando || fase === 'carregando'}>
@@ -259,24 +293,30 @@ function AppAutenticado({ sessao, onLogout }) {
 
               {fase === 'pronto' && (
                 <>
-                  {pagina === 'visao' && (
-                    <VIsaoGeral
-                      lancamentos={lancamentos}
-                      fechamento={fechamento}
-                      onDetalhe={setDetalhe}
-                    />
+                  {['visao', 'divergencias', 'contas'].includes(pagina) && faseSync === 'sincronizando' ? (
+                    <Spinner />
+                  ) : (
+                    <>
+                      {pagina === 'visao' && (
+                        <VIsaoGeral
+                          lancamentos={lancamentos}
+                          fechamento={fechamento}
+                          onDetalhe={setDetalhe}
+                        />
+                      )}
+                      {pagina === 'divergencias' && <Divergencias lancamentos={lancamentos} />}
+                      {pagina === 'contas' && (
+                        <Contas lancamentos={lancamentos}
+                          onFiltrarConta={() => setPagina('razao')} />
+                      )}
+                    </>
                   )}
-                  {pagina === 'divergencias' && <Divergencias lancamentos={lancamentos} />}
                   {pagina === 'painel' && <Dashboard />}
                   {pagina === 'fluxocaixa' && <FluxoCaixa />}
                   {pagina === 'compfiscal' && <ConferenciaFaturamento />}
                   {pagina === 'confiscal' && <ConferenciaFiscal />}
                   {pagina === 'fechamento' && <Fechamento />}
                   {pagina === 'razao' && <Razao />}
-                  {pagina === 'contas' && (
-                    <Contas lancamentos={lancamentos}
-                      onFiltrarConta={() => setPagina('razao')} />
-                  )}
                   {pagina === 'historico' && <Historico resumos={resumos} />}
                   {pagina === 'sync' && <Sincronizacao />}
                 </>
