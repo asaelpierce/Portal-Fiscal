@@ -202,19 +202,21 @@ function AppAutenticado({ sessao, onLogout }) {
           ))}
         </nav>
 
-        {ultima && fase === 'pronto' && (
+        {periodoAtual && fase === 'pronto' && (
           <div style={{ padding: '12px 14px', borderTop: '1px solid #F3F4F6', fontSize: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#12805C', marginBottom: 2 }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#12805C' }} />
-              <strong>Sincronizado</strong>
+              <strong>Período selecionado</strong>
             </div>
-            <div style={{ color: '#9CA3AF', fontSize: 11 }}>
-              {new Date(ultima.criado_em).toLocaleString('pt-BR', {
-                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-              })}
-            </div>
+            {periodoAtual.criado_em && (
+              <div style={{ color: '#9CA3AF', fontSize: 11 }}>
+                sincronizado em {new Date(periodoAtual.criado_em).toLocaleString('pt-BR', {
+                  day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                })}
+              </div>
+            )}
             <div style={{ color: '#9CA3AF', fontSize: 11, marginTop: 1 }}>
-              {dBR(ultima.periodo_inicio)} a {dBR(ultima.periodo_fim)}
+              {dBR(dtIniISO)} a {dBR(dtFimISO)}
             </div>
             <div style={{ color: '#9CA3AF', fontSize: 11, marginTop: 1 }}>
               {int(lancamentos.length)} lançamentos
