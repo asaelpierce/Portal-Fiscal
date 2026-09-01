@@ -28,11 +28,18 @@ function primeiroDiaDoMes(iso) {
 // Chama o fechamento-sync sob demanda pra uma data que ainda não foi
 // sincronizada (o usuário escolheu no seletor de período uma posição que
 // não existia previamente em fechamento_saldos).
+//
+// FIX: pedimos incluir_detalhe:false aqui -- essa busca manual só precisa
+// do resumo (rápido) pra mostrar os números da tela; o detalhe histórico
+// completo (desde 2022, usado só em auditoria/exportação futura) não é lido
+// por nenhuma tela hoje e deixava a busca do usuário lenta à toa. A
+// importação automática de 4 em 4h continua calculando o detalhe completo
+// normalmente, sem mudança.
 async function sincronizarPosicao(dataISO) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/fechamento-sync`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, 'x-api-key': SYNC_KEY },
-    body: JSON.stringify({ data_posicao: isoParaBR(dataISO) }),
+    body: JSON.stringify({ data_posicao: isoParaBR(dataISO), incluir_detalhe: false }),
   })
   const dados = await res.json()
   if (!dados.ok) throw new Error(dados.erro || 'Erro ao sincronizar posição')
@@ -97,32 +104,46 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
   useEffect(() => {
     if (!conta) return
     setFase('carregando'); setPorMes([])
-    Promise.all([
-      sbFetch('importacoes?select=id,periodo_inicio,periodo_fim&order=periodo_fim.desc'),
-      sbFetch(`lancamentos_conciliacao?conta_contabil=eq.${encodeURIComponent(conta)}&select=*&order=data_entrada_saida.desc`),
-    ])
-      .then(([imps, lancs]) => {
-        const grupos = (imps || []).map(imp => {
-          const notas = (lancs || []).filter(l => l.importacao_id === imp.id)
-          if (!notas.length) return null
-          const comDif = notas.filter(n => n.classe_divergencia !== 'OK')
-          // Separa: problema real (investigar/critico) vs ajuste de custo medio (esperado, ja no saldo)
-          const investigar = comDif.filter(n => ['INVESTIGAR','CRITICO'].includes(n.classe_divergencia))
-          const ajuste = comDif.filter(n => n.classe_divergencia === 'AJUSTE_CUSTO')
-          const [y, m] = imp.periodo_fim.split('-')
-          return {
-            mesKey: `${y}-${m}`,
-            label: `${MESES_BR[parseInt(m) - 1]}/${y}`,
-            impId: imp.id,
-            notas,
-            comDif,
-            investigar,
-            ajuste,
-            somaDif: comDif.reduce((s, n) => s + Number(n.diferenca || 0), 0),
-            somaInvestigar: investigar.reduce((s, n) => s + Number(n.diferenca || 0), 0),
-            somaAjuste: ajuste.reduce((s, n) => s + Number(n.diferenca || 0), 0),
-          }
-        }).filter(Boolean)
+    // FIX: antes agrupava pelo mês do FIM do período de cada importação
+    // (imp.periodo_fim) — isso funcionava enquanto as importações eram
+    // sempre um mês calendário fechado, mas agora que existe a janela
+    // móvel automática (últimos 7 dias, que frequentemente atravessa a
+    // virada do mês) uma nota de 31/08 podia entrar numa importação cujo
+    // período vai até 01/09, e era rotulada inteira como "Set/2026" mesmo
+    // sendo uma nota de agosto. Agora agrupamos pela data REAL de cada
+    // nota (data_entrada_saida/data_negociacao), não pelo período da
+    // importação que trouxe o dado.
+    sbFetch(`lancamentos_conciliacao?conta_contabil=eq.${encodeURIComponent(conta)}&select=*&order=data_entrada_saida.desc`)
+      .then(lancs => {
+        const porMesMap = new Map()
+        ;(lancs || []).forEach(n => {
+          const dataRef = n.data_entrada_saida || n.data_negociacao
+          if (!dataRef) return
+          const mesKey = String(dataRef).slice(0, 7) // 'YYYY-MM'
+          if (!porMesMap.has(mesKey)) porMesMap.set(mesKey, [])
+          porMesMap.get(mesKey).push(n)
+        })
+
+        const grupos = [...porMesMap.entries()]
+          .sort((a, b) => b[0].localeCompare(a[0])) // mês mais recente primeiro
+          .map(([mesKey, notas]) => {
+            const [y, m] = mesKey.split('-')
+            const comDif = notas.filter(n => n.classe_divergencia !== 'OK')
+            // Separa: problema real (investigar/critico) vs ajuste de custo medio (esperado, ja no saldo)
+            const investigar = comDif.filter(n => ['INVESTIGAR','CRITICO'].includes(n.classe_divergencia))
+            const ajuste = comDif.filter(n => n.classe_divergencia === 'AJUSTE_CUSTO')
+            return {
+              mesKey,
+              label: `${MESES_BR[parseInt(m) - 1]}/${y}`,
+              notas,
+              comDif,
+              investigar,
+              ajuste,
+              somaDif: comDif.reduce((s, n) => s + Number(n.diferenca || 0), 0),
+              somaInvestigar: investigar.reduce((s, n) => s + Number(n.diferenca || 0), 0),
+              somaAjuste: ajuste.reduce((s, n) => s + Number(n.diferenca || 0), 0),
+            }
+          })
 
         // Abre automaticamente o mês mais recente com diferença
         const primeiro = grupos.find(g => g.comDif.length > 0)
