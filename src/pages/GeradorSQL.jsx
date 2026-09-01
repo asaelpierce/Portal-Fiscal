@@ -136,6 +136,11 @@ export default function GeradorSQL() {
             }
           >
             <p style={{ margin:'0 0 10px', fontSize:13, color:'#374151' }}>{resultado.explicacao}</p>
+            {resultado.tabelas_novas_buscadas?.length > 0 && (
+              <div style={{ margin:'0 0 10px', fontSize:12, color:'#6B21A8', background:'#FAF5FF', padding:'8px 12px', borderRadius:6 }}>
+                🧠 Aprendeu agora os campos de: <strong>{resultado.tabelas_novas_buscadas.join(', ')}</strong> — já ficou salvo pra próxima vez.
+              </div>
+            )}
             {editando ? (
               <>
                 <textarea
