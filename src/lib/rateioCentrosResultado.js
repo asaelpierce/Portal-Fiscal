@@ -1,16 +1,19 @@
 /**
  * Mapeamento Setor -> Código do Centro de Resultado no Sankhya.
  *
- * Se precisar adicionar/editar/remover um setor, mexa só no objeto
- * MAPA_CENTRO_RESULTADO abaixo — o resto do arquivo (normalização e busca
- * aproximada) não precisa mudar.
+ * A partir de agora isso é editável pela própria tela (menu Configurações,
+ * dentro de Rateio de Compras) e fica guardado na tabela
+ * "rateio_centros_resultado" no Supabase — não depende mais de mexer em
+ * código pra ajustar um setor. O objeto abaixo continua existindo só como
+ * valor padrão de segurança (usado se a busca ao banco falhar por algum
+ * motivo, pra tela nunca ficar totalmente sem mapeamento nenhum).
  *
  * REGRA DO CÓDIGO (confirmada com exemplo real da tela do Sankhya): tira os
  * pontos do código da árvore de Centro de Resultado e depois o zero à
  * esquerda que sobra. Ex.: "02.04.04.01" -> "02040401" -> "2040401".
  */
 
-export const MAPA_CENTRO_RESULTADO = {
+export const MAPA_CENTRO_RESULTADO_PADRAO = {
   "Gerência": "2020101",
   "Financeiro": "2020102",
   "Fiscal": "2020103",
@@ -87,8 +90,8 @@ export function normalizar(texto) {
   return txt
 }
 
-const INDICE_NORMALIZADO = Object.fromEntries(
-  Object.entries(MAPA_CENTRO_RESULTADO).map(([k, v]) => [normalizar(k), v])
+const INDICE_NORMALIZADO_PADRAO = Object.fromEntries(
+  Object.entries(MAPA_CENTRO_RESULTADO_PADRAO).map(([k, v]) => [normalizar(k), v])
 )
 
 /**
@@ -99,10 +102,18 @@ const INDICE_NORMALIZADO = Object.fromEntries(
  *    palavras (com 3+ letras) de um lado estiverem contidas no outro
  *    lado — evita falsos positivos tipo "ti" casando dentro de
  *    "administrative" por ser substring solta.
+ *
+ * @param {string} setor
+ * @param {Record<string,string>} [mapa] — mapa Setor->Código a usar (o
+ *   carregado do banco, normalmente). Se omitido, usa o padrão fixo.
  */
-export function buscarCodigoCentroResultado(setor) {
+export function buscarCodigoCentroResultado(setor, mapa) {
+  const indice = mapa
+    ? Object.fromEntries(Object.entries(mapa).map(([k, v]) => [normalizar(k), v]))
+    : INDICE_NORMALIZADO_PADRAO
+
   const chave = normalizar(setor)
-  if (INDICE_NORMALIZADO[chave]) return INDICE_NORMALIZADO[chave]
+  if (indice[chave]) return indice[chave]
 
   const palavrasSetor = new Set(chave.split(' ').filter(p => p.length >= 3))
   if (palavrasSetor.size === 0) return null
@@ -110,7 +121,7 @@ export function buscarCodigoCentroResultado(setor) {
   let melhorCodigo = null
   let melhorCobertura = 0
 
-  for (const [k, v] of Object.entries(INDICE_NORMALIZADO)) {
+  for (const [k, v] of Object.entries(indice)) {
     const palavrasChave = new Set(k.split(' ').filter(p => p.length >= 3))
     if (palavrasChave.size === 0) continue
 
@@ -138,8 +149,8 @@ export function buscarCodigoCentroResultado(setor) {
 
 /** Lista [descrição, código] ordenada alfabeticamente — útil pra um
  * combobox/dropdown de seleção manual na interface. */
-export function listarCentrosOrdenados() {
-  return Object.entries(MAPA_CENTRO_RESULTADO).sort((a, b) =>
+export function listarCentrosOrdenados(mapa = MAPA_CENTRO_RESULTADO_PADRAO) {
+  return Object.entries(mapa).sort((a, b) =>
     normalizar(a[0]).localeCompare(normalizar(b[0]))
   )
 }
