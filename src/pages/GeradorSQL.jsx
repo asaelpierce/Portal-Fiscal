@@ -42,7 +42,11 @@ export default function GeradorSQL() {
     setFase('carregando'); setErro(''); setResultado(null); setEditando(false)
     try {
       const d = await chamarGerador({ pergunta: texto })
-      if (!d.ok) { setErro(d.erro || 'Erro desconhecido'); setFase('erro') }
+      if (!d.ok) {
+        setErro(d.erro || 'Erro desconhecido')
+        if (d.sql) { setResultado(d); setSqlEditavel(d.sql) }
+        setFase('erro')
+      }
       else { setResultado(d); setSqlEditavel(d.sql); setFase('pronto') }
     } catch (e) {
       setErro(e.message); setFase('erro')
@@ -59,7 +63,11 @@ export default function GeradorSQL() {
         sql_manual: sqlEditavel,
         explicacao_anterior: resultado?.explicacao,
       })
-      if (!d.ok) { setErro(d.erro || 'Erro desconhecido'); setFase('erro') }
+      if (!d.ok) {
+        setErro(d.erro || 'Erro desconhecido')
+        if (d.sql) { setResultado(d); setSqlEditavel(d.sql) }
+        setFase('erro')
+      }
       else { setResultado(d); setFase('pronto'); setEditando(false) }
     } catch (e) {
       setErro(e.message); setFase('erro')
@@ -115,7 +123,12 @@ export default function GeradorSQL() {
       {fase === 'erro' && (
         <div style={{ background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:8, padding:16, color:'#B42318', fontSize:13 }}>
           <strong>Erro:</strong> {erro}
-          {resultado?.sql && <div style={{ marginTop:8, fontFamily:'monospace', fontSize:12, whiteSpace:'pre-wrap' }}>{resultado.sql}</div>}
+          {resultado?.sql && (
+            <>
+              {resultado?.explicacao && <p style={{ margin:'8px 0 0', color:'#7F1D1D' }}>{resultado.explicacao}</p>}
+              <div style={{ marginTop:8, fontFamily:'monospace', fontSize:12, whiteSpace:'pre-wrap', background:'#fff', padding:'8px 10px', borderRadius:6, border:'1px solid #FECACA' }}>{resultado.sql}</div>
+            </>
+          )}
           <div style={{ marginTop:10 }}>
             <Btn small onClick={() => { setSqlEditavel(resultado?.sql || ''); setEditando(true); setFase('pronto') }}>
               Editar SQL manualmente
@@ -131,7 +144,7 @@ export default function GeradorSQL() {
             action={
               <div style={{ display:'flex', gap:8 }}>
                 {!editando && <Btn small onClick={() => setEditando(true)}>✎ Editar</Btn>}
-                <Btn small onClick={exportarCsv}>↓ CSV</Btn>
+                {resultado.colunas && <Btn small onClick={exportarCsv}>↓ CSV</Btn>}
               </div>
             }
           >
@@ -167,39 +180,41 @@ export default function GeradorSQL() {
             )}
           </Panel>
 
-          <Panel title={`Resultado — ${int(resultado.total)} linha(s)`}>
-            <div style={{ maxHeight:480, overflow:'auto' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
-                <thead>
-                  <tr>
-                    {resultado.colunas.map(c => (
-                      <th key={c} style={{
-                        position:'sticky', top:0, background:'#F9FAFB', padding:'8px 12px',
-                        textAlign:'left', fontSize:10.5, fontWeight:600, color:'#6B7280',
-                        textTransform:'uppercase', letterSpacing:'.04em', borderBottom:'1px solid #E5E7EB', whiteSpace:'nowrap',
-                      }}>{c}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {resultado.linhas.map((linha, i) => (
-                    <tr key={i} style={{ borderBottom:'1px solid #F9FAFB' }}>
-                      {linha.map((v, j) => (
-                        <td key={j} style={{ padding:'7px 12px', whiteSpace:'nowrap', fontVariantNumeric:'tabular-nums' }}>
-                          {v === null || v === undefined ? '—' : String(v)}
-                        </td>
+          {resultado.colunas && (
+            <Panel title={`Resultado — ${int(resultado.total)} linha(s)`}>
+              <div style={{ maxHeight:480, overflow:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
+                  <thead>
+                    <tr>
+                      {resultado.colunas.map(c => (
+                        <th key={c} style={{
+                          position:'sticky', top:0, background:'#F9FAFB', padding:'8px 12px',
+                          textAlign:'left', fontSize:10.5, fontWeight:600, color:'#6B7280',
+                          textTransform:'uppercase', letterSpacing:'.04em', borderBottom:'1px solid #E5E7EB', whiteSpace:'nowrap',
+                        }}>{c}</th>
                       ))}
                     </tr>
-                  ))}
-                  {!resultado.linhas.length && (
-                    <tr><td colSpan={resultado.colunas.length || 1} style={{ textAlign:'center', padding:'24px', color:'#9CA3AF' }}>
-                      Nenhum registro encontrado.
-                    </td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
+                  </thead>
+                  <tbody>
+                    {resultado.linhas.map((linha, i) => (
+                      <tr key={i} style={{ borderBottom:'1px solid #F9FAFB' }}>
+                        {linha.map((v, j) => (
+                          <td key={j} style={{ padding:'7px 12px', whiteSpace:'nowrap', fontVariantNumeric:'tabular-nums' }}>
+                            {v === null || v === undefined ? '—' : String(v)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                    {!resultado.linhas.length && (
+                      <tr><td colSpan={resultado.colunas.length || 1} style={{ textAlign:'center', padding:'24px', color:'#9CA3AF' }}>
+                        Nenhum registro encontrado.
+                      </td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
+          )}
         </>
       )}
 
