@@ -11,3 +11,7 @@ export const NATUREZAS_POR_TIPO = {
   "Assistência Odontológica": "170123",
   "Segurança do Trabalho": "170221",
 }
+
+// Alias usado como fallback quando a busca ao banco (tabela rateio_naturezas)
+// falha - RateioCompras.jsx importa por este nome especificamente.
+export const NATUREZAS_POR_TIPO_PADRAO = NATUREZAS_POR_TIPO
