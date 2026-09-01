@@ -1,4 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import {
+  ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+} from 'recharts'
 import { SUPABASE_URL, SUPABASE_ANON_KEY, sbFetch, int, dBR } from '../config.js'
 import { Panel, Btn, Spinner, SearchInput, Select } from '../components/UI.jsx'
 
@@ -257,6 +260,42 @@ export default function Auditoria() {
     exclusoes: dadosVisiveis.filter(d => d.tipo === 'D').length,
   }), [dadosVisiveis])
 
+  const porDia = useMemo(() => {
+    const mapa = new Map()
+    dadosVisiveis.forEach(d => {
+      const dia = (d.data_hora || '').slice(0,10)
+      if (!dia) return
+      if (!mapa.has(dia)) mapa.set(dia, { dia, Inclusão:0, Alteração:0, Exclusão:0 })
+      const rot = TIPO_INFO[d.tipo]?.rot || d.tipo
+      mapa.get(dia)[rot] = (mapa.get(dia)[rot] || 0) + 1
+    })
+    return [...mapa.values()].sort((a,b) => a.dia.localeCompare(b.dia)).map(r => ({ ...r, diaLabel: dBR(r.dia) }))
+  }, [dadosVisiveis])
+
+  const porTabela = useMemo(() => {
+    const mapa = new Map()
+    dadosVisiveis.forEach(d => {
+      const nome = d.instancia || d.tabela || '—'
+      mapa.set(nome, (mapa.get(nome) || 0) + 1)
+    })
+    return [...mapa.entries()].map(([nome, qtd]) => ({ nome, qtd })).sort((a,b) => b.qtd - a.qtd).slice(0,8)
+  }, [dadosVisiveis])
+
+  const porUsuario = useMemo(() => {
+    const mapa = new Map()
+    dadosVisiveis.forEach(d => {
+      if (d.username === 'SUP') return
+      mapa.set(d.username, (mapa.get(d.username) || 0) + 1)
+    })
+    return [...mapa.entries()].map(([nome, qtd]) => ({ nome, qtd })).sort((a,b) => b.qtd - a.qtd).slice(0,8)
+  }, [dadosVisiveis])
+
+  const porTipo = useMemo(() => [
+    { nome:'Inclusão', qtd:kpi.inclusoes, cor:'#12805C' },
+    { nome:'Alteração', qtd:kpi.alteracoes, cor:'#B54708' },
+    { nome:'Exclusão', qtd:kpi.exclusoes, cor:'#B42318' },
+  ].filter(x => x.qtd > 0), [kpi])
+
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
       <Panel title="🔎 Buscar histórico de um registro específico">
@@ -346,6 +385,65 @@ export default function Auditoria() {
                 <div style={{ fontSize:24, fontWeight:700, color:k.cor }}>{k.valor}</div>
               </div>
             ))}
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1.3fr 1fr', gap:14 }}>
+            <Panel title="Alterações por dia">
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={porDia} margin={{ top:6, right:10, left:0, bottom:0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+                  <XAxis dataKey="diaLabel" tick={{ fontSize:11, fill:'#6B7280' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize:11, fill:'#6B7280' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip contentStyle={{ fontSize:12, borderRadius:8, border:'1px solid #E5E7EB' }} />
+                  <Legend wrapperStyle={{ fontSize:11 }} />
+                  <Bar dataKey="Inclusão" stackId="a" fill="#12805C" radius={[0,0,0,0]} />
+                  <Bar dataKey="Alteração" stackId="a" fill="#B54708" radius={[0,0,0,0]} />
+                  <Bar dataKey="Exclusão" stackId="a" fill="#B42318" radius={[4,4,0,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Panel>
+
+            <Panel title="Por tipo de ação">
+              <ResponsiveContainer width="100%" height={240}>
+                <PieChart>
+                  <Pie data={porTipo} dataKey="qtd" nameKey="nome" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2}>
+                    {porTipo.map((p,i) => <Cell key={i} fill={p.cor} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ fontSize:12, borderRadius:8, border:'1px solid #E5E7EB' }} />
+                  <Legend wrapperStyle={{ fontSize:11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </Panel>
+
+            <Panel title="Tabelas mais alteradas">
+              <ResponsiveContainer width="100%" height={Math.max(160, porTabela.length * 32)}>
+                <BarChart data={porTabela} layout="vertical" margin={{ top:4, right:16, left:8, bottom:4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize:11, fill:'#6B7280' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <YAxis type="category" dataKey="nome" width={140} tick={{ fontSize:11, fill:'#374151' }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ fontSize:12, borderRadius:8, border:'1px solid #E5E7EB' }} />
+                  <Bar dataKey="qtd" fill="#1D5BBF" radius={[0,4,4,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Panel>
+
+            <Panel title="Usuários mais ativos (sem contar sistema)">
+              {porUsuario.length ? (
+                <ResponsiveContainer width="100%" height={Math.max(160, porUsuario.length * 32)}>
+                  <BarChart data={porUsuario} layout="vertical" margin={{ top:4, right:16, left:8, bottom:4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize:11, fill:'#6B7280' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <YAxis type="category" dataKey="nome" width={110} tick={{ fontSize:11, fill:'#374151' }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ fontSize:12, borderRadius:8, border:'1px solid #E5E7EB' }} />
+                    <Bar dataKey="qtd" fill="#6B21A8" radius={[0,4,4,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ padding:'24px', textAlign:'center', color:'#9CA3AF', fontSize:12.5 }}>
+                  Nenhuma ação de usuário real neste período.
+                </div>
+              )}
+            </Panel>
           </div>
 
           <Panel title={`Registros — ${int(filtrados.length)} de ${int(dadosVisiveis.length)}`} noPad>
