@@ -16,7 +16,6 @@ import ConferenciaFaturamento from './pages/ConferenciaFaturamento.jsx'
 import ConferenciaFiscal from './pages/ConferenciaFiscal.jsx'
 import Divergencias from './pages/Divergencias.jsx'
 import RateioCompras from './pages/RateioCompras.jsx'
-import GeradorSQL from './pages/GeradorSQL.jsx'
 
 const MENU_COMPLETO = [
   { id: 'visao', label: 'Visão geral', icon: '▦' },
@@ -28,7 +27,6 @@ const MENU_COMPLETO = [
   { id: 'fechamento', label: 'Comp. Saldo de Estoque', icon: '⚖' },
   { id: 'razao', label: 'Movimentos', icon: '📋' },
   { id: 'rateio', label: 'Rateio de Compras', icon: '➗' },
-  { id: 'geradorsql', label: 'Gerador de SQL', icon: '🤖' },
   { id: 'contas', label: 'Contas contábeis', icon: '⊞' },
   { id: 'historico', label: 'Histórico', icon: '⊙' },
   { id: 'sync', label: 'Importar período', icon: '↻' },
@@ -253,21 +251,21 @@ function AppAutenticado({ sessao, onLogout }) {
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
               {MENU.find(m => m.id === pagina)?.label}
             </h1>
-            {dtIniISO && dtFimISO && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'geradorsql'].includes(pagina) && (
+            {dtIniISO && dtFimISO && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio'].includes(pagina) && (
               <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9CA3AF' }}>
                 Período {dBR(dtIniISO)} a {dBR(dtFimISO)}
               </p>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {!['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'geradorsql'].includes(pagina) && (
+            {!['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio'].includes(pagina) && (
               <SeletorPeriodo
                 dtIni={dtIniISO} dtFim={dtFimISO}
                 onChange={selecionarPeriodo}
                 fase={faseSync}
               />
             )}
-            {pagina !== 'rateio' && pagina !== 'geradorsql' && (
+            {pagina !== 'rateio' && (
               <Btn primary onClick={atualizar} disabled={atualizando || fase === 'carregando'}>
                 {atualizando ? '↻ Atualizando…' : '↻ Atualizar dados'}
               </Btn>
@@ -281,8 +279,6 @@ function AppAutenticado({ sessao, onLogout }) {
               disponível mesmo antes da primeira sincronização (fase !== 'pronto'). */}
           {pagina === 'rateio' ? (
             <RateioCompras />
-          ) : pagina === 'geradorsql' ? (
-            <GeradorSQL />
           ) : (
             <>
               {fase === 'carregando' && <Spinner />}
