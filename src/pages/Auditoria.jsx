@@ -81,6 +81,66 @@ function LinhaExpandida({ linha, dicCampos }) {
   )
 }
 
+function TabelaLinhas({ linhas, dicCampos, expandido, setExpandido, mensagemVazio }) {
+  return (
+    <div style={{ maxHeight:600, overflow:'auto' }}>
+      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
+        <thead>
+          <tr>
+            {['','Data/Hora','Usuário','Tipo','Tabela','Registro alterado'].map(h => (
+              <th key={h} style={{
+                position:'sticky', top:0, background:'#F9FAFB', padding:'8px 12px', textAlign:'left',
+                fontSize:10.5, fontWeight:600, color:'#6B7280', textTransform:'uppercase', letterSpacing:'.04em',
+                borderBottom:'1px solid #E5E7EB', whiteSpace:'nowrap',
+              }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.map(d => {
+            const tipoInfo = TIPO_INFO[d.tipo] || { rot:d.tipo, cor:'#6B7280', bg:'#F3F4F6' }
+            const aberto = expandido === d.id
+            return (
+              <React.Fragment key={d.id}>
+                <tr
+                  onClick={() => setExpandido(aberto ? null : d.id)}
+                  style={{
+                    borderTop:'1px solid #F9FAFB', cursor:'pointer',
+                    background: d.tipo === 'D' ? '#FFFBFB' : 'transparent',
+                  }}
+                >
+                  <td style={{ padding:'7px 10px', color:'#9CA3AF', width:20 }}>{aberto ? '▾' : '▸'}</td>
+                  <td style={{ padding:'7px 12px', whiteSpace:'nowrap', color:'#6B7280' }}>{dataHoraBR(d.data_hora)}</td>
+                  <td style={{ padding:'7px 12px', fontWeight:600 }}>{d.username}</td>
+                  <td style={{ padding:'7px 12px' }}>
+                    <span style={{ padding:'2px 8px', borderRadius:5, fontSize:11, fontWeight:600, color:tipoInfo.cor, background:tipoInfo.bg }}>
+                      {tipoInfo.rot}
+                    </span>
+                  </td>
+                  <td style={{ padding:'7px 12px' }}>{d.tabela}<span style={{ color:'#9CA3AF' }}> · {d.instancia}</span></td>
+                  <td style={{ padding:'7px 12px', color:'#6B7280', maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={d.chave}>{d.chave}</td>
+                </tr>
+                {aberto && (
+                  <tr>
+                    <td colSpan={6} style={{ padding:0 }}>
+                      <LinhaExpandida linha={d} dicCampos={dicCampos} />
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            )
+          })}
+          {!linhas.length && (
+            <tr><td colSpan={6} style={{ textAlign:'center', padding:'32px', color:'#9CA3AF' }}>
+              {mensagemVazio}
+            </td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export default function Auditoria() {
   const [dtIni, setDtIni] = useState(diasAtrasISO(7))
   const [dtFim, setDtFim] = useState(hojeISO())
@@ -95,6 +155,36 @@ export default function Auditoria() {
   const [mostrarSistema, setMostrarSistema] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
   const [msgSync, setMsgSync] = useState('')
+
+  const [buscaChave, setBuscaChave] = useState('')
+  const [resultadoChave, setResultadoChave] = useState(null)
+  const [buscandoChave, setBuscandoChave] = useState(false)
+  const [dicCamposChave, setDicCamposChave] = useState({})
+
+  const buscarPorChave = async () => {
+    const valor = buscaChave.trim()
+    if (!valor) return
+    setBuscandoChave(true); setResultadoChave(null)
+    try {
+      // busca em TODO o histórico já sincronizado, sem filtro de período —
+      // a "chave" é o mesmo em qualquer data, então não faz sentido limitar
+      const r = await sbFetch(`auditoria_modificacoes?select=*&chave=ilike.*${encodeURIComponent(valor)}*&order=data_hora.desc&limit=200`)
+      setResultadoChave(r || [])
+
+      const tabelasEnvolvidas = [...new Set((r || []).map(d => d.tabela).filter(Boolean))]
+      if (tabelasEnvolvidas.length) {
+        const filtro = tabelasEnvolvidas.map(t => `"${t}"`).join(',')
+        const dic = await sbFetch(`sankhya_dic_campos?select=nome_tabela,nome_campo,descr_campo&nome_tabela=in.(${filtro})`)
+        const mapa = {}
+        ;(dic || []).forEach(c => { mapa[`${c.nome_tabela}::${c.nome_campo}`] = c.descr_campo })
+        setDicCamposChave(mapa)
+      }
+    } catch (e) {
+      setResultadoChave([])
+    } finally {
+      setBuscandoChave(false)
+    }
+  }
 
   const carregar = async () => {
     setFase('carregando'); setErro('')
@@ -122,7 +212,7 @@ export default function Auditoria() {
   const sincronizarPeriodo = async () => {
     setSincronizando(true); setMsgSync('')
     try {
-      const janelas = gerarJanelas(dtIni, dtFim, 5)
+      const janelas = gerarJanelas(dtIni, dtFim, 2)
       let totalInserido = 0
       for (let i = 0; i < janelas.length; i++) {
         setMsgSync(`Sincronizando janela ${i+1}/${janelas.length}…`)
@@ -169,6 +259,47 @@ export default function Auditoria() {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
+      <Panel title="🔎 Buscar histórico de um registro específico">
+        <p style={{ margin:'0 0 10px', fontSize:12.5, color:'#6B7280', lineHeight:1.6 }}>
+          Digite o número/código do registro (ex: número único do pedido, código do produto, código do parceiro)
+          pra ver tudo que já aconteceu com ele, em qualquer data já sincronizada — não depende do período
+          selecionado abaixo.
+        </p>
+        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+          <input
+            value={buscaChave} onChange={e => setBuscaChave(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && buscarPorChave()}
+            placeholder="Ex: 4032, 3548-001, 496…"
+            style={{ fontFamily:'inherit', fontSize:13, padding:'8px 12px', border:'1px solid #E5E7EB', borderRadius:6, width:280 }}
+          />
+          <Btn primary onClick={buscarPorChave} disabled={buscandoChave || !buscaChave.trim()}>
+            {buscandoChave ? '↻ Buscando…' : '🔎 Buscar'}
+          </Btn>
+          {resultadoChave !== null && (
+            <Btn onClick={() => { setResultadoChave(null); setBuscaChave('') }}>✕ Limpar</Btn>
+          )}
+        </div>
+
+        {resultadoChave !== null && (
+          <div style={{ marginTop:16 }}>
+            <div style={{ fontSize:12.5, color:'#6B7280', marginBottom:8 }}>
+              {resultadoChave.length
+                ? `${resultadoChave.length} registro(s) encontrado(s) para "${buscaChave}" (em todo o histórico sincronizado):`
+                : `Nenhum registro encontrado para "${buscaChave}". Pode ser que o período em que isso aconteceu ainda não foi sincronizado — tente sincronizar o período abaixo.`}
+            </div>
+            {resultadoChave.length > 0 && (
+              <TabelaLinhas
+                linhas={resultadoChave}
+                dicCampos={dicCamposChave}
+                expandido={expandido}
+                setExpandido={setExpandido}
+                mensagemVazio=""
+              />
+            )}
+          </div>
+        )}
+      </Panel>
+
       <Panel title="Período">
         <div style={{ display:'flex', gap:12, alignItems:'flex-end', flexWrap:'wrap' }}>
           <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
@@ -243,61 +374,13 @@ export default function Auditoria() {
               )}
             </div>
 
-            <div style={{ maxHeight:600, overflow:'auto' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
-                <thead>
-                  <tr>
-                    {['','Data/Hora','Usuário','Tipo','Tabela','Chave'].map(h => (
-                      <th key={h} style={{
-                        position:'sticky', top:0, background:'#F9FAFB', padding:'8px 12px', textAlign:'left',
-                        fontSize:10.5, fontWeight:600, color:'#6B7280', textTransform:'uppercase', letterSpacing:'.04em',
-                        borderBottom:'1px solid #E5E7EB', whiteSpace:'nowrap',
-                      }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtrados.map(d => {
-                    const tipoInfo = TIPO_INFO[d.tipo] || { rot:d.tipo, cor:'#6B7280', bg:'#F3F4F6' }
-                    const aberto = expandido === d.id
-                    return (
-                      <React.Fragment key={d.id}>
-                        <tr
-                          onClick={() => setExpandido(aberto ? null : d.id)}
-                          style={{
-                            borderTop:'1px solid #F9FAFB', cursor:'pointer',
-                            background: d.tipo === 'D' ? '#FFFBFB' : 'transparent',
-                          }}
-                        >
-                          <td style={{ padding:'7px 10px', color:'#9CA3AF', width:20 }}>{aberto ? '▾' : '▸'}</td>
-                          <td style={{ padding:'7px 12px', whiteSpace:'nowrap', color:'#6B7280' }}>{dataHoraBR(d.data_hora)}</td>
-                          <td style={{ padding:'7px 12px', fontWeight:600 }}>{d.username}</td>
-                          <td style={{ padding:'7px 12px' }}>
-                            <span style={{ padding:'2px 8px', borderRadius:5, fontSize:11, fontWeight:600, color:tipoInfo.cor, background:tipoInfo.bg }}>
-                              {tipoInfo.rot}
-                            </span>
-                          </td>
-                          <td style={{ padding:'7px 12px' }}>{d.tabela}<span style={{ color:'#9CA3AF' }}> · {d.instancia}</span></td>
-                          <td style={{ padding:'7px 12px', color:'#6B7280', maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.chave}</td>
-                        </tr>
-                        {aberto && (
-                          <tr>
-                            <td colSpan={6} style={{ padding:0 }}>
-                              <LinhaExpandida linha={d} dicCampos={dicCampos} />
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    )
-                  })}
-                  {!filtrados.length && (
-                    <tr><td colSpan={6} style={{ textAlign:'center', padding:'32px', color:'#9CA3AF' }}>
-                      Nenhum registro encontrado neste período/filtro. Se o período ainda não foi sincronizado, use o botão acima.
-                    </td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <TabelaLinhas
+              linhas={filtrados}
+              dicCampos={dicCampos}
+              expandido={expandido}
+              setExpandido={setExpandido}
+              mensagemVazio="Nenhum registro encontrado neste período/filtro. Se o período ainda não foi sincronizado, use o botão acima."
+            />
           </Panel>
         </>
       )}
