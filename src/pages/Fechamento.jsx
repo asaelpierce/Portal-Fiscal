@@ -113,7 +113,15 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
     // sendo uma nota de agosto. Agora agrupamos pela data REAL de cada
     // nota (data_entrada_saida/data_negociacao), não pelo período da
     // importação que trouxe o dado.
-    sbFetch(`lancamentos_conciliacao?conta_contabil=eq.${encodeURIComponent(conta)}&select=*&order=data_entrada_saida.desc`)
+    // FIX (2): a consulta não respeitava a data de posição escolhida lá em
+    // cima (ex.: 30/08) — trazia TODOS os lançamentos dessa conta, de
+    // qualquer data, inclusive depois da posição escolhida. Isso não dava
+    // pra perceber antes porque as importações manuais paravam sozinhas no
+    // fim do mês; agora que a sincronização automática roda até "hoje" o
+    // tempo todo, aparecia lançamento de datas futuras em relação à posição
+    // que a pessoa estava conferindo. Adicionado o filtro <= dataFechamento.
+    if (!dataFechamento) return
+    sbFetch(`lancamentos_conciliacao?conta_contabil=eq.${encodeURIComponent(conta)}&data_entrada_saida=lte.${dataFechamento}&select=*&order=data_entrada_saida.desc`)
       .then(lancs => {
         const porMesMap = new Map()
         ;(lancs || []).forEach(n => {
@@ -152,7 +160,7 @@ function PainelNotas({ conta, dataFechamento, onClose, onNota }) {
         setFase('pronto')
       })
       .catch(() => setFase('erro'))
-  }, [conta])
+  }, [conta, dataFechamento])
 
   const totalDif = porMes.reduce((s, g) => s + g.somaDif, 0)
   const mesSelecionado = porMes.find(g => g.mesKey === mesFechamento)
