@@ -44,7 +44,7 @@ function gerarJanelas(dtIniISO, dtFimISO, tamanho = 5) {
   return janelas
 }
 
-function LinhaExpandida({ linha }) {
+function LinhaExpandida({ linha, dicCampos }) {
   const campos = linha.campos_alterados
   if (!campos || !campos.length) {
     return <div style={{ padding:'10px 16px', fontSize:12, color:'#9CA3AF', background:'#FAFAFA' }}>
@@ -62,13 +62,19 @@ function LinhaExpandida({ linha }) {
           </tr>
         </thead>
         <tbody>
-          {campos.filter(c => c.campo !== 'DTALTER').map((c,i) => (
-            <tr key={i} style={{ borderTop:'1px solid #F3F4F6' }}>
-              <td style={{ padding:'4px 8px', fontWeight:600 }}>{c.campo}</td>
-              <td style={{ padding:'4px 8px', color:'#B42318', maxWidth:280, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={String(c.valor_antigo ?? '')}>{String(c.valor_antigo ?? '') || '—'}</td>
-              <td style={{ padding:'4px 8px', color:'#12805C', maxWidth:280, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={String(c.valor_novo ?? '')}>{String(c.valor_novo ?? '') || '—'}</td>
-            </tr>
-          ))}
+          {campos.filter(c => c.campo !== 'DTALTER').map((c,i) => {
+            const descricao = dicCampos[`${linha.tabela}::${c.campo}`]
+            return (
+              <tr key={i} style={{ borderTop:'1px solid #F3F4F6' }}>
+                <td style={{ padding:'4px 8px' }}>
+                  <div style={{ fontWeight:600 }}>{descricao || c.campo}</div>
+                  {descricao && <div style={{ fontSize:10.5, color:'#9CA3AF' }}>{c.campo}</div>}
+                </td>
+                <td style={{ padding:'4px 8px', color:'#B42318', maxWidth:280, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={String(c.valor_antigo ?? '')}>{String(c.valor_antigo ?? '') || '—'}</td>
+                <td style={{ padding:'4px 8px', color:'#12805C', maxWidth:280, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={String(c.valor_novo ?? '')}>{String(c.valor_novo ?? '') || '—'}</td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
@@ -79,6 +85,7 @@ export default function Auditoria() {
   const [dtIni, setDtIni] = useState(diasAtrasISO(7))
   const [dtFim, setDtFim] = useState(hojeISO())
   const [dados, setDados] = useState([])
+  const [dicCampos, setDicCampos] = useState({})
   const [fase, setFase] = useState('carregando')
   const [erro, setErro] = useState('')
   const [busca, setBusca] = useState('')
@@ -97,6 +104,15 @@ export default function Auditoria() {
       const r = await sbFetch(`auditoria_modificacoes?select=*&data_hora=gte.${iniISOCompleto}&data_hora=lte.${fimISOCompleto}&order=data_hora.desc`)
       setDados(r || [])
       setFase('pronto')
+
+      const tabelasEnvolvidas = [...new Set((r || []).map(d => d.tabela).filter(Boolean))]
+      if (tabelasEnvolvidas.length) {
+        const filtro = tabelasEnvolvidas.map(t => `"${t}"`).join(',')
+        const dic = await sbFetch(`sankhya_dic_campos?select=nome_tabela,nome_campo,descr_campo&nome_tabela=in.(${filtro})`)
+        const mapa = {}
+        ;(dic || []).forEach(c => { mapa[`${c.nome_tabela}::${c.nome_campo}`] = c.descr_campo })
+        setDicCampos(mapa)
+      }
     } catch (e) {
       setErro(e.message); setFase('erro')
     }
@@ -267,7 +283,7 @@ export default function Auditoria() {
                         {aberto && (
                           <tr>
                             <td colSpan={6} style={{ padding:0 }}>
-                              <LinhaExpandida linha={d} />
+                              <LinhaExpandida linha={d} dicCampos={dicCampos} />
                             </td>
                           </tr>
                         )}
