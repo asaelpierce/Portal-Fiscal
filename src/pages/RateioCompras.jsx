@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { SUPABASE_URL, SUPABASE_ANON_KEY, brl } from '../config.js'
+import { SUPABASE_URL, SUPABASE_ANON_KEY, sbFetch, brl } from '../config.js'
 import { Panel, Btn, Spinner } from '../components/UI.jsx'
 import { lerRateioPdf } from '../lib/rateioPdfParser.js'
 import { buscarCodigoCentroResultado } from '../lib/rateioCentrosResultado.js'
-import { NATUREZAS_POR_TIPO } from '../lib/rateioNaturezas.js'
+import { NATUREZAS_POR_TIPO_PADRAO } from '../lib/rateioNaturezas.js'
+import ConfigRateio from '../components/ConfigRateio.jsx'
 
 const SYNC_KEY = 'kb2026sync!'
 
@@ -96,6 +97,38 @@ export default function RateioCompras() {
   // 'nunota' = Nro. Único (sempre exclusivo de um pedido).
   // 'numnota' = Número do documento (pode repetir entre pedidos diferentes,
   // por isso às vezes precisa de uma etapa extra de desambiguação).
+  // Configuração editável pela tela (Setor->Centro de Resultado e
+  // Tipo->Natureza) — carregada do banco em vez de fixa no código. Os
+  // "_PADRAO" só entram em cena se a busca ao banco falhar por algum
+  // motivo, pra tela nunca ficar sem nenhum mapeamento.
+  const [centrosLista, setCentrosLista] = useState([]) // linhas cruas (id, setor, codigo), pro painel de config
+  const [naturezasLista, setNaturezasLista] = useState([]) // linhas cruas (id, tipo, codnat)
+  const [mapaCentros, setMapaCentros] = useState(null) // {setor: codigo} — null enquanto carrega
+  const [naturezasPorTipo, setNaturezasPorTipo] = useState(NATUREZAS_POR_TIPO_PADRAO)
+  const [mostrarConfig, setMostrarConfig] = useState(false)
+
+  async function carregarConfigRateio() {
+    try {
+      const [centros, naturezas] = await Promise.all([
+        sbFetch('rateio_centros_resultado?select=*&order=setor.asc'),
+        sbFetch('rateio_naturezas?select=*&order=criado_em.asc'),
+      ])
+      setCentrosLista(centros || [])
+      setNaturezasLista(naturezas || [])
+      setMapaCentros(Object.fromEntries((centros || []).map(c => [c.setor, c.codigo])))
+      if (naturezas?.length) {
+        setNaturezasPorTipo(Object.fromEntries(naturezas.map(n => [n.tipo, n.codnat])))
+      }
+    } catch {
+      // Sem internet/erro pontual — a tela continua funcionando com os
+      // valores padrão fixos (NATUREZAS_POR_TIPO_PADRAO / mapa interno de
+      // rateioCentrosResultado.js), só não reflete edições feitas na
+      // configuração até a próxima tentativa de carregar.
+    }
+  }
+
+  useEffect(() => { carregarConfigRateio() }, [])
+
   const [modoBusca, setModoBusca] = useState('nunota')
   const [entradaPedido, setEntradaPedido] = useState('')
   // Nro. Único já confirmado/resolvido — é sempre esse valor que vai pro
@@ -104,13 +137,22 @@ export default function RateioCompras() {
   const [nunotaResolvido, setNunotaResolvido] = useState('')
   const [opcoesMultiplas, setOpcoesMultiplas] = useState(null)
 
-  const [tipoPadrao, setTipoPadrao] = useState(Object.keys(NATUREZAS_POR_TIPO)[0])
+  const [tipoPadrao, setTipoPadrao] = useState(Object.keys(NATUREZAS_POR_TIPO_PADRAO)[0])
   const [linhas, setLinhas] = useState([])
   const [carregandoPdf, setCarregandoPdf] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [resultado, setResultado] = useState(null)
   const [erroLeitura, setErroLeitura] = useState(null)
   const [nomeArquivo, setNomeArquivo] = useState('')
+
+  // Se a lista de tipos mudar (configuração editada) e o tipo selecionado
+  // não existir mais, cai pro primeiro disponível em vez de ficar "preso"
+  // num tipo que já foi excluído.
+  useEffect(() => {
+    if (!Object.keys(naturezasPorTipo).includes(tipoPadrao)) {
+      setTipoPadrao(Object.keys(naturezasPorTipo)[0] ?? '')
+    }
+  }, [naturezasPorTipo]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Detalhes do pedido, buscados automaticamente enquanto o usuário digita
   // (com debounce, pra não disparar uma consulta a cada tecla).
@@ -189,7 +231,7 @@ export default function RateioCompras() {
     }
   }
 
-  const codnatPadraoAtual = NATUREZAS_POR_TIPO[tipoPadrao] ?? ''
+  const codnatPadraoAtual = naturezasPorTipo[tipoPadrao] ?? ''
   const total = linhas.reduce((acc, l) => acc + l.valor, 0)
   const semCentroResultado = linhas.filter(l => !l.codcencus)
 
@@ -211,7 +253,7 @@ export default function RateioCompras() {
       setLinhas(registros.map(r => ({
         setor: r.setor,
         valor: r.valor,
-        codcencus: buscarCodigoCentroResultado(r.setor) ?? '',
+        codcencus: buscarCodigoCentroResultado(r.setor, mapaCentros) ?? '',
         codnat: codnatPadraoAtual,
         naturezaManual: false,
       })))
@@ -224,7 +266,7 @@ export default function RateioCompras() {
 
   function aoTrocarTipoPadrao(novoTipo) {
     setTipoPadrao(novoTipo)
-    const novoCodigo = NATUREZAS_POR_TIPO[novoTipo] ?? ''
+    const novoCodigo = naturezasPorTipo[novoTipo] ?? ''
     setLinhas(atuais => atuais.map(l => (l.naturezaManual ? l : { ...l, codnat: novoCodigo })))
   }
 
@@ -283,7 +325,10 @@ export default function RateioCompras() {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth: 900 }}>
 
-      <Panel title="Dados do pedido">
+      <Panel
+        title="Dados do pedido"
+        action={<Btn small onClick={() => setMostrarConfig(true)}>⚙ Configurações</Btn>}
+      >
         <div style={{ display:'flex', gap:20, flexWrap:'wrap', alignItems:'flex-end' }}>
           <div>
             <label style={{ display:'block', fontSize:12, color:'#6B7280', fontWeight:600, marginBottom:5 }}>
@@ -331,7 +376,7 @@ export default function RateioCompras() {
             Tipo padrão do rateio
           </label>
           <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
-            {Object.keys(NATUREZAS_POR_TIPO).map(tipo => (
+            {Object.keys(naturezasPorTipo).map(tipo => (
               <label key={tipo} style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, cursor:'pointer' }}>
                 <input
                   type="radio" name="tipo-natureza"
@@ -604,6 +649,15 @@ export default function RateioCompras() {
             <>Erro: {resultado.erro ?? resultado.statusMessage}</>
           )}
         </div>
+      )}
+
+      {mostrarConfig && (
+        <ConfigRateio
+          centros={centrosLista}
+          naturezas={naturezasLista}
+          onFechar={() => setMostrarConfig(false)}
+          onMudou={carregarConfigRateio}
+        />
       )}
     </div>
   )
