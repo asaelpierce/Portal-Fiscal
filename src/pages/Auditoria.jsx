@@ -85,6 +85,7 @@ export default function Auditoria() {
   const [fTipo, setFTipo] = useState('')
   const [fTabela, setFTabela] = useState('')
   const [expandido, setExpandido] = useState(null)
+  const [mostrarSistema, setMostrarSistema] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
   const [msgSync, setMsgSync] = useState('')
 
@@ -124,9 +125,15 @@ export default function Auditoria() {
 
   const opcoesTabela = useMemo(() => [...new Set(dados.map(d => d.tabela).filter(Boolean))].sort(), [dados])
 
+  const qtdSistema = useMemo(() => dados.filter(d => d.username === 'SUP').length, [dados])
+
+  const dadosVisiveis = useMemo(() =>
+    mostrarSistema ? dados : dados.filter(d => d.username !== 'SUP')
+  , [dados, mostrarSistema])
+
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase()
-    return dados.filter(d => {
+    return dadosVisiveis.filter(d => {
       if (fTipo && d.tipo !== fTipo) return false
       if (fTabela && d.tabela !== fTabela) return false
       if (q) {
@@ -135,14 +142,14 @@ export default function Auditoria() {
       }
       return true
     })
-  }, [dados, busca, fTipo, fTabela])
+  }, [dadosVisiveis, busca, fTipo, fTabela])
 
   const kpi = useMemo(() => ({
-    total: dados.length,
-    inclusoes: dados.filter(d => d.tipo === 'I').length,
-    alteracoes: dados.filter(d => d.tipo === 'U').length,
-    exclusoes: dados.filter(d => d.tipo === 'D').length,
-  }), [dados])
+    total: dadosVisiveis.length,
+    inclusoes: dadosVisiveis.filter(d => d.tipo === 'I').length,
+    alteracoes: dadosVisiveis.filter(d => d.tipo === 'U').length,
+    exclusoes: dadosVisiveis.filter(d => d.tipo === 'D').length,
+  }), [dadosVisiveis])
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
@@ -165,9 +172,10 @@ export default function Auditoria() {
           {msgSync && <span style={{ fontSize:12, color: msgSync.startsWith('Erro') ? '#B42318' : '#12805C' }}>{msgSync}</span>}
         </div>
         <p style={{ margin:'10px 0 0', fontSize:11.5, color:'#9CA3AF' }}>
-          O dia de hoje é sincronizado automaticamente todo dia às 9h. Pra ver dias anteriores que ainda não foram
-          buscados, use "Sincronizar este período" — ele busca dia a dia direto do Sankhya (pode demorar um pouco
-          em períodos longos).
+          Ações do usuário de sistema (SUP) — renovação de sessão, tokens, estatísticas internas — ficam ocultas
+          por padrão, pois não são ações de nenhuma pessoa. O dia de hoje é sincronizado automaticamente todo dia
+          às 9h. Pra ver dias anteriores que ainda não foram buscados, use "Sincronizar este período" — ele busca
+          dia a dia direto do Sankhya (pode demorar um pouco em períodos longos).
         </p>
       </Panel>
 
@@ -193,7 +201,7 @@ export default function Auditoria() {
             ))}
           </div>
 
-          <Panel title={`Registros — ${int(filtrados.length)} de ${int(dados.length)}`} noPad>
+          <Panel title={`Registros — ${int(filtrados.length)} de ${int(dadosVisiveis.length)}`} noPad>
             <div style={{ display:'flex', gap:12, padding:'14px 18px', borderBottom:'1px solid #F3F4F6', flexWrap:'wrap', alignItems:'flex-end' }}>
               <SearchInput value={busca} onChange={setBusca} placeholder="Tabela, usuário, chave…" />
               <Select label="Tipo" value={fTipo} onChange={setFTipo} options={['I','U','D']} placeholder="Todos" />
@@ -204,6 +212,17 @@ export default function Auditoria() {
                   background: fTipo === 'D' ? '#FEE2E2' : '#fff', color:'#B42318', cursor:'pointer', fontFamily:'inherit', fontWeight:600,
                 }}>
                   {fTipo === 'D' ? '✕ Limpar filtro' : `⚠ Só exclusões (${kpi.exclusoes})`}
+                </button>
+              )}
+              {qtdSistema > 0 && (
+                <button onClick={() => setMostrarSistema(v => !v)} style={{
+                  fontSize:12, padding:'7px 12px', borderRadius:6, border:'1px solid #E5E7EB',
+                  background: mostrarSistema ? '#F3F4F6' : '#fff', color:'#6B7280', cursor:'pointer', fontFamily:'inherit',
+                  marginLeft:'auto',
+                }}>
+                  {mostrarSistema
+                    ? `✓ Mostrando sistema (SUP) — clique pra ocultar`
+                    : `🤖 ${qtdSistema} ações de sistema (SUP) ocultas — clique pra ver`}
                 </button>
               )}
             </div>
