@@ -17,6 +17,7 @@ import ConferenciaFiscal from './pages/ConferenciaFiscal.jsx'
 import Divergencias from './pages/Divergencias.jsx'
 import RateioCompras from './pages/RateioCompras.jsx'
 import Auditoria from './pages/Auditoria.jsx'
+import BaixaGas from './pages/BaixaGas.jsx'
 
 const MENU_COMPLETO = [
   { id: 'visao', label: 'Visão geral', icon: '▦' },
@@ -29,6 +30,7 @@ const MENU_COMPLETO = [
   { id: 'razao', label: 'Movimentos', icon: '📋' },
   { id: 'rateio', label: 'Rateio de Compras', icon: '➗' },
   { id: 'auditoria', label: 'Auditoria de Modificações', icon: '🔍' },
+  { id: 'baixagas', label: 'Baixa Automática Gás', icon: '🔥' },
   { id: 'contas', label: 'Contas contábeis', icon: '⊞' },
   { id: 'historico', label: 'Histórico', icon: '⊙' },
   { id: 'sync', label: 'Importar período', icon: '↻' },
@@ -253,21 +255,21 @@ function AppAutenticado({ sessao, onLogout }) {
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
               {MENU.find(m => m.id === pagina)?.label}
             </h1>
-            {dtIniISO && dtFimISO && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria'].includes(pagina) && (
+            {dtIniISO && dtFimISO && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas'].includes(pagina) && (
               <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9CA3AF' }}>
                 Período {dBR(dtIniISO)} a {dBR(dtFimISO)}
               </p>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {!['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria'].includes(pagina) && (
+            {!['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas'].includes(pagina) && (
               <SeletorPeriodo
                 dtIni={dtIniISO} dtFim={dtFimISO}
                 onChange={selecionarPeriodo}
                 fase={faseSync}
               />
             )}
-            {pagina !== 'rateio' && pagina !== 'auditoria' && (
+            {pagina !== 'rateio' && pagina !== 'auditoria' && pagina !== 'baixagas' && (
               <Btn primary onClick={atualizar} disabled={atualizando || fase === 'carregando'}>
                 {atualizando ? '↻ Atualizando…' : '↻ Atualizar dados'}
               </Btn>
@@ -283,6 +285,8 @@ function AppAutenticado({ sessao, onLogout }) {
             <RateioCompras />
           ) : pagina === 'auditoria' ? (
             <Auditoria />
+          ) : pagina === 'baixagas' ? (
+            <BaixaGas />
           ) : (
             <>
               {fase === 'carregando' && <Spinner />}
