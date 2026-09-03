@@ -67,9 +67,11 @@ export default function VinculoFrete() {
       if (fSituacao === 'Com CT-e' && !d.tem_cte) return false
       if (fSituacao === 'Sem CT-e' && d.tem_cte) return false
       if (fTransp && d.transportadora !== fTransp) return false
+      const naoAplicavel = d.conferivel === false
       const bate = Math.abs(Number(d.diferenca||0)) <= 0.05
-      if (fConf === 'Só divergentes' && bate) return false
-      if (fConf === 'Só OK' && !bate) return false
+      if (fConf === 'Só divergentes' && (naoAplicavel || bate)) return false
+      if (fConf === 'Só OK' && (naoAplicavel || !bate)) return false
+      if (fConf === 'Só não aplicáveis' && !naoAplicavel) return false
       if (d.data_nf) {
         if (dtIni && d.data_nf < dtIni) return false
         if (dtFim && d.data_nf > dtFim) return false
@@ -102,7 +104,8 @@ export default function VinculoFrete() {
     total: filtrados.length,
     comCte: filtrados.filter(d => d.tem_cte).length,
     semCte: filtrados.filter(d => !d.tem_cte).length,
-    divergentes: filtrados.filter(d => Math.abs(Number(d.diferenca||0)) > 0.05).length,
+    conferiveis: filtrados.filter(d => d.conferivel !== false).length,
+    divergentes: filtrados.filter(d => d.conferivel !== false && Math.abs(Number(d.diferenca||0)) > 0.05).length,
   }), [filtrados])
 
   const exportarCsv = () => {
@@ -132,7 +135,8 @@ export default function VinculoFrete() {
         Mostra qual CT-e pertence a qual nota e vice-versa. O vínculo vem da chave de acesso: o CT-e
         referencia a chave da NF de mercadoria. Um mesmo CT-e pode cobrir várias notas.
         <br/><strong>Conferência:</strong> o débito nas contas de estoque deve ser igual ao líquido da NF
-        (valor − ICMS/IPI/PIS/COFINS) mais o frete rateado nela. Diferenças acima de R$ 0,05 aparecem em vermelho.
+        (valor − ICMS/IPI/PIS/COFINS) mais o frete rateado nela, já líquido. Notas que não passam por estoque
+        (serviço, energia, aluguel, imobilizado) aparecem como <strong>n/a</strong> — não são divergência.
       </p>
 
       <Panel title="Período">
@@ -163,7 +167,7 @@ export default function VinculoFrete() {
             {[
               { label:'Notas no período', valor:int(kpi.total), cor:'#101828' },
               { label:'Com CT-e vinculado', valor:int(kpi.comCte), cor:'#12805C' },
-              { label:'Sem CT-e', valor:int(kpi.semCte), cor:'#B54708' },
+              { label:'Conferíveis (tocam estoque)', valor:int(kpi.conferiveis), cor:'#1D5BBF' },
               { label:'Estoque divergente', valor:int(kpi.divergentes), cor: kpi.divergentes ? '#B42318' : '#12805C' },
             ].map((k,i) => (
               <div key={i} style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:8, padding:'16px 18px', borderTop:`3px solid ${k.cor}` }}>
@@ -190,7 +194,7 @@ export default function VinculoFrete() {
               <Select label="Situação" value={fSituacao} onChange={setFSituacao}
                 options={['Com CT-e','Sem CT-e']} placeholder="Todas" />
               <Select label="Transportadora" value={fTransp} onChange={setFTransp} options={opcoesTransp} placeholder="Todas" />
-              <Select label="Conferência" value={fConf} onChange={setFConf} options={['Só divergentes','Só OK']} placeholder="Todas" />
+              <Select label="Conferência" value={fConf} onChange={setFConf} options={['Só divergentes','Só OK','Só não aplicáveis']} placeholder="Todas" />
             </div>
 
             <div style={{ maxHeight:620, overflow:'auto' }}>
@@ -231,10 +235,13 @@ export default function VinculoFrete() {
                         <td style={celNum}>R$ {brl(d.vlr_nf)}</td>
                         <td style={{ ...celNum, color:'#6B7280' }}>R$ {brl(d.vlr_liq_nf)}</td>
                         <td style={{ ...celNum, color:'#6B7280' }}>R$ {brl(d.vlr_frete_rateado_nf)}</td>
-                        <td style={celNum}>R$ {brl(d.valor_esperado)}</td>
-                        <td style={celNum}>R$ {brl(d.ctb_estoque_debito)}</td>
-                        <td style={{ ...celNum, fontWeight:700, color: Math.abs(Number(d.diferenca||0)) <= 0.05 ? '#12805C' : '#B42318' }}>
-                          {Math.abs(Number(d.diferenca||0)) <= 0.05 ? 'OK' : `R$ ${brl(d.diferenca)}`}
+                        <td style={celNum}>{d.conferivel === false ? '—' : `R$ ${brl(d.valor_esperado)}`}</td>
+                        <td style={celNum}>{d.conferivel === false ? '—' : `R$ ${brl(d.ctb_estoque_debito)}`}</td>
+                        <td style={{ ...celNum, fontWeight:700,
+                          color: d.conferivel === false ? '#9CA3AF'
+                               : Math.abs(Number(d.diferenca||0)) <= 0.05 ? '#12805C' : '#B42318' }}>
+                          {d.conferivel === false ? 'n/a'
+                            : Math.abs(Number(d.diferenca||0)) <= 0.05 ? 'OK' : `R$ ${brl(d.diferenca)}`}
                         </td>
                       </tr>
                     ))}
