@@ -13,6 +13,15 @@ async function chamar(payload) {
   return res.json()
 }
 
+async function chamarExclusao(nunota) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/baixa-gas-excluir`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    body: JSON.stringify({ nunota, _key: SYNC_KEY }),
+  })
+  return res.json()
+}
+
 function dataHoraBR(iso) {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })
@@ -26,6 +35,25 @@ export default function BaixaGas() {
   const [resultadoExecucao, setResultadoExecucao] = useState(null)
   const [confirmando, setConfirmando] = useState(false)
   const [historico, setHistorico] = useState([])
+  const [excluindo, setExcluindo] = useState(null)
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState(null)
+  const [msgExclusao, setMsgExclusao] = useState('')
+
+  const excluirBaixa = async (nunota) => {
+    setExcluindo(nunota); setConfirmandoExclusao(null); setMsgExclusao('')
+    try {
+      const d = await chamarExclusao(nunota)
+      setMsgExclusao(d.ok
+        ? `✓ Nota ${nunota} excluída — estoque devolvido.`
+        : `Erro ao excluir nota ${nunota}: ${d.erro || d.mensagem || 'motivo desconhecido'}`)
+      await carregarPrevia()
+      carregarHistorico()
+    } catch (e) {
+      setMsgExclusao(`Erro ao excluir: ${e.message}`)
+    } finally {
+      setExcluindo(null)
+    }
+  }
 
   const carregarPrevia = async () => {
     setFase('carregando'); setErro(''); setResultadoExecucao(null)
@@ -160,10 +188,17 @@ export default function BaixaGas() {
 
       {historico.length > 0 && (
         <Panel title="Histórico de baixas lançadas">
+          {msgExclusao && (
+            <div style={{
+              marginBottom:12, padding:'10px 12px', borderRadius:6, fontSize:12.5,
+              background: msgExclusao.startsWith('✓') ? '#F0FDF4' : '#FEF2F2',
+              color: msgExclusao.startsWith('✓') ? '#12805C' : '#B42318',
+            }}>{msgExclusao}</div>
+          )}
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
             <thead>
               <tr>
-                {['Data/Hora','Nota gerada','Itens','Valor','Status'].map(h => (
+                {['Data/Hora','Nota gerada','Itens','Valor','Status',''].map(h => (
                   <th key={h} style={{
                     padding:'8px 12px', background:'#F9FAFB', textAlign:'left',
                     fontSize:10.5, fontWeight:600, color:'#6B7280', textTransform:'uppercase',
@@ -173,23 +208,54 @@ export default function BaixaGas() {
               </tr>
             </thead>
             <tbody>
-              {historico.map(h => (
-                <tr key={h.id} style={{ borderTop:'1px solid #F9FAFB' }}>
-                  <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>{dataHoraBR(h.executado_em)}</td>
-                  <td style={{ padding:'8px 12px' }}>{h.nunota_gerado || '—'}</td>
-                  <td style={{ padding:'8px 12px' }}>{h.itens?.length ?? 0}</td>
-                  <td style={{ padding:'8px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{h.valor_total ? `R$ ${brl(h.valor_total)}` : '—'}</td>
-                  <td style={{ padding:'8px 12px' }}>
-                    <span style={{
-                      padding:'2px 8px', borderRadius:5, fontSize:11, fontWeight:600,
-                      color: h.status==='ok' ? '#12805C' : '#B42318',
-                      background: h.status==='ok' ? '#D1FAE5' : '#FEE2E2',
-                    }}>{h.status==='ok' ? 'Sucesso' : 'Erro'}</span>
-                  </td>
-                </tr>
-              ))}
+              {historico.map(h => {
+                const info = h.status === 'ok'
+                  ? { rot:'Sucesso', cor:'#12805C', bg:'#D1FAE5' }
+                  : h.status === 'excluida'
+                    ? { rot:'Excluída', cor:'#6B7280', bg:'#F3F4F6' }
+                    : { rot:'Erro', cor:'#B42318', bg:'#FEE2E2' }
+                const podeExcluir = h.status === 'ok' && h.nunota_gerado
+                return (
+                  <tr key={h.id} style={{ borderTop:'1px solid #F9FAFB', opacity: h.status==='excluida' ? .6 : 1 }}>
+                    <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>{dataHoraBR(h.executado_em)}</td>
+                    <td style={{ padding:'8px 12px', textDecoration: h.status==='excluida' ? 'line-through' : 'none' }}>{h.nunota_gerado || '—'}</td>
+                    <td style={{ padding:'8px 12px' }}>{h.itens?.length ?? 0}</td>
+                    <td style={{ padding:'8px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{h.valor_total ? `R$ ${brl(h.valor_total)}` : '—'}</td>
+                    <td style={{ padding:'8px 12px' }}>
+                      <span style={{ padding:'2px 8px', borderRadius:5, fontSize:11, fontWeight:600, color:info.cor, background:info.bg }}>{info.rot}</span>
+                    </td>
+                    <td style={{ padding:'8px 12px', textAlign:'right', whiteSpace:'nowrap' }}>
+                      {podeExcluir && (
+                        confirmandoExclusao === h.nunota_gerado ? (
+                          <>
+                            <button onClick={() => excluirBaixa(h.nunota_gerado)} disabled={excluindo}
+                              style={{ border:'none', background:'none', cursor:'pointer', fontFamily:'inherit', fontSize:12, color:'#B42318', fontWeight:600 }}>
+                              {excluindo === h.nunota_gerado ? 'excluindo…' : 'confirmar exclusão'}
+                            </button>
+                            {' · '}
+                            <button onClick={() => setConfirmandoExclusao(null)}
+                              style={{ border:'none', background:'none', cursor:'pointer', fontFamily:'inherit', fontSize:12, color:'#6B7280' }}>cancelar</button>
+                          </>
+                        ) : (
+                          <button onClick={() => { setConfirmandoExclusao(h.nunota_gerado); setMsgExclusao('') }} disabled={!!excluindo}
+                            style={{ border:'1px solid #FECACA', background:'#fff', borderRadius:5, padding:'3px 10px', cursor:'pointer', fontFamily:'inherit', fontSize:12, color:'#B42318' }}>
+                            Excluir
+                          </button>
+                        )
+                      )}
+                      {h.status === 'excluida' && h.excluida_em && (
+                        <span style={{ fontSize:11, color:'#9CA3AF' }}>em {dataHoraBR(h.excluida_em)}</span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
+          <p style={{ margin:'12px 0 0', fontSize:11.5, color:'#9CA3AF', lineHeight:1.6 }}>
+            Excluir uma baixa remove a nota do Sankhya e <strong>devolve o gás ao estoque</strong> — útil se algo
+            saiu errado. A baixa fica registrada aqui como "Excluída" para manter o rastro do que aconteceu.
+          </p>
         </Panel>
       )}
     </div>
