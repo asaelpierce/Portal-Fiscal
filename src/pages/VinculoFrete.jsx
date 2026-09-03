@@ -17,6 +17,7 @@ export default function VinculoFrete() {
   const [busca, setBusca] = useState('')
   const [fSituacao, setFSituacao] = useState('')
   const [fTransp, setFTransp] = useState('')
+  const [fConf, setFConf] = useState('')
   const [sincronizando, setSincronizando] = useState(false)
   const [msgSync, setMsgSync] = useState('')
   const [visao, setVisao] = useState('nf') // 'nf' = por nota | 'cte' = por CT-e
@@ -66,6 +67,9 @@ export default function VinculoFrete() {
       if (fSituacao === 'Com CT-e' && !d.tem_cte) return false
       if (fSituacao === 'Sem CT-e' && d.tem_cte) return false
       if (fTransp && d.transportadora !== fTransp) return false
+      const bate = Math.abs(Number(d.diferenca||0)) <= 0.05
+      if (fConf === 'Só divergentes' && bate) return false
+      if (fConf === 'Só OK' && !bate) return false
       if (d.data_nf) {
         if (dtIni && d.data_nf < dtIni) return false
         if (dtFim && d.data_nf > dtFim) return false
@@ -76,7 +80,7 @@ export default function VinculoFrete() {
       }
       return true
     })
-  }, [dados, busca, fSituacao, fTransp, dtIni, dtFim])
+  }, [dados, busca, fSituacao, fTransp, fConf, dtIni, dtFim])
 
   // Visão por CT-e: agrupa as notas que compartilham o mesmo CT-e
   const porCte = useMemo(() => {
@@ -98,7 +102,7 @@ export default function VinculoFrete() {
     total: filtrados.length,
     comCte: filtrados.filter(d => d.tem_cte).length,
     semCte: filtrados.filter(d => !d.tem_cte).length,
-    vlrSemCte: filtrados.filter(d => !d.tem_cte).reduce((s,d) => s + Number(d.vlr_nf||0), 0),
+    divergentes: filtrados.filter(d => Math.abs(Number(d.diferenca||0)) > 0.05).length,
   }), [filtrados])
 
   const exportarCsv = () => {
@@ -127,6 +131,8 @@ export default function VinculoFrete() {
       <p style={{ margin:0, fontSize:13, color:'#6B7280', maxWidth:760, lineHeight:1.6 }}>
         Mostra qual CT-e pertence a qual nota e vice-versa. O vínculo vem da chave de acesso: o CT-e
         referencia a chave da NF de mercadoria. Um mesmo CT-e pode cobrir várias notas.
+        <br/><strong>Conferência:</strong> o débito nas contas de estoque deve ser igual ao líquido da NF
+        (valor − ICMS/IPI/PIS/COFINS) mais o frete rateado nela. Diferenças acima de R$ 0,05 aparecem em vermelho.
       </p>
 
       <Panel title="Período">
@@ -158,7 +164,7 @@ export default function VinculoFrete() {
               { label:'Notas no período', valor:int(kpi.total), cor:'#101828' },
               { label:'Com CT-e vinculado', valor:int(kpi.comCte), cor:'#12805C' },
               { label:'Sem CT-e', valor:int(kpi.semCte), cor:'#B54708' },
-              { label:'Valor sem CT-e', valor:`R$ ${brl(kpi.vlrSemCte)}`, cor:'#B54708' },
+              { label:'Estoque divergente', valor:int(kpi.divergentes), cor: kpi.divergentes ? '#B42318' : '#12805C' },
             ].map((k,i) => (
               <div key={i} style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:8, padding:'16px 18px', borderTop:`3px solid ${k.cor}` }}>
                 <div style={{ fontSize:12, color:'#6B7280', marginBottom:8, fontWeight:500 }}>{k.label}</div>
@@ -184,6 +190,7 @@ export default function VinculoFrete() {
               <Select label="Situação" value={fSituacao} onChange={setFSituacao}
                 options={['Com CT-e','Sem CT-e']} placeholder="Todas" />
               <Select label="Transportadora" value={fTransp} onChange={setFTransp} options={opcoesTransp} placeholder="Todas" />
+              <Select label="Conferência" value={fConf} onChange={setFConf} options={['Só divergentes','Só OK']} placeholder="Todas" />
             </div>
 
             <div style={{ maxHeight:620, overflow:'auto' }}>
@@ -191,21 +198,18 @@ export default function VinculoFrete() {
                 <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
                   <thead>
                     <tr>
-                      <th style={th()}>Nota</th><th style={th()}>Data</th><th style={th()}>Fornecedor</th>
+                      <th style={th()}>Nota</th><th style={th()}>CT-e</th><th style={th()}>Data</th>
+                      <th style={th()}>Fornecedor</th><th style={th()}>Transportadora</th>
                       <th style={th('right')}>Vlr NF</th><th style={th('right')}>Líq. NF</th>
-                      <th style={th()}>CT-e</th><th style={th()}>Transportadora</th>
-                      <th style={th('right')}>Vlr CT-e</th><th style={th('right')}>Líq. CT-e</th>
-                      <th style={th('right')}>Ctb NF (D)</th><th style={th('right')}>Ctb CT-e (D)</th>
+                      <th style={th('right')}>Frete rateado</th>
+                      <th style={th('right')}>Esperado estoque</th><th style={th('right')}>Contabilizado</th>
+                      <th style={th('right')}>Diferença</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtrados.map(d => (
                       <tr key={d.id} style={{ borderTop:'1px solid #F9FAFB', background: d.tem_cte ? 'transparent' : '#FFFBEB' }}>
                         <td style={{ ...cel, fontWeight:600 }}>{d.numnota_nf}</td>
-                        <td style={{ ...cel, color:'#6B7280' }}>{dBR(d.data_nf)}</td>
-                        <td style={{ ...cel, maxWidth:210, overflow:'hidden', textOverflow:'ellipsis' }} title={d.fornecedor}>{d.fornecedor}</td>
-                        <td style={celNum}>R$ {brl(d.vlr_nf)}</td>
-                        <td style={{ ...celNum, color:'#6B7280' }}>R$ {brl(d.vlr_liq_nf)}</td>
                         <td style={cel}>
                           {d.tem_cte ? (
                             <span style={{ fontWeight:600, color:'#12805C' }}>
@@ -221,11 +225,17 @@ export default function VinculoFrete() {
                             <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:5, background:'#FEF3C7', color:'#B54708' }}>sem CT-e</span>
                           )}
                         </td>
-                        <td style={{ ...cel, maxWidth:190, overflow:'hidden', textOverflow:'ellipsis', color:'#6B7280' }} title={d.transportadora||''}>{d.transportadora || '—'}</td>
-                        <td style={celNum}>{d.vlr_cte != null ? `R$ ${brl(d.vlr_cte)}` : '—'}</td>
-                        <td style={{ ...celNum, color:'#6B7280' }}>{d.vlr_liq_cte != null ? `R$ ${brl(d.vlr_liq_cte)}` : '—'}</td>
-                        <td style={celNum}>R$ {brl(d.ctb_nf_debito)}</td>
-                        <td style={celNum}>{d.ctb_cte_debito != null ? `R$ ${brl(d.ctb_cte_debito)}` : '—'}</td>
+                        <td style={{ ...cel, color:'#6B7280' }}>{dBR(d.data_nf)}</td>
+                        <td style={{ ...cel, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis' }} title={d.fornecedor}>{d.fornecedor}</td>
+                        <td style={{ ...cel, maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', color:'#6B7280' }} title={d.transportadora||''}>{d.transportadora || '—'}</td>
+                        <td style={celNum}>R$ {brl(d.vlr_nf)}</td>
+                        <td style={{ ...celNum, color:'#6B7280' }}>R$ {brl(d.vlr_liq_nf)}</td>
+                        <td style={{ ...celNum, color:'#6B7280' }}>R$ {brl(d.vlr_frete_rateado_nf)}</td>
+                        <td style={celNum}>R$ {brl(d.valor_esperado)}</td>
+                        <td style={celNum}>R$ {brl(d.ctb_estoque_debito)}</td>
+                        <td style={{ ...celNum, fontWeight:700, color: Math.abs(Number(d.diferenca||0)) <= 0.05 ? '#12805C' : '#B42318' }}>
+                          {Math.abs(Number(d.diferenca||0)) <= 0.05 ? 'OK' : `R$ ${brl(d.diferenca)}`}
+                        </td>
                       </tr>
                     ))}
                     {!filtrados.length && <tr><td colSpan={11} style={{ textAlign:'center', padding:32, color:'#9CA3AF' }}>Nenhum registro. Use "Buscar vínculos no Sankhya".</td></tr>}
