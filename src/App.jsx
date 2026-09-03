@@ -18,6 +18,7 @@ import Divergencias from './pages/Divergencias.jsx'
 import RateioCompras from './pages/RateioCompras.jsx'
 import Auditoria from './pages/Auditoria.jsx'
 import VinculoFrete from './pages/VinculoFrete.jsx'
+import Admin, { registrarAuditoria } from './pages/Admin.jsx'
 import BaixaGas from './pages/BaixaGas.jsx'
 
 const MENU_COMPLETO = [
@@ -36,6 +37,7 @@ const MENU_COMPLETO = [
   { id: 'contas', label: 'Contas contábeis', icon: '⊞' },
   { id: 'historico', label: 'Histórico', icon: '⊙' },
   { id: 'sync', label: 'Importar período', icon: '↻' },
+  { id: 'admin', label: 'Administração', icon: '🔐' },
 ]
 
 function carregarSessaoSalva() {
@@ -55,7 +57,7 @@ export default function App() {
   const [sessao, setSessao] = useState(carregarSessaoSalva)
 
   if (!sessao) {
-    return <Login onLogin={setSessao} />
+    return <Login onLogin={(s) => { registrarAuditoria(s?.email, 'login', null, null); setSessao(s) }} />
   }
 
   return <AppAutenticado sessao={sessao} onLogout={() => {
@@ -257,21 +259,21 @@ function AppAutenticado({ sessao, onLogout }) {
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
               {MENU.find(m => m.id === pagina)?.label}
             </h1>
-            {dtIniISO && dtFimISO && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete'].includes(pagina) && (
+            {dtIniISO && dtFimISO && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin'].includes(pagina) && (
               <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9CA3AF' }}>
                 Período {dBR(dtIniISO)} a {dBR(dtFimISO)}
               </p>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {!['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete'].includes(pagina) && (
+            {!['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin'].includes(pagina) && (
               <SeletorPeriodo
                 dtIni={dtIniISO} dtFim={dtFimISO}
                 onChange={selecionarPeriodo}
                 fase={faseSync}
               />
             )}
-            {pagina !== 'rateio' && pagina !== 'auditoria' && pagina !== 'baixagas' && pagina !== 'vinculofrete' && (
+            {pagina !== 'rateio' && pagina !== 'auditoria' && pagina !== 'baixagas' && pagina !== 'vinculofrete' && pagina !== 'admin' && (
               <Btn primary onClick={atualizar} disabled={atualizando || fase === 'carregando'}>
                 {atualizando ? '↻ Atualizando…' : '↻ Atualizar dados'}
               </Btn>
@@ -291,6 +293,8 @@ function AppAutenticado({ sessao, onLogout }) {
             <BaixaGas />
           ) : pagina === 'vinculofrete' ? (
             <VinculoFrete />
+          ) : pagina === 'admin' ? (
+            <Admin sessao={sessao} />
           ) : (
             <>
               {fase === 'carregando' && <Spinner />}
