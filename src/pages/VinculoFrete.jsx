@@ -52,8 +52,8 @@ export default function VinculoFrete() {
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase()
     return dados.filter(d => {
-      if (fSituacao === 'com' && !d.tem_cte) return false
-      if (fSituacao === 'sem' && d.tem_cte) return false
+      if (fSituacao === 'Com CT-e' && !d.tem_cte) return false
+      if (fSituacao === 'Sem CT-e' && d.tem_cte) return false
       if (fTransp && d.transportadora !== fTransp) return false
       if (d.data_nf) {
         if (dtIni && d.data_nf < dtIni) return false
@@ -171,7 +171,7 @@ export default function VinculoFrete() {
             <div style={{ display:'flex', gap:12, padding:'14px 18px', borderBottom:'1px solid #F3F4F6', flexWrap:'wrap', alignItems:'flex-end' }}>
               <SearchInput value={busca} onChange={setBusca} placeholder="Nº da nota, do CT-e, fornecedor…" />
               <Select label="Situação" value={fSituacao} onChange={setFSituacao}
-                options={[{value:'com',label:'Com CT-e'},{value:'sem',label:'Sem CT-e'}]} placeholder="Todas" />
+                options={['Com CT-e','Sem CT-e']} placeholder="Todas" />
               <Select label="Transportadora" value={fTransp} onChange={setFTransp} options={opcoesTransp} placeholder="Todas" />
             </div>
 
