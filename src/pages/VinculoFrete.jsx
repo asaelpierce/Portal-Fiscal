@@ -46,6 +46,17 @@ export default function VinculoFrete() {
     finally { setSincronizando(false) }
   }
 
+  // Quantas notas do resultado compartilham cada CT-e. Contamos aqui, a partir
+  // dos proprios dados exibidos, em vez de confiar numa subconsulta no Sankhya
+  // (a anterior inflava a contagem por causa de chaves de acesso repetidas).
+  const nfsPorCte = useMemo(() => {
+    const mapa = new Map()
+    dados.filter(d => d.tem_cte && d.nunota_cte).forEach(d => {
+      mapa.set(d.nunota_cte, (mapa.get(d.nunota_cte) || 0) + 1)
+    })
+    return mapa
+  }, [dados])
+
   const opcoesTransp = useMemo(() =>
     [...new Set(dados.map(d => d.transportadora).filter(Boolean))].sort(), [dados])
 
@@ -199,10 +210,10 @@ export default function VinculoFrete() {
                           {d.tem_cte ? (
                             <span style={{ fontWeight:600, color:'#12805C' }}>
                               {d.numnota_cte}
-                              {d.qtd_nfs_no_cte > 1 && (
+                              {nfsPorCte.get(d.nunota_cte) > 1 && (
                                 <span style={{ marginLeft:6, fontSize:10.5, fontWeight:600, padding:'1px 6px', borderRadius:4, background:'#DBEAFE', color:'#1D5BBF' }}
-                                  title={`Este CT-e cobre ${d.qtd_nfs_no_cte} notas`}>
-                                  {d.qtd_nfs_no_cte} NFs
+                                  title={`Este CT-e é compartilhado por ${nfsPorCte.get(d.nunota_cte)} notas do período`}>
+                                  {nfsPorCte.get(d.nunota_cte)} NFs
                                 </span>
                               )}
                             </span>
