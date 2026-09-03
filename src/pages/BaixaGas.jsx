@@ -139,13 +139,22 @@ export default function BaixaGas() {
 
       {resultadoExecucao && (
         <div style={{
-          background: resultadoExecucao.ok ? '#F0FDF4' : '#FEF2F2',
-          border: `1px solid ${resultadoExecucao.ok ? '#BBF7D0' : '#FECACA'}`,
-          borderRadius:8, padding:14, fontSize:13,
+          background: resultadoExecucao.ok ? (resultadoExecucao.confirmada ? '#F0FDF4' : '#FFFBEB') : '#FEF2F2',
+          border: `1px solid ${resultadoExecucao.ok ? (resultadoExecucao.confirmada ? '#BBF7D0' : '#FDE68A') : '#FECACA'}`,
+          borderRadius:8, padding:14, fontSize:13, lineHeight:1.6,
         }}>
-          {resultadoExecucao.ok
-            ? <>✅ Baixa lançada com sucesso! Nota <strong>{resultadoExecucao.nunota}</strong> criada no Sankhya, R$ {brl(resultadoExecucao.valor_total)}.</>
-            : <>❌ Erro ao lançar: {resultadoExecucao.erro}</>}
+          {!resultadoExecucao.ok ? (
+            <>❌ Erro ao lançar: {resultadoExecucao.erro}
+              {resultadoExecucao.nunota && <div style={{ marginTop:6 }}>Nota {resultadoExecucao.nunota} pode ter ficado incompleta — confira na Central de Notas.</div>}
+            </>
+          ) : resultadoExecucao.confirmada ? (
+            <>✅ Baixa lançada e <strong>confirmada</strong>! Nota interna nº <strong>{resultadoExecucao.numnota}</strong> (NUNOTA {resultadoExecucao.nunota}), R$ {brl(resultadoExecucao.valor_total)}.</>
+          ) : (
+            <>⚠️ Nota <strong>{resultadoExecucao.nunota}</strong> criada e estoque baixado (R$ {brl(resultadoExecucao.valor_total)}), mas a <strong>confirmação falhou</strong>. Confirme na Central de Notas do Sankhya.
+              {resultadoExecucao.etapas?.find(e => e.etapa==='confirmacao')?.mensagem &&
+                <div style={{ marginTop:6, fontSize:12, color:'#92400E' }}>Motivo: {resultadoExecucao.etapas.find(e => e.etapa==='confirmacao').mensagem}</div>}
+            </>
+          )}
         </div>
       )}
 
