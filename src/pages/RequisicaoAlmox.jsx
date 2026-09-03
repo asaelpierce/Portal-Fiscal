@@ -23,6 +23,7 @@ export default function RequisicaoAlmox({ sessao }) {
   const [executando, setExecutando] = useState(false)
   const [resultado, setResultado] = useState(null)
   const [historico, setHistorico] = useState([])
+  const [aberto, setAberto] = useState(null)
 
   const carregar = async () => {
     setFase('carregando'); setErro(''); setResultado(null); setSel(new Set())
@@ -104,12 +105,17 @@ export default function RequisicaoAlmox({ sessao }) {
                   </tr></thead>
                   <tbody>
                     {lista.map(p => (
-                      <tr key={p.nunota} style={{ borderTop:'1px solid #F9FAFB', background: p.elegivel ? (sel.has(p.nunota) ? '#F0F9FF' : 'transparent') : '#FFFBEB' }}>
+                      <React.Fragment key={p.nunota}>
+                      <tr style={{ borderTop:'1px solid #F9FAFB', background: p.elegivel ? (sel.has(p.nunota) ? '#F0F9FF' : 'transparent') : '#FFFBEB' }}>
                         <td style={cel}>
                           <input type="checkbox" disabled={!p.elegivel || executando}
                             checked={sel.has(p.nunota)} onChange={() => alternar(p.nunota)} />
                         </td>
-                        <td style={{ ...cel, fontWeight:600 }}>{p.numnota}</td>
+                        <td style={{ ...cel, fontWeight:600, cursor:'pointer' }}
+                            onClick={() => setAberto(aberto === p.nunota ? null : p.nunota)}>
+                          <span style={{ color:'#9CA3AF', marginRight:6 }}>{aberto === p.nunota ? '▾' : '▸'}</span>
+                          {p.numnota}
+                        </td>
                         <td style={{ ...cel, color:'#6B7280' }}>{dBR(p.data)}</td>
                         <td style={cel}>{p.solicitante}</td>
                         <td style={{ ...cel, maxWidth:220, overflow:'hidden', textOverflow:'ellipsis' }} title={p.centro_resultado}>{p.centro_resultado}</td>
@@ -121,6 +127,53 @@ export default function RequisicaoAlmox({ sessao }) {
                             : <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:5, background:'#FEF3C7', color:'#B54708' }} title={p.motivo_bloqueio}>{p.motivo_bloqueio}</span>}
                         </td>
                       </tr>
+                      {aberto === p.nunota && (
+                        <tr>
+                          <td colSpan={8} style={{ padding:0, background:'#FAFAFA' }}>
+                            <div style={{ padding:'12px 16px', borderTop:'1px solid #F3F4F6' }}>
+                              <div style={{ fontSize:11.5, color:'#6B7280', marginBottom:8 }}>
+                                Nº único {p.nunota} · {p.parceiro}
+                                {p.observacao && p.observacao.trim() ? ` · Obs: ${p.observacao}` : ''}
+                              </div>
+                              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                                <thead><tr>
+                                  {['Seq','Código','Descrição','UN','Qtd','Local origem','Estoque no local','Vlr unit.','Total'].map((h,i)=>(
+                                    <th key={h} style={{ padding:'4px 8px', textAlign: i>=4 && i!==5 ? 'right':'left',
+                                      fontSize:10, color:'#6B7280', textTransform:'uppercase', letterSpacing:'.03em' }}>{h}</th>
+                                  ))}
+                                </tr></thead>
+                                <tbody>
+                                  {p.itens.map(it => (
+                                    <tr key={it.sequencia} style={{ borderTop:'1px solid #F3F4F6' }}>
+                                      <td style={{ padding:'4px 8px', color:'#9CA3AF' }}>{it.sequencia}</td>
+                                      <td style={{ padding:'4px 8px', fontWeight:600 }}>{it.codprod}</td>
+                                      <td style={{ padding:'4px 8px' }}>{it.descricao}</td>
+                                      <td style={{ padding:'4px 8px', color:'#6B7280' }}>{it.unidade}</td>
+                                      <td style={{ padding:'4px 8px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{it.qtd}</td>
+                                      <td style={{ padding:'4px 8px' }}>
+                                        <span style={{ fontWeight:600, color: it.local_ok ? '#12805C' : '#B54708' }}>
+                                          {it.codlocal}
+                                        </span>
+                                        <span style={{ color:'#9CA3AF' }}> · {it.descr_local}</span>
+                                        {!it.local_ok && <span style={{ marginLeft:6, fontSize:10, fontWeight:600, padding:'1px 6px', borderRadius:4, background:'#FEF3C7', color:'#B54708' }}>fora do 1003</span>}
+                                      </td>
+                                      <td style={{ padding:'4px 8px', textAlign:'right', fontVariantNumeric:'tabular-nums',
+                                        color: it.estoque_no_local < it.qtd ? '#B42318' : '#6B7280', fontWeight: it.estoque_no_local < it.qtd ? 700 : 400 }}
+                                        title={it.estoque_no_local < it.qtd ? 'Estoque menor que a quantidade pedida' : ''}>
+                                        {it.estoque_no_local}
+                                      </td>
+                                      <td style={{ padding:'4px 8px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>R$ {brl(it.vlr_unit)}</td>
+                                      <td style={{ padding:'4px 8px', textAlign:'right', fontVariantNumeric:'tabular-nums', fontWeight:600 }}>R$ {brl(it.vlr_total)}</td>
+                                    </tr>
+                                  ))}
+                                  {!p.itens.length && <tr><td colSpan={9} style={{ padding:12, textAlign:'center', color:'#9CA3AF' }}>Sem itens.</td></tr>}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -163,7 +216,10 @@ export default function RequisicaoAlmox({ sessao }) {
                   {(resultado.resultados||[]).map((r,i) => (
                     <tr key={i} style={{ borderTop:'1px solid #F9FAFB' }}>
                       <td style={cel}>{r.numnota_pedido}</td>
-                      <td style={cel}>{r.numnota_gerada || '—'}</td>
+                      <td style={{ ...cel, fontWeight:700, color:'#12805C', fontSize:13.5 }}>
+                        {r.numnota_gerada || '—'}
+                        {r.nunota_gerada && <span style={{ fontWeight:400, fontSize:11, color:'#9CA3AF' }}> (nº único {r.nunota_gerada})</span>}
+                      </td>
                       <td style={{ ...cel, color: r.confirmada ? '#12805C' : '#B42318' }}>
                         {r.confirmada ? '✓ confirmada' : (r.erro || r.mensagem || 'falhou')}
                       </td>
