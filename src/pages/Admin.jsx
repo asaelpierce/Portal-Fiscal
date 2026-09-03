@@ -11,7 +11,8 @@ export const PAGINAS = [
   { id:'rateio', label:'Rateio de Compras' }, { id:'auditoria', label:'Auditoria de Modificações' },
   { id:'baixagas', label:'Baixa Automática Gás' }, { id:'vinculofrete', label:'Vínculo NF × CT-e' },
   { id:'contas', label:'Contas contábeis' }, { id:'historico', label:'Histórico' },
-  { id:'sync', label:'Importar período' }, { id:'admin', label:'Administração' },
+  { id:'sync', label:'Importar período' }, { id:'reqalmox', label:'Requisições Almoxarifado' },
+  { id:'admin', label:'Administração' },
 ]
 
 const HDR = {

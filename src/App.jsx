@@ -19,6 +19,7 @@ import RateioCompras from './pages/RateioCompras.jsx'
 import Auditoria from './pages/Auditoria.jsx'
 import VinculoFrete from './pages/VinculoFrete.jsx'
 import Admin, { registrarAuditoria } from './pages/Admin.jsx'
+import RequisicaoAlmox from './pages/RequisicaoAlmox.jsx'
 import BaixaGas from './pages/BaixaGas.jsx'
 
 const MENU_COMPLETO = [
@@ -37,6 +38,7 @@ const MENU_COMPLETO = [
   { id: 'contas', label: 'Contas contábeis', icon: '⊞' },
   { id: 'historico', label: 'Histórico', icon: '⊙' },
   { id: 'sync', label: 'Importar período', icon: '↻' },
+  { id: 'reqalmox', label: 'Requisições Almoxarifado', icon: '📦' },
   { id: 'admin', label: 'Administração', icon: '🔐' },
 ]
 
@@ -259,21 +261,21 @@ function AppAutenticado({ sessao, onLogout }) {
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
               {MENU.find(m => m.id === pagina)?.label}
             </h1>
-            {dtIniISO && dtFimISO && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin'].includes(pagina) && (
+            {dtIniISO && dtFimISO && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin', 'reqalmox'].includes(pagina) && (
               <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9CA3AF' }}>
                 Período {dBR(dtIniISO)} a {dBR(dtFimISO)}
               </p>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {!['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin'].includes(pagina) && (
+            {!['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin', 'reqalmox'].includes(pagina) && (
               <SeletorPeriodo
                 dtIni={dtIniISO} dtFim={dtFimISO}
                 onChange={selecionarPeriodo}
                 fase={faseSync}
               />
             )}
-            {pagina !== 'rateio' && pagina !== 'auditoria' && pagina !== 'baixagas' && pagina !== 'vinculofrete' && pagina !== 'admin' && (
+            {pagina !== 'rateio' && pagina !== 'auditoria' && pagina !== 'baixagas' && pagina !== 'vinculofrete' && pagina !== 'admin' && pagina !== 'reqalmox' && (
               <Btn primary onClick={atualizar} disabled={atualizando || fase === 'carregando'}>
                 {atualizando ? '↻ Atualizando…' : '↻ Atualizar dados'}
               </Btn>
@@ -293,6 +295,8 @@ function AppAutenticado({ sessao, onLogout }) {
             <BaixaGas />
           ) : pagina === 'vinculofrete' ? (
             <VinculoFrete />
+          ) : pagina === 'reqalmox' ? (
+            <RequisicaoAlmox sessao={sessao} />
           ) : pagina === 'admin' ? (
             <Admin sessao={sessao} />
           ) : (
