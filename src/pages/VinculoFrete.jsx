@@ -18,6 +18,10 @@ export default function VinculoFrete() {
   const [fSituacao, setFSituacao] = useState('')
   const [fTransp, setFTransp] = useState('')
   const [fConf, setFConf] = useState('')
+  const [fTopNf, setFTopNf] = useState('')
+  const [fTopCte, setFTopCte] = useState('')
+  const [regras, setRegras] = useState([])
+  const [mostrarRegras, setMostrarRegras] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
   const [msgSync, setMsgSync] = useState('')
   const [visao, setVisao] = useState('nf') // 'nf' = por nota | 'cte' = por CT-e
@@ -29,7 +33,10 @@ export default function VinculoFrete() {
       setDados(r || []); setFase('pronto')
     } catch (e) { setErro(e.message); setFase('erro') }
   }
-  useEffect(() => { carregar() }, [])
+  const carregarRegras = () => {
+    sbFetch('frete_top_regras?select=*&order=top_nf').then(r => setRegras(r || [])).catch(() => {})
+  }
+  useEffect(() => { carregar(); carregarRegras() }, [])
 
   const sincronizar = async () => {
     setSincronizando(true); setMsgSync('Buscando vínculos no Sankhya…')
@@ -58,6 +65,11 @@ export default function VinculoFrete() {
     return mapa
   }, [dados])
 
+  const opcoesTopNf = useMemo(() => [...new Set(dados.map(d =>
+    d.top_nf ? `${d.top_nf} - ${d.descr_top_nf || ''}`.trim() : null).filter(Boolean))].sort(), [dados])
+  const opcoesTopCte = useMemo(() => [...new Set(dados.filter(d => d.tem_cte).map(d =>
+    d.top_cte ? `${d.top_cte} - ${d.descr_top_cte || ''}`.trim() : null).filter(Boolean))].sort(), [dados])
+
   const opcoesTransp = useMemo(() =>
     [...new Set(dados.map(d => d.transportadora).filter(Boolean))].sort(), [dados])
 
@@ -67,6 +79,8 @@ export default function VinculoFrete() {
       if (fSituacao === 'Com CT-e' && !d.tem_cte) return false
       if (fSituacao === 'Sem CT-e' && d.tem_cte) return false
       if (fTransp && d.transportadora !== fTransp) return false
+      if (fTopNf && !`${d.top_nf} - ${d.descr_top_nf || ''}`.trim().startsWith(fTopNf.split(' - ')[0])) return false
+      if (fTopCte && (!d.tem_cte || !`${d.top_cte}`.startsWith(fTopCte.split(' - ')[0]))) return false
       const naoAplicavel = d.conferivel === false
       const bate = Math.abs(Number(d.diferenca||0)) <= 0.05
       if (fConf === 'Só divergentes' && (naoAplicavel || bate)) return false
@@ -82,7 +96,7 @@ export default function VinculoFrete() {
       }
       return true
     })
-  }, [dados, busca, fSituacao, fTransp, fConf, dtIni, dtFim])
+  }, [dados, busca, fSituacao, fTransp, fConf, fTopNf, fTopCte, dtIni, dtFim])
 
   // Visão por CT-e: agrupa as notas que compartilham o mesmo CT-e
   const porCte = useMemo(() => {
@@ -195,6 +209,8 @@ export default function VinculoFrete() {
                 options={['Com CT-e','Sem CT-e']} placeholder="Todas" />
               <Select label="Transportadora" value={fTransp} onChange={setFTransp} options={opcoesTransp} placeholder="Todas" />
               <Select label="Conferência" value={fConf} onChange={setFConf} options={['Só divergentes','Só OK','Só não aplicáveis']} placeholder="Todas" />
+              <Select label="TOP da nota" value={fTopNf} onChange={setFTopNf} options={opcoesTopNf} placeholder="Todas" />
+              <Select label="TOP do CT-e" value={fTopCte} onChange={setFTopCte} options={opcoesTopCte} placeholder="Todas" />
             </div>
 
             <div style={{ maxHeight:620, overflow:'auto' }}>
@@ -284,8 +300,110 @@ export default function VinculoFrete() {
               )}
             </div>
           </Panel>
+
+      <Panel
+        title={`⚙ Regras de casamento TOP · ${regras.filter(r=>r.ativo).length} ativas`}
+        action={<Btn small onClick={()=>setMostrarRegras(v=>!v)}>{mostrarRegras ? 'Ocultar' : 'Configurar'}</Btn>}
+      >
+        <p style={{ margin:'0 0 12px', fontSize:12.5, color:'#6B7280', lineHeight:1.6 }}>
+          Quais TOPs de nota casam com quais TOPs de CT-e. Serve de referência para o time e para
+          identificar lançamentos com TOP trocada. Regras desmarcadas ficam fora do escopo da conferência.
+        </p>
+        {mostrarRegras && (
+          <RegrasTop regras={regras} onMudou={carregarRegras} />
+        )}
+      </Panel>
         </>
       )}
     </div>
+  )
+}
+
+// Painel de manutencao das regras TOP da nota -> TOP do CT-e.
+// Permite ligar/desligar, editar e remover sem mexer em codigo.
+function RegrasTop({ regras, onMudou }) {
+  const [novo, setNovo] = React.useState({ top_nf:'', descr_top_nf:'', top_cte:'', descr_top_cte:'' })
+  const [salvando, setSalvando] = React.useState(false)
+  const [erro, setErro] = React.useState('')
+
+  const HDR = {
+    'Content-Type':'application/json', apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+  }
+  const chamar = async (metodo, caminho, corpo) => {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${caminho}`, {
+      method: metodo, headers: HDR, body: corpo ? JSON.stringify(corpo) : undefined,
+    })
+    if (!res.ok) throw new Error((await res.json().catch(()=>({})))?.message || `HTTP ${res.status}`)
+  }
+  const acao = async (fn) => {
+    setSalvando(true); setErro('')
+    try { await fn(); await onMudou() }
+    catch (e) { setErro(e.message) }
+    finally { setSalvando(false) }
+  }
+  const alternar = (r) => acao(() => chamar('PATCH', `frete_top_regras?id=eq.${r.id}`,
+    { ativo: !r.ativo, atualizado_em: new Date().toISOString() }))
+  const remover = (r) => {
+    if (!window.confirm(`Remover a regra ${r.top_nf} → ${r.top_cte}?`)) return
+    acao(() => chamar('DELETE', `frete_top_regras?id=eq.${r.id}`))
+  }
+  const adicionar = () => {
+    if (!novo.top_nf.trim() || !novo.top_cte.trim()) return
+    acao(async () => {
+      await chamar('POST', 'frete_top_regras', { ...novo, ativo: true })
+      setNovo({ top_nf:'', descr_top_nf:'', top_cte:'', descr_top_cte:'' })
+    })
+  }
+
+  const inp = { fontFamily:'inherit', fontSize:12.5, padding:'5px 8px', border:'1px solid #E5E7EB', borderRadius:5, width:'100%', boxSizing:'border-box' }
+  const th = { padding:'8px 10px', background:'#F9FAFB', textAlign:'left', fontSize:10.5, fontWeight:600, color:'#6B7280', textTransform:'uppercase', letterSpacing:'.03em' }
+  const td = { padding:'6px 10px' }
+
+  return (
+    <>
+      {erro && <div style={{ color:'#B42318', fontSize:12.5, marginBottom:8 }}>⚠ {erro}</div>}
+      <div style={{ border:'1px solid #E5E7EB', borderRadius:8, overflow:'hidden' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
+          <thead>
+            <tr>
+              <th style={{ ...th, width:80 }}>TOP nota</th>
+              <th style={th}>Descrição</th>
+              <th style={{ ...th, width:80 }}>TOP CT-e</th>
+              <th style={th}>Descrição</th>
+              <th style={{ ...th, width:70 }}>Ativa</th>
+              <th style={{ ...th, width:70 }} />
+            </tr>
+          </thead>
+          <tbody>
+            {regras.map(r => (
+              <tr key={r.id} style={{ borderTop:'1px solid #F3F4F6', opacity: r.ativo ? 1 : .5 }}>
+                <td style={{ ...td, fontWeight:600 }}>{r.top_nf}</td>
+                <td style={{ ...td, color:'#6B7280' }}>{r.descr_top_nf}</td>
+                <td style={{ ...td, fontWeight:600, color:'#1D5BBF' }}>{r.top_cte}</td>
+                <td style={{ ...td, color:'#6B7280' }}>{r.descr_top_cte}</td>
+                <td style={td}>
+                  <input type="checkbox" checked={!!r.ativo} disabled={salvando} onChange={() => alternar(r)} />
+                </td>
+                <td style={td}>
+                  <button onClick={() => remover(r)} disabled={salvando}
+                    style={{ border:'none', background:'none', cursor:'pointer', fontSize:12, color:'#B42318' }}>remover</button>
+                </td>
+              </tr>
+            ))}
+            <tr style={{ borderTop:'2px solid #F3F4F6', background:'#F9FAFB' }}>
+              <td style={td}><input style={inp} value={novo.top_nf} onChange={e=>setNovo({...novo, top_nf:e.target.value})} placeholder="ex: 2305" /></td>
+              <td style={td}><input style={inp} value={novo.descr_top_nf} onChange={e=>setNovo({...novo, descr_top_nf:e.target.value})} placeholder="descrição" /></td>
+              <td style={td}><input style={inp} value={novo.top_cte} onChange={e=>setNovo({...novo, top_cte:e.target.value})} placeholder="ex: 2127" /></td>
+              <td style={td}><input style={inp} value={novo.descr_top_cte} onChange={e=>setNovo({...novo, descr_top_cte:e.target.value})} placeholder="descrição" /></td>
+              <td colSpan={2} style={td}>
+                <button onClick={adicionar} disabled={salvando || !novo.top_nf.trim() || !novo.top_cte.trim()}
+                  style={{ border:'none', background:'none', cursor:'pointer', fontSize:12.5, color:'#1D5BBF', fontWeight:600 }}>+ adicionar</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 }
