@@ -19,7 +19,8 @@ async function api(metodo, caminho, corpo) {
   if (!res.ok) throw new Error((await res.json().catch(()=>({})))?.message || `HTTP ${res.status}`)
 }
 const vazio = { nome_projeto:'', setor:'', solicitante:'', resumo:'', data_pedido:'', data_inicio:'',
-  prev_encerramento:'', data_encerramento:'', status:'A iniciar', prioridade:'Média', obs:'', beneficio:'' }
+  prev_encerramento:'', data_encerramento:'', status:'A iniciar', prioridade:'Média', obs:'', beneficio:'',
+  repositorio:'', stack:'' }
 
 function Form({ inicial, onSalvar, onCancelar, salvando }) {
   const [f, setF] = useState({ ...vazio, ...inicial,
@@ -61,6 +62,12 @@ function Form({ inicial, onSalvar, onCancelar, salvando }) {
             {PRIORIDADES.map(s => <option key={s}>{s}</option>)}</select></label>
         <label style={lbl}>Benefício / impacto
           <input style={inp} value={f.beneficio||''} onChange={e=>set('beneficio',e.target.value)} /></label>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr', gap:12, marginBottom:12 }}>
+        <label style={lbl}>Repositório
+          <input style={inp} value={f.repositorio||''} onChange={e=>set('repositorio',e.target.value)} placeholder="nome-do-repo" /></label>
+        <label style={lbl}>Stack / tecnologia
+          <input style={inp} value={f.stack||''} onChange={e=>set('stack',e.target.value)} placeholder="React + Vite · Supabase · Sankhya" /></label>
       </div>
       <label style={lbl}>Observações
         <textarea style={{ ...inp, resize:'vertical', minHeight:44 }} value={f.obs||''} onChange={e=>set('obs',e.target.value)} /></label>
@@ -241,6 +248,36 @@ export default function Automacoes() {
 
       {fase === 'pronto' && aba === 'painel' && (
         <>
+        <div style={{ background:'#09090b', borderRadius:16, padding:'26px 30px', position:'relative', overflow:'hidden' }}>
+          <div style={{ position:'absolute', bottom:-70, left:-30, width:240, height:240,
+            background:'#facc15', opacity:.06, borderRadius:'50%', filter:'blur(60px)' }} />
+          <div style={{ position:'relative' }}>
+            <div style={{ fontSize:10, fontWeight:800, letterSpacing:'.22em', color:'#facc15', textTransform:'uppercase', marginBottom:16 }}>
+              Infraestrutura construída
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16 }}>
+              {[
+                { n: int(dados.filter(d=>d.repositorio).length), l:'Repositórios', d:'código versionado' },
+                { n: 7, l:'Bases Supabase', d:'Postgres + Edge Functions' },
+                { n: int(new Set(dados.map(d=>d.setor).filter(Boolean)).size), l:'Setores atendidos', d:'da fábrica à diretoria' },
+                { n: int(dados.filter(d=>(d.stack||'').includes('Sankhya')).length), l:'Integrados ao ERP', d:'leitura e gravação' },
+              ].map((x,i) => (
+                <div key={i}>
+                  <div style={{ fontSize:30, fontWeight:800, color:'#fff', letterSpacing:'-.03em', lineHeight:1 }}>{x.n}</div>
+                  <div style={{ fontSize:11, fontWeight:700, color:'#facc15', textTransform:'uppercase', letterSpacing:'.1em', marginTop:8 }}>{x.l}</div>
+                  <div style={{ fontSize:11, color:'#71717a', marginTop:3 }}>{x.d}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize:12, color:'#a1a1aa', marginTop:20, lineHeight:1.7, maxWidth:760, borderTop:'1px solid #27272a', paddingTop:16 }}>
+              Toda integração com o Sankhya passa por <strong style={{ color:'#fff' }}>Supabase Edge Functions</strong> —
+              funções de backend que conectam cada portal ao ERP em tempo real ou por sincronização programada,
+              sem servidor dedicado. É essa camada que sustenta os portais e permite evoluir cada integração
+              sem retrabalho de infraestrutura.
+            </div>
+          </div>
+        </div>
+
         <Panel title="Entregas por mês">
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={porMes} margin={{ top:6, right:10, left:0, bottom:0 }}>
@@ -316,6 +353,7 @@ export default function Automacoes() {
                     <td style={{ ...cel, whiteSpace:'nowrap', color:'#6B7280' }}>{dBR(p.data_pedido)}</td>
                     <td style={{ ...cel, fontWeight:600, minWidth:170 }}>
                       {p.nome_projeto}
+                      {p.stack && <div style={{ fontSize:10, color:'#9CA3AF', fontWeight:400, marginTop:2, maxWidth:220 }}>{p.stack}</div>}
                       {p.prioridade && <div style={{ fontSize:10, fontWeight:600, color:'#9CA3AF' }}>{p.prioridade}</div>}
                     </td>
                     <td style={{ ...cel, whiteSpace:'nowrap' }}>
