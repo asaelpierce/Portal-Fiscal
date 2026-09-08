@@ -845,7 +845,7 @@ function DetalheProjeto({ p, onFechar }) {
 }
 
 
-const FREQ = { 'Diária':22, 'Semanal':4.33, 'Mensal':1, 'Por ocorrência':1 }
+const FREQ = { 'Diária':22, 'Semanal':4.33, 'Mensal':1, 'Anual':0.0833, 'Por ocorrência':1 }
 const horasMes = g => ((Number(g.min_antes)-Number(g.min_depois)) * Number(g.ocorrencias) * (FREQ[g.frequencia]||1)) / 60
 
 // Onde o responsavel da area declara o que mudou e assina. O total de horas
@@ -862,12 +862,23 @@ function GanhosAceite({ p, ganhos, aceites, onMudou }) {
 
   // Quando a tarefa tem fonte, a economia vem do volume real contado no banco.
   // Sem fonte, cai na estimativa declarada pelo responsável.
+  // eventos    = acumulado desde o início da medição
+  // eventos_mes = ritmo mensal — é ele que entra no total/mês, senão o
+  //               acumulado seria somado como se fosse de um mês só.
   const horasMedidas = g => {
     const f = fonteDe(g.fonte_medicao)
     if (!f) return null
     return ((Number(g.min_antes)-Number(g.min_depois)) * Number(f.eventos)) / 60
   }
-  const totalMes = ganhos.reduce((s,g) => s + horasMes(g), 0)
+  const horasMedidasMes = g => {
+    const f = fonteDe(g.fonte_medicao)
+    if (!f || f.eventos_mes == null) return null
+    return ((Number(g.min_antes)-Number(g.min_depois)) * Number(f.eventos_mes)) / 60
+  }
+  // medido tem prioridade sobre a estimativa (mesma regra da view automacao_ganhos_resumo)
+  const horasMesEfetiva = g => horasMedidasMes(g) ?? horasMes(g)
+
+  const totalMes = ganhos.reduce((s,g) => s + horasMesEfetiva(g), 0)
   const totalAno = totalMes * 12
   const totalMedido = ganhos.reduce((s,g) => s + (horasMedidas(g) || 0), 0)
   const qtdMedidas = ganhos.filter(g => horasMedidas(g) != null).length
@@ -911,7 +922,7 @@ function GanhosAceite({ p, ganhos, aceites, onMudou }) {
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:22 }}>
         {[['Tarefas mapeadas', ganhos.length],['Eliminadas', eliminadas],
-          [totalMedido>0?'Horas medidas':'Horas/mês', totalMedido>0?totalMedido.toFixed(0):totalMes.toFixed(1)]].map(([l,v],i) => (
+          ['Horas/mês', totalMes.toFixed(1)]].map(([l,v],i) => (
           <div key={i} style={{ background:'#18181b', border:'1px solid #27272a', borderRadius:10, padding:'14px 16px' }}>
             <div style={{ fontSize:24, fontWeight:800, color:'#facc15', lineHeight:1 }}>{v}</div>
             <div style={{ fontSize:9.5, fontWeight:700, color:'#71717a', textTransform:'uppercase', letterSpacing:'.1em', marginTop:6 }}>{l}</div>
@@ -942,7 +953,7 @@ function GanhosAceite({ p, ganhos, aceites, onMudou }) {
 
       {totalAno > 0 && (
         <div style={{ background:'#052e1f', border:'1px solid #065f46', borderRadius:12, padding:'16px 20px', marginBottom:24 }}>
-          <div style={{ fontSize:9.5, fontWeight:800, color:'#34d399', textTransform:'uppercase', letterSpacing:'.14em' }}>Projeção anual · estimativa declarada</div>
+          <div style={{ fontSize:9.5, fontWeight:800, color:'#34d399', textTransform:'uppercase', letterSpacing:'.14em' }}>Projeção anual · {qtdMedidas > 0 ? 'volume real medido' : 'estimativa declarada'}</div>
           <div style={{ fontSize:30, fontWeight:800, color:'#34d399', marginTop:6, lineHeight:1 }}>{totalAno.toFixed(0)} horas</div>
           <div style={{ fontSize:11.5, color:'#059669', marginTop:6 }}>equivale a {(totalAno/8).toFixed(0)} dias de trabalho por ano</div>
         </div>
@@ -969,11 +980,14 @@ function GanhosAceite({ p, ganhos, aceites, onMudou }) {
             </div>
           </div>
           <div style={{ textAlign:'right', minWidth:104 }}>
-            {horasMedidas(g) != null ? (
+            {horasMedidasMes(g) != null ? (
               <>
-                <div style={{ fontSize:16, fontWeight:800, color:'#34d399' }}>{horasMedidas(g).toFixed(1)}h</div>
+                <div style={{ fontSize:16, fontWeight:800, color:'#34d399' }}>{horasMedidasMes(g).toFixed(1)}h</div>
                 <div style={{ fontSize:9, color:'#059669', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em' }}>
-                  medido · {Number(fonteDe(g.fonte_medicao).eventos).toLocaleString('pt-BR')}×
+                  medido / mês
+                </div>
+                <div style={{ fontSize:9, color:'#52525b', marginTop:2 }}>
+                  {horasMedidas(g).toFixed(0)}h acum. · {Number(fonteDe(g.fonte_medicao).eventos).toLocaleString('pt-BR')}×
                 </div>
               </>
             ) : (
@@ -1015,7 +1029,12 @@ function GanhosAceite({ p, ganhos, aceites, onMudou }) {
           <div style={{ background:'#052e1f', borderRadius:7, padding:'9px 12px', marginTop:8, fontSize:12, color:'#34d399' }}>
             Com o volume atual, isso daria <strong>
             {(((Number(nova.min_antes)-Number(nova.min_depois||0)) * Number(fonteDe(nova.fonte_medicao)?.eventos||0))/60).toFixed(1)}h
-            </strong> economizadas até agora — e o número cresce sozinho a cada execução.
+            </strong> economizadas até agora
+            {fonteDe(nova.fonte_medicao)?.eventos_mes != null && <>
+              {' '}(ritmo de <strong>
+              {(((Number(nova.min_antes)-Number(nova.min_depois||0)) * Number(fonteDe(nova.fonte_medicao).eventos_mes))/60).toFixed(1)}h/mês
+              </strong>)
+            </>} — e o número cresce sozinho a cada execução.
           </div>
         )}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:12 }}>
