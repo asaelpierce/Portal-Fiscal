@@ -1,0 +1,275 @@
+import React, { useEffect, useMemo, useState } from 'react'
+import { ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts'
+import { SUPABASE_URL, SUPABASE_ANON_KEY, sbFetch, int, dBR } from '../config.js'
+import { Panel, Btn, Spinner, SearchInput, Select } from '../components/UI.jsx'
+
+const STATUS = ['A iniciar','Em desenvolvimento','Em teste','Implantação','Ajustes Finais','Em produção','Concluído','Pausado','Cancelado']
+const COR = {
+  'Concluído':'#12805C', 'Em produção':'#12805C', 'Em desenvolvimento':'#1D5BBF',
+  'Em teste':'#7C3AED', 'Implantação':'#0891B2', 'Ajustes Finais':'#B54708',
+  'A iniciar':'#6B7280', 'Pausado':'#92400E', 'Cancelado':'#B42318',
+}
+const PRIORIDADES = ['Altíssima','Alta','Média','Baixa']
+const CONCLUIDOS = ['Concluído','Em produção']
+
+const HDR = { 'Content-Type':'application/json', apikey: SUPABASE_ANON_KEY, Authorization:`Bearer ${SUPABASE_ANON_KEY}` }
+async function api(metodo, caminho, corpo) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${caminho}`, {
+    method: metodo, headers: HDR, body: corpo ? JSON.stringify(corpo) : undefined })
+  if (!res.ok) throw new Error((await res.json().catch(()=>({})))?.message || `HTTP ${res.status}`)
+}
+const vazio = { nome_projeto:'', setor:'', solicitante:'', resumo:'', data_pedido:'', data_inicio:'',
+  prev_encerramento:'', data_encerramento:'', status:'A iniciar', prioridade:'Média', obs:'', beneficio:'' }
+
+function Form({ inicial, onSalvar, onCancelar, salvando }) {
+  const [f, setF] = useState({ ...vazio, ...inicial,
+    data_pedido: inicial?.data_pedido || '', data_inicio: inicial?.data_inicio || '',
+    prev_encerramento: inicial?.prev_encerramento || '', data_encerramento: inicial?.data_encerramento || '' })
+  const set = (k,v) => setF(s => ({ ...s, [k]: v }))
+  const inp = { width:'100%', fontFamily:'inherit', fontSize:13, padding:'8px 10px',
+    border:'1px solid #E5E7EB', borderRadius:6, boxSizing:'border-box', marginTop:4 }
+  const lbl = { fontSize:11, color:'#6B7280', fontWeight:600, display:'block' }
+
+  return (
+    <div style={{ background:'#F9FAFB', border:'1px solid #E5E7EB', borderRadius:10, padding:18, marginBottom:18 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:12, marginBottom:12 }}>
+        <label style={lbl}>Nome do projeto *
+          <input style={inp} value={f.nome_projeto} onChange={e=>set('nome_projeto',e.target.value)} autoFocus /></label>
+        <label style={lbl}>Setor
+          <input style={inp} value={f.setor||''} onChange={e=>set('setor',e.target.value)} placeholder="Ex: Comercial" /></label>
+        <label style={lbl}>Quem pediu
+          <input style={inp} value={f.solicitante||''} onChange={e=>set('solicitante',e.target.value)} /></label>
+      </div>
+      <label style={lbl}>Resumo do projeto
+        <textarea style={{ ...inp, resize:'vertical', minHeight:56 }} value={f.resumo||''} onChange={e=>set('resumo',e.target.value)} /></label>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, margin:'12px 0' }}>
+        <label style={lbl}>Data do pedido
+          <input type="date" style={inp} value={f.data_pedido||''} onChange={e=>set('data_pedido',e.target.value)} /></label>
+        <label style={lbl}>Data início
+          <input type="date" style={inp} value={f.data_inicio||''} onChange={e=>set('data_inicio',e.target.value)} /></label>
+        <label style={lbl}>Prev. encerramento
+          <input type="date" style={inp} value={f.prev_encerramento||''} onChange={e=>set('prev_encerramento',e.target.value)} /></label>
+        <label style={lbl}>Encerramento (real)
+          <input type="date" style={inp} value={f.data_encerramento||''} onChange={e=>set('data_encerramento',e.target.value)} /></label>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 2fr', gap:12, marginBottom:12 }}>
+        <label style={lbl}>Status
+          <select style={inp} value={f.status} onChange={e=>set('status',e.target.value)}>
+            {STATUS.map(s => <option key={s}>{s}</option>)}</select></label>
+        <label style={lbl}>Prioridade
+          <select style={inp} value={f.prioridade||'Média'} onChange={e=>set('prioridade',e.target.value)}>
+            {PRIORIDADES.map(s => <option key={s}>{s}</option>)}</select></label>
+        <label style={lbl}>Benefício / impacto
+          <input style={inp} value={f.beneficio||''} onChange={e=>set('beneficio',e.target.value)} /></label>
+      </div>
+      <label style={lbl}>Observações
+        <textarea style={{ ...inp, resize:'vertical', minHeight:44 }} value={f.obs||''} onChange={e=>set('obs',e.target.value)} /></label>
+      <div style={{ display:'flex', gap:8, marginTop:14 }}>
+        <Btn primary onClick={() => onSalvar(f)} disabled={salvando || !f.nome_projeto.trim()}>
+          {salvando ? 'Salvando…' : 'Salvar'}</Btn>
+        <Btn onClick={onCancelar} disabled={salvando}>Cancelar</Btn>
+      </div>
+    </div>
+  )
+}
+
+export default function Automacoes() {
+  const [dados, setDados] = useState([])
+  const [fase, setFase] = useState('carregando')
+  const [erro, setErro] = useState('')
+  const [busca, setBusca] = useState('')
+  const [fStatus, setFStatus] = useState('')
+  const [fSetor, setFSetor] = useState('')
+  const [editando, setEditando] = useState(null)  // objeto ou 'novo'
+  const [salvando, setSalvando] = useState(false)
+  const [aba, setAba] = useState('lista')
+
+  const carregar = () => {
+    setFase('carregando')
+    sbFetch('automacao_projetos?select=*&order=data_encerramento.desc.nullsfirst,nome_projeto')
+      .then(r => { setDados(r||[]); setFase('pronto') })
+      .catch(e => { setErro(e.message); setFase('erro') })
+  }
+  useEffect(() => { carregar() }, [])
+
+  const salvar = async (f) => {
+    setSalvando(true); setErro('')
+    const limpo = { ...f }
+    ;['data_pedido','data_inicio','prev_encerramento','data_encerramento'].forEach(k => { if (!limpo[k]) limpo[k] = null })
+    delete limpo.id; delete limpo.criado_em
+    limpo.atualizado_em = new Date().toISOString()
+    try {
+      if (editando === 'novo') await api('POST','automacao_projetos', limpo)
+      else await api('PATCH',`automacao_projetos?id=eq.${editando.id}`, limpo)
+      setEditando(null); carregar()
+    } catch (e) { setErro(e.message) }
+    finally { setSalvando(false) }
+  }
+  const remover = async (p) => {
+    if (!window.confirm(`Remover "${p.nome_projeto}" do controle?`)) return
+    try { await api('DELETE',`automacao_projetos?id=eq.${p.id}`); carregar() }
+    catch (e) { setErro(e.message) }
+  }
+
+  const setores = useMemo(() => [...new Set(dados.map(d=>d.setor).filter(Boolean))].sort(), [dados])
+  const lista = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    return dados.filter(d => {
+      if (fStatus && d.status !== fStatus) return false
+      if (fSetor && d.setor !== fSetor) return false
+      if (q && !`${d.nome_projeto} ${d.setor||''} ${d.resumo||''} ${d.solicitante||''}`.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [dados, busca, fStatus, fSetor])
+
+  const kpi = useMemo(() => ({
+    total: dados.length,
+    concluidos: dados.filter(d => CONCLUIDOS.includes(d.status)).length,
+    andamento: dados.filter(d => ['Em desenvolvimento','Em teste','Implantação','Ajustes Finais'].includes(d.status)).length,
+    cancelados: dados.filter(d => d.status === 'Cancelado').length,
+  }), [dados])
+
+  const porStatus = useMemo(() => {
+    const m = new Map()
+    dados.forEach(d => m.set(d.status, (m.get(d.status)||0)+1))
+    return [...m.entries()].map(([nome,qtd]) => ({ nome, qtd })).sort((a,b)=>b.qtd-a.qtd)
+  }, [dados])
+  const porSetor = useMemo(() => {
+    const m = new Map()
+    dados.forEach(d => { const s = d.setor||'—'; m.set(s,(m.get(s)||0)+1) })
+    return [...m.entries()].map(([nome,qtd]) => ({ nome, qtd })).sort((a,b)=>b.qtd-a.qtd)
+  }, [dados])
+
+  const exportarCsv = () => {
+    const cab = ['Data do pedido','Nome do projeto','Setor','Quem pediu','Resumo','Data início','Prev. encerramento','Encerramento','Status','Prioridade','Benefício','Obs']
+    const linhas = lista.map(d => [dBR(d.data_pedido), d.nome_projeto, d.setor, d.solicitante, d.resumo,
+      dBR(d.data_inicio), dBR(d.prev_encerramento), dBR(d.data_encerramento), d.status, d.prioridade, d.beneficio, d.obs]
+      .map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(';'))
+    const url = URL.createObjectURL(new Blob(['\ufeff'+[cab.join(';'),...linhas].join('\n')], { type:'text/csv;charset=utf-8;' }))
+    const a = document.createElement('a'); a.href = url
+    a.download = `automacoes_${new Date().toISOString().slice(0,10)}.csv`; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const th = a => ({ position:'sticky', top:0, background:'#F9FAFB', padding:'8px 10px', textAlign:a||'left',
+    fontSize:10, fontWeight:600, color:'#6B7280', textTransform:'uppercase', letterSpacing:'.04em',
+    borderBottom:'1px solid #E5E7EB', whiteSpace:'nowrap' })
+  const cel = { padding:'8px 10px', verticalAlign:'top' }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
+      <div style={{ display:'flex', gap:8 }}>
+        {[['lista','📋 Controle semanal'],['painel','📊 Visão executiva']].map(([id,rot]) => (
+          <button key={id} onClick={()=>setAba(id)} style={{
+            fontSize:13, padding:'8px 16px', borderRadius:6, cursor:'pointer', fontFamily:'inherit',
+            border:`1px solid ${aba===id?'#1D5BBF':'#E5E7EB'}`, background: aba===id?'#1D5BBF':'#fff',
+            color: aba===id?'#fff':'#374151', fontWeight: aba===id?600:400 }}>{rot}</button>
+        ))}
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
+        {[
+          { l:'Total de projetos', v:int(kpi.total), c:'#101828' },
+          { l:'Concluídos / em produção', v:int(kpi.concluidos), c:'#12805C' },
+          { l:'Em andamento', v:int(kpi.andamento), c:'#1D5BBF' },
+          { l:'Cancelados', v:int(kpi.cancelados), c:'#B42318' },
+        ].map((k,i) => (
+          <div key={i} style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:8, padding:'16px 18px', borderTop:`3px solid ${k.c}` }}>
+            <div style={{ fontSize:12, color:'#6B7280', marginBottom:8, fontWeight:500 }}>{k.l}</div>
+            <div style={{ fontSize:24, fontWeight:700, color:k.c }}>{k.v}</div>
+          </div>
+        ))}
+      </div>
+
+      {erro && <div style={{ color:'#B42318', fontSize:13 }}>⚠ {erro}</div>}
+      {fase === 'carregando' && <Spinner/>}
+
+      {fase === 'pronto' && aba === 'painel' && (
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Panel title="Por status">
+            <ResponsiveContainer width="100%" height={260}>
+              <PieChart>
+                <Pie data={porStatus} dataKey="qtd" nameKey="nome" cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={2}>
+                  {porStatus.map((p,i) => <Cell key={i} fill={COR[p.nome] || '#9CA3AF'} />)}
+                </Pie>
+                <Tooltip contentStyle={{ fontSize:12, borderRadius:8 }} />
+                <Legend wrapperStyle={{ fontSize:11 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </Panel>
+          <Panel title="Por setor">
+            <ResponsiveContainer width="100%" height={Math.max(260, porSetor.length*30)}>
+              <BarChart data={porSetor} layout="vertical" margin={{ left:8, right:16 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" horizontal={false} />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize:11, fill:'#6B7280' }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="nome" width={110} tick={{ fontSize:11, fill:'#374151' }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={{ fontSize:12, borderRadius:8 }} />
+                <Bar dataKey="qtd" fill="#1D5BBF" radius={[0,4,4,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Panel>
+        </div>
+      )}
+
+      {fase === 'pronto' && aba === 'lista' && (
+        <Panel
+          title={`Projetos — ${int(lista.length)} de ${int(dados.length)}`}
+          action={<div style={{ display:'flex', gap:8 }}>
+            <Btn small onClick={exportarCsv}>↓ CSV</Btn>
+            <Btn small primary onClick={()=>setEditando('novo')}>+ Novo projeto</Btn>
+          </div>}
+        >
+          {editando && (
+            <Form inicial={editando === 'novo' ? null : editando}
+              onSalvar={salvar} onCancelar={()=>setEditando(null)} salvando={salvando} />
+          )}
+
+          <div style={{ display:'flex', gap:12, marginBottom:12, alignItems:'flex-end', flexWrap:'wrap' }}>
+            <SearchInput value={busca} onChange={setBusca} placeholder="Projeto, setor, resumo…" />
+            <Select label="Status" value={fStatus} onChange={setFStatus} options={STATUS} placeholder="Todos" />
+            <Select label="Setor" value={fSetor} onChange={setFSetor} options={setores} placeholder="Todos" />
+          </div>
+
+          <div style={{ overflowX:'auto', maxHeight:600, overflowY:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+              <thead><tr>
+                <th style={th()}>Pedido</th><th style={th()}>Projeto</th><th style={th()}>Setor / quem</th>
+                <th style={th()}>Resumo</th><th style={th()}>Início</th><th style={th()}>Prev. enc.</th>
+                <th style={th()}>Encerrou</th><th style={th()}>Status</th><th style={th()}>Obs</th><th style={th('right')}></th>
+              </tr></thead>
+              <tbody>
+                {lista.map(p => (
+                  <tr key={p.id} style={{ borderTop:'1px solid #F9FAFB' }}>
+                    <td style={{ ...cel, whiteSpace:'nowrap', color:'#6B7280' }}>{dBR(p.data_pedido)}</td>
+                    <td style={{ ...cel, fontWeight:600, minWidth:170 }}>
+                      {p.nome_projeto}
+                      {p.prioridade && <div style={{ fontSize:10, fontWeight:600, color:'#9CA3AF' }}>{p.prioridade}</div>}
+                    </td>
+                    <td style={{ ...cel, whiteSpace:'nowrap' }}>
+                      {p.setor}{p.solicitante && <div style={{ fontSize:10.5, color:'#9CA3AF' }}>{p.solicitante}</div>}
+                    </td>
+                    <td style={{ ...cel, maxWidth:240, color:'#6B7280' }}>{p.resumo}</td>
+                    <td style={{ ...cel, whiteSpace:'nowrap', color:'#6B7280' }}>{dBR(p.data_inicio)}</td>
+                    <td style={{ ...cel, whiteSpace:'nowrap', color:'#6B7280' }}>{dBR(p.prev_encerramento)}</td>
+                    <td style={{ ...cel, whiteSpace:'nowrap', color: p.data_encerramento ? '#12805C' : '#9CA3AF', fontWeight: p.data_encerramento ? 600 : 400 }}>
+                      {dBR(p.data_encerramento)}</td>
+                    <td style={cel}>
+                      <span style={{ fontSize:10.5, fontWeight:600, padding:'2px 8px', borderRadius:5, whiteSpace:'nowrap',
+                        color: COR[p.status] || '#6B7280', background: (COR[p.status] || '#6B7280') + '18' }}>{p.status}</span>
+                    </td>
+                    <td style={{ ...cel, maxWidth:180, color:'#9CA3AF', fontSize:11 }}>{p.obs}</td>
+                    <td style={{ ...cel, textAlign:'right', whiteSpace:'nowrap' }}>
+                      <button onClick={()=>setEditando(p)} style={{ border:'none', background:'none', cursor:'pointer', color:'#1D5BBF', fontSize:11.5, marginRight:8 }}>editar</button>
+                      <button onClick={()=>remover(p)} style={{ border:'none', background:'none', cursor:'pointer', color:'#B42318', fontSize:11.5 }}>remover</button>
+                    </td>
+                  </tr>
+                ))}
+                {!lista.length && <tr><td colSpan={10} style={{ textAlign:'center', padding:28, color:'#9CA3AF' }}>Nenhum projeto no filtro.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
+    </div>
+  )
+}
