@@ -20,6 +20,7 @@ import Auditoria from './pages/Auditoria.jsx'
 import VinculoFrete from './pages/VinculoFrete.jsx'
 import Admin, { registrarAuditoria } from './pages/Admin.jsx'
 import RequisicaoAlmox from './pages/RequisicaoAlmox.jsx'
+import TrocarSenha from './components/TrocarSenha.jsx'
 import BaixaGas from './pages/BaixaGas.jsx'
 
 const MENU_COMPLETO = [
@@ -72,6 +73,7 @@ function AppAutenticado({ sessao, onLogout }) {
   // Menu filtrado só com as páginas liberadas para esse usuário
   const MENU = MENU_COMPLETO.filter(m => sessao.paginas.includes(m.id))
 
+  const [trocandoSenha, setTrocandoSenha] = useState(false)
   const [pagina, setPagina] = useState(MENU[0]?.id || 'visao')
   const [fase, setFase] = useState('carregando')
   const [erro, setErro] = useState('')
@@ -241,13 +243,22 @@ function AppAutenticado({ sessao, onLogout }) {
             title={sessao.email}>
             {sessao.email}
           </div>
-          <button onClick={onLogout} style={{
-            fontSize: 11, color: '#B42318', background: 'none', border: 'none', cursor: 'pointer',
-            fontFamily: 'inherit', flexShrink: 0, fontWeight: 600,
-          }}>
-            Sair
-          </button>
+          <div style={{ display:'flex', gap:10, flexShrink:0 }}>
+            <button onClick={() => setTrocandoSenha(true)} style={{
+              fontSize: 11, color: '#1D5BBF', background: 'none', border: 'none', cursor: 'pointer',
+              fontFamily: 'inherit', fontWeight: 600,
+            }}>
+              Senha
+            </button>
+            <button onClick={onLogout} style={{
+              fontSize: 11, color: '#B42318', background: 'none', border: 'none', cursor: 'pointer',
+              fontFamily: 'inherit', fontWeight: 600,
+            }}>
+              Sair
+            </button>
+          </div>
         </div>
+        {trocandoSenha && <TrocarSenha sessao={sessao} onFechar={() => setTrocandoSenha(false)} />}
       </aside>
 
       {/* ── Conteúdo ── */}
