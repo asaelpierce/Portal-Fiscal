@@ -237,30 +237,73 @@ export default function RequisicaoAlmox({ sessao }) {
         <Panel title="Resultado">
           {!resultado.ok ? <div style={{ color:'#B42318', fontSize:13 }}>❌ {resultado.erro}</div> : (
             <>
-              <div style={{ fontSize:13, marginBottom:10 }}>
-                {int(resultado.sucesso)} de {int(resultado.processados)} confirmada(s) com sucesso.
-              </div>
+              {(() => {
+                const pend = (resultado.resultados||[]).reduce((s,r) => s + (r.itens_removidos?.length || 0), 0)
+                return (
+                  <div style={{ fontSize:13, marginBottom:10 }}>
+                    {int(resultado.sucesso)} de {int(resultado.processados)} confirmada(s) com sucesso.
+                    {pend > 0 && <span style={{ color:'#B54708', fontWeight:600 }}>
+                      {' '}· {int(pend)} item(ns) ficaram pendentes por falta de saldo.
+                    </span>}
+                  </div>
+                )
+              })()}
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
-                <thead><tr><th style={th()}>Pedido</th><th style={th()}>Requisição gerada</th><th style={th()}>Itens removidos</th><th style={th()}>Resultado</th></tr></thead>
+                <thead><tr><th style={th()}>Pedido</th><th style={th()}>Requisição gerada</th><th style={th()}>Itens entregues</th><th style={th()}>Resultado</th></tr></thead>
                 <tbody>
                   {(resultado.resultados||[]).map((r,i) => (
-                    <tr key={i} style={{ borderTop:'1px solid #F9FAFB' }}>
+                    <React.Fragment key={i}>
+                    <tr style={{ borderTop:'1px solid #F9FAFB' }}>
                       <td style={cel}>{r.numnota_pedido}</td>
                       <td style={{ ...cel, fontWeight:700, color:'#12805C', fontSize:13.5 }}>
                         {r.numnota_gerada || '—'}
                         {r.nunota_gerada && <span style={{ fontWeight:400, fontSize:11, color:'#9CA3AF' }}> (nº único {r.nunota_gerada})</span>}
                       </td>
                       <td style={cel}>
+                        {r.qtd_itens != null ? <strong>{r.qtd_itens}</strong> : '—'}
                         {r.itens_removidos?.length
-                          ? <span style={{ fontSize:11.5, color:'#B54708' }} title={r.itens_removidos.map(i=>i.codprod).join(', ')}>
-                              {r.itens_removidos.length} sem saldo
+                          ? <span style={{ marginLeft:6, fontSize:11, fontWeight:600, padding:'2px 7px', borderRadius:4, background:'#FEF3C7', color:'#B54708' }}>
+                              {r.itens_removidos.length} ficou pendente
                             </span>
-                          : <span style={{ color:'#9CA3AF' }}>—</span>}
+                          : null}
                       </td>
                       <td style={{ ...cel, color: r.confirmada ? '#12805C' : '#B42318', whiteSpace:'normal', maxWidth:340 }}>
                         {r.confirmada ? '✓ confirmada' : (r.erro || r.mensagem || 'falhou')}
                       </td>
                     </tr>
+                    {r.itens_removidos?.length > 0 && (
+                      <tr>
+                        <td colSpan={4} style={{ padding:0 }}>
+                          <div style={{ background:'#FFFBEB', borderTop:'1px solid #FDE68A', padding:'10px 16px' }}>
+                            <div style={{ fontSize:12, fontWeight:600, color:'#92400E', marginBottom:6 }}>
+                              Continua(m) pendente(s) no pedido {r.numnota_pedido} — sem saldo no momento da entrega:
+                            </div>
+                            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11.5 }}>
+                              <thead><tr>
+                                {['Código','Descrição','Pedido','Tinha em estoque'].map((h,j)=>(
+                                  <th key={h} style={{ padding:'3px 8px', textAlign: j>=2?'right':'left',
+                                    fontSize:10, color:'#92400E', textTransform:'uppercase', letterSpacing:'.03em' }}>{h}</th>
+                                ))}
+                              </tr></thead>
+                              <tbody>
+                                {r.itens_removidos.map((it,k) => (
+                                  <tr key={k}>
+                                    <td style={{ padding:'3px 8px', fontWeight:600 }}>{it.codprod}</td>
+                                    <td style={{ padding:'3px 8px' }}>{it.descricao}</td>
+                                    <td style={{ padding:'3px 8px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{it.qtd}</td>
+                                    <td style={{ padding:'3px 8px', textAlign:'right', fontVariantNumeric:'tabular-nums', color:'#B42318', fontWeight:700 }}>{it.estoque}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            <div style={{ fontSize:11, color:'#92400E', marginTop:6 }}>
+                              Quando o saldo entrar, o pedido volta a aparecer na lista com esses itens.
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
