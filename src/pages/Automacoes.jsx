@@ -249,7 +249,8 @@ export default function Automacoes() {
       {fase === 'carregando' && <Spinner/>}
 
       {fase === 'pronto' && aba === 'saude' && (() => {
-        const problemas = saude.filter(x => x.situacao !== 'ok')
+        const problemas = saude.filter(x => ['rotina parada','sem dados'].includes(x.situacao))
+        const semPend = saude.filter(x => x.situacao === 'sem pendências')
         return (
           <>
             <div style={{ background: problemas.length ? '#7f1d1d' : '#052e1f', borderRadius:16, padding:'26px 30px' }}>
@@ -259,13 +260,15 @@ export default function Automacoes() {
               </div>
               <div style={{ fontSize:26, fontWeight:800, color:'#fff', letterSpacing:'-.02em' }}>
                 {problemas.length
-                  ? `${problemas.length} automação(ões) sem rodar no prazo`
+                  ? `${problemas.length} rotina(s) parada(s)`
                   : `${saude.length} automações em dia`}
               </div>
               <div style={{ fontSize:12.5, color: problemas.length ? '#fecaca' : '#6ee7b7', marginTop:8, lineHeight:1.6, maxWidth:640 }}>
-                Este painel não olha se a rotina disparou — olha se o <strong>dado chegou</strong>. Uma rotina pode
-                “executar com sucesso” e mesmo assim não trazer nada; aqui a conta é feita sobre o registro mais
-                recente de cada automação.
+                {semPend.length > 0
+                  ? <>Rotinas rodando normalmente. {semPend.length} não produziram resultado recente porque
+                     <strong> não havia pendência a tratar</strong> — o que é o comportamento esperado, não uma falha.</>
+                  : <>A verificação separa <strong>rodar</strong> de <strong>produzir resultado</strong>: uma rotina
+                     em dia sem nada a fazer não é problema. Só acende quando a rotina em si para.</>}
               </div>
             </div>
 
@@ -280,22 +283,25 @@ export default function Automacoes() {
                 </tr></thead>
                 <tbody>
                   {saude.map((x,i) => {
-                    const ok = x.situacao === 'ok'
+                    const grave = ['rotina parada','sem dados'].includes(x.situacao)
+                    const neutro = ['sem pendências','sem uso recente'].includes(x.situacao)
+                    const ok = !grave && !neutro
                     return (
-                      <tr key={i} style={{ borderTop:'1px solid #F9FAFB', background: ok ? 'transparent' : '#FFFBEB' }}>
+                      <tr key={i} style={{ borderTop:'1px solid #F9FAFB', background: grave ? '#FEF2F2' : 'transparent' }}>
                         <td style={{ padding:'9px 12px', fontWeight:600 }}>{x.automacao}</td>
                         <td style={{ padding:'9px 12px', color:'#6B7280' }}>{x.frequencia}</td>
                         <td style={{ padding:'9px 12px', color:'#6B7280', whiteSpace:'nowrap' }}>
                           {x.ultimo ? new Date(x.ultimo).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}
                         </td>
                         <td style={{ padding:'9px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums',
-                          color: ok ? '#6B7280' : '#B42318', fontWeight: ok ? 400 : 700 }}>
+                          color: grave ? '#B42318' : '#6B7280', fontWeight: grave ? 700 : 400 }}>
                           {x.horas_atras != null ? `${Number(x.horas_atras).toFixed(0)}h` : '—'}
                         </td>
                         <td style={{ padding:'9px 12px' }}>
                           <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:5,
-                            color: ok ? '#12805C' : '#B42318', background: ok ? '#D1FAE5' : '#FEE2E2' }}>
-                            {ok ? '✓ em dia' : (x.situacao === 'sem dados' ? 'sem dados' : '⚠ atrasado')}
+                            color: grave ? '#B42318' : (neutro ? '#6B7280' : '#12805C'),
+                            background: grave ? '#FEE2E2' : (neutro ? '#F3F4F6' : '#D1FAE5') }}>
+                            {grave ? '⚠ ' : (neutro ? '' : '✓ ')}{x.situacao === 'ok' ? 'em dia' : x.situacao}
                           </span>
                         </td>
                       </tr>
@@ -304,8 +310,9 @@ export default function Automacoes() {
                 </tbody>
               </table>
               <p style={{ margin:'14px 0 0', fontSize:11.5, color:'#9CA3AF', lineHeight:1.6 }}>
-                As diárias são cobradas em 26h (um dia + folga). As sob demanda, em 14 dias — não rodam sozinhas,
-                então só acendem se ficarem muito tempo sem uso.
+                <strong>Em dia</strong>: rodou e produziu resultado. <strong>Sem pendências</strong>: a rotina
+                rodou, mas não havia nada a processar — normal. <strong>Rotina parada</strong>: o agendamento
+                deixou de executar, aí sim precisa olhar. Diárias são cobradas em 26h; as sob demanda, em 14 dias.
               </p>
             </Panel>
           </>
