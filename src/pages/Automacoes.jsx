@@ -10,6 +10,14 @@ const COR = {
   'A iniciar':'#6B7280', 'Pausado':'#92400E', 'Cancelado':'#B42318',
 }
 const PRIORIDADES = ['Altíssima','Alta','Média','Baixa']
+const TIPOS = ['Plataforma','Automação','Entrega','Consulta/SQL']
+// Plataforma tem peso visual maior: é o que a diretoria enxerga como projeto
+const TIPO_ESTILO = {
+  'Plataforma':   { bg:'#09090b', fg:'#facc15', ic:'🏗' },
+  'Automação':    { bg:'#1D5BBF', fg:'#fff',    ic:'⚙' },
+  'Entrega':      { bg:'#E5E7EB', fg:'#374151', ic:'📦' },
+  'Consulta/SQL': { bg:'#F3F4F6', fg:'#9CA3AF', ic:'🔎' },
+}
 const CONCLUIDOS = ['Concluído','Em produção']
 
 const HDR = { 'Content-Type':'application/json', apikey: SUPABASE_ANON_KEY, Authorization:`Bearer ${SUPABASE_ANON_KEY}` }
@@ -20,7 +28,7 @@ async function api(metodo, caminho, corpo) {
 }
 const vazio = { nome_projeto:'', setor:'', solicitante:'', resumo:'', data_pedido:'', data_inicio:'',
   prev_encerramento:'', data_encerramento:'', status:'A iniciar', prioridade:'Média', obs:'', beneficio:'',
-  repositorio:'', stack:'' }
+  repositorio:'', stack:'', tipo:'Entrega', projeto_pai_id:null }
 
 function Form({ inicial, onSalvar, onCancelar, salvando }) {
   const [f, setF] = useState({ ...vazio, ...inicial,
@@ -60,6 +68,9 @@ function Form({ inicial, onSalvar, onCancelar, salvando }) {
         <label style={lbl}>Prioridade
           <select style={inp} value={f.prioridade||'Média'} onChange={e=>set('prioridade',e.target.value)}>
             {PRIORIDADES.map(s => <option key={s}>{s}</option>)}</select></label>
+        <label style={lbl}>Tipo
+          <select style={inp} value={f.tipo||'Entrega'} onChange={e=>set('tipo',e.target.value)}>
+            {TIPOS.map(s => <option key={s}>{s}</option>)}</select></label>
         <label style={lbl}>Benefício / impacto
           <input style={inp} value={f.beneficio||''} onChange={e=>set('beneficio',e.target.value)} /></label>
       </div>
@@ -87,6 +98,7 @@ export default function Automacoes() {
   const [busca, setBusca] = useState('')
   const [fStatus, setFStatus] = useState('')
   const [fSetor, setFSetor] = useState('')
+  const [fTipo, setFTipo] = useState('')
   const [editando, setEditando] = useState(null)  // objeto ou 'novo'
   const [salvando, setSalvando] = useState(false)
   const [aba, setAba] = useState('lista')
@@ -98,7 +110,7 @@ export default function Automacoes() {
 
   const carregar = () => {
     setFase('carregando')
-    sbFetch('automacao_projetos?select=*&order=data_encerramento.desc.nullsfirst,nome_projeto')
+    sbFetch('automacao_projetos?select=*&order=tipo,nome_projeto')
       .then(r => { setDados(r||[]); setFase('pronto') })
       .catch(e => { setErro(e.message); setFase('erro') })
   }
@@ -136,10 +148,11 @@ export default function Automacoes() {
     return dados.filter(d => {
       if (fStatus && d.status !== fStatus) return false
       if (fSetor && d.setor !== fSetor) return false
+      if (fTipo && d.tipo !== fTipo) return false
       if (q && !`${d.nome_projeto} ${d.setor||''} ${d.resumo||''} ${d.solicitante||''}`.toLowerCase().includes(q)) return false
       return true
     })
-  }, [dados, busca, fStatus, fSetor])
+  }, [dados, busca, fStatus, fSetor, fTipo])
 
   const kpi = useMemo(() => ({
     total: dados.length,
@@ -229,7 +242,7 @@ export default function Automacoes() {
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
         {[
-          { l:'Total de projetos', v:int(kpi.total), c:'#09090b', ic:'📁' },
+          { l:'Plataformas', v:int(dados.filter(d=>d.tipo==='Plataforma').length), c:'#09090b', ic:'🏗' },
           { l:'Concluídos / produção', v:int(kpi.concluidos), c:'#12805C', ic:'✅' },
           { l:'Em andamento', v:int(kpi.andamento), c:'#1D5BBF', ic:'⚡' },
           { l:'Cancelados', v:int(kpi.cancelados), c:'#B42318', ic:'✕' },
@@ -434,6 +447,7 @@ export default function Automacoes() {
           <div style={{ display:'flex', gap:12, marginBottom:12, alignItems:'flex-end', flexWrap:'wrap' }}>
             <SearchInput value={busca} onChange={setBusca} placeholder="Projeto, setor, resumo…" />
             <Select label="Status" value={fStatus} onChange={setFStatus} options={STATUS} placeholder="Todos" />
+            <Select label="Tipo" value={fTipo} onChange={setFTipo} options={TIPOS} placeholder="Todos" />
             <Select label="Setor" value={fSetor} onChange={setFSetor} options={setores} placeholder="Todos" />
           </div>
 
@@ -448,12 +462,25 @@ export default function Automacoes() {
                 {lista.map(p => (
                   <tr key={p.id} style={{ borderTop:'1px solid #F9FAFB' }}>
                     <td style={{ ...cel, whiteSpace:'nowrap', color:'#6B7280' }}>{dBR(p.data_pedido)}</td>
-                    <td style={{ ...cel, fontWeight:600, minWidth:170 }}>
-                      <span onClick={()=>setDetalhe(p)} style={{ cursor:'pointer', color:'#1D5BBF' }}>
+                    <td style={{ ...cel, fontWeight:600, minWidth:170,
+                      borderLeft: p.tipo==='Plataforma' ? '3px solid #facc15' : '3px solid transparent' }}>
+                      {p.tipo && (
+                        <div style={{ display:'inline-block', fontSize:9, fontWeight:800, padding:'2px 7px',
+                          borderRadius:4, marginBottom:4, letterSpacing:'.06em',
+                          background:(TIPO_ESTILO[p.tipo]||{}).bg, color:(TIPO_ESTILO[p.tipo]||{}).fg }}>
+                          {(TIPO_ESTILO[p.tipo]||{}).ic} {p.tipo.toUpperCase()}
+                        </div>
+                      )}
+                      {p.projeto_pai_id && (() => {
+                        const pai = dados.find(x => x.id === p.projeto_pai_id)
+                        return pai ? <div style={{ fontSize:9.5, color:'#9CA3AF', marginBottom:2 }}>↳ dentro de {pai.nome_projeto}</div> : null
+                      })()}
+                      <div><span onClick={()=>setDetalhe(p)} style={{ cursor:'pointer', color:'#1D5BBF',
+                        fontSize: p.tipo==='Plataforma' ? 14 : 12.5, fontWeight: p.tipo==='Plataforma' ? 700 : 600 }}>
                         {p.nome_projeto}
                         {p.detalhe && <span style={{ marginLeft:6, fontSize:9.5, fontWeight:700, padding:'1px 6px',
                           borderRadius:4, background:'#DBEAFE', color:'#1D5BBF', verticalAlign:'middle' }}>detalhe</span>}
-                      </span>
+                      </span></div>
                       {p.stack && <div style={{ fontSize:10, color:'#9CA3AF', fontWeight:400, marginTop:2, maxWidth:220 }}>{p.stack}</div>}
                       {p.prioridade && <div style={{ fontSize:10, fontWeight:600, color:'#9CA3AF' }}>{p.prioridade}</div>}
                     </td>
