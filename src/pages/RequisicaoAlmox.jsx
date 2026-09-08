@@ -74,6 +74,7 @@ export default function RequisicaoAlmox({ sessao }) {
         <strong>⚠ Isso confirma requisições de verdade no Sankhya</strong> e baixa o estoque. O portal converte o
         Pedido de Requisição (TOP 1000) em Requisição de Almoxarifado (TOP 1100) e confirma — o mesmo que fazer
         pela Central. Só ficam elegíveis as requisições com <strong>todos os itens no local {dados?.local_exigido || '1003'}</strong>.
+        Itens <strong>sem saldo</strong> são retirados do documento gerado e continuam pendentes no pedido original.
       </div>
 
       <Panel
@@ -206,9 +207,10 @@ export default function RequisicaoAlmox({ sessao }) {
                       const comFalta = selecionados.filter(p => semSaldo(p).length)
                       return comFalta.length ? (
                         <div style={{ background:'#fff', border:'1px solid #FECACA', borderRadius:6, padding:'10px 12px', marginBottom:10, fontSize:12.5 }}>
-                          <strong style={{ color:'#B42318' }}>⚠ {comFalta.length} requisição(ões) têm item sem saldo suficiente.</strong>
+                          <strong style={{ color:'#B42318' }}>⚠ {comFalta.length} requisição(ões) têm item sem saldo.</strong>
                           <div style={{ marginTop:6, color:'#6B7280' }}>
-                            O Sankhya pode recusar essas. Se recusar, elas aparecem com erro no resultado e as demais seguem normalmente.
+                            Esses itens serão <strong>removidos do documento gerado</strong> — o restante é entregue normalmente,
+                            e o item continua pendente no pedido original para quando o saldo entrar.
                           </div>
                           <ul style={{ margin:'8px 0 0', paddingLeft:18, color:'#6B7280' }}>
                             {comFalta.slice(0,5).map(p => (
@@ -239,7 +241,7 @@ export default function RequisicaoAlmox({ sessao }) {
                 {int(resultado.sucesso)} de {int(resultado.processados)} confirmada(s) com sucesso.
               </div>
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
-                <thead><tr><th style={th()}>Pedido</th><th style={th()}>Requisição gerada</th><th style={th()}>Resultado</th></tr></thead>
+                <thead><tr><th style={th()}>Pedido</th><th style={th()}>Requisição gerada</th><th style={th()}>Itens removidos</th><th style={th()}>Resultado</th></tr></thead>
                 <tbody>
                   {(resultado.resultados||[]).map((r,i) => (
                     <tr key={i} style={{ borderTop:'1px solid #F9FAFB' }}>
@@ -248,7 +250,14 @@ export default function RequisicaoAlmox({ sessao }) {
                         {r.numnota_gerada || '—'}
                         {r.nunota_gerada && <span style={{ fontWeight:400, fontSize:11, color:'#9CA3AF' }}> (nº único {r.nunota_gerada})</span>}
                       </td>
-                      <td style={{ ...cel, color: r.confirmada ? '#12805C' : '#B42318' }}>
+                      <td style={cel}>
+                        {r.itens_removidos?.length
+                          ? <span style={{ fontSize:11.5, color:'#B54708' }} title={r.itens_removidos.map(i=>i.codprod).join(', ')}>
+                              {r.itens_removidos.length} sem saldo
+                            </span>
+                          : <span style={{ color:'#9CA3AF' }}>—</span>}
+                      </td>
+                      <td style={{ ...cel, color: r.confirmada ? '#12805C' : '#B42318', whiteSpace:'normal', maxWidth:340 }}>
                         {r.confirmada ? '✓ confirmada' : (r.erro || r.mensagem || 'falhou')}
                       </td>
                     </tr>
