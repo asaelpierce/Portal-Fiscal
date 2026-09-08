@@ -93,6 +93,7 @@ export default function Automacoes() {
   const [economia, setEconomia] = useState([])
   const [cfg, setCfg] = useState({})
   const [editEco, setEditEco] = useState(null)
+  const [saude, setSaude] = useState([])
 
   const carregar = () => {
     setFase('carregando')
@@ -102,6 +103,7 @@ export default function Automacoes() {
   }
   const carregarEconomia = () => {
     sbFetch('automacao_economia?select=*&order=horas_reais.desc').then(r=>setEconomia(r||[])).catch(()=>{})
+    sbFetch('automacao_saude?select=*').then(r=>setSaude(r||[])).catch(()=>{})
     sbFetch('automacao_config?select=*').then(r => {
       const o = {}; (r||[]).forEach(c => { o[c.chave] = c.valor }); setCfg(o)
     }).catch(()=>{})
@@ -215,7 +217,7 @@ export default function Automacoes() {
       </div>
 
       <div style={{ display:'flex', gap:6, background:'#F3F4F6', padding:5, borderRadius:12, width:'fit-content' }}>
-        {[['lista','📋 Controle semanal'],['painel','📊 Visão executiva'],['economia','💰 Impacto financeiro']].map(([id,rot]) => (
+        {[['lista','📋 Controle semanal'],['saude','🩺 Saúde das automações'],['painel','📊 Visão executiva'],['economia','💰 Impacto financeiro']].map(([id,rot]) => (
           <button key={id} onClick={()=>setAba(id)} style={{
             fontSize:12.5, padding:'9px 18px', borderRadius:9, cursor:'pointer', fontFamily:'inherit',
             border:'none', background: aba===id?'#09090b':'transparent',
@@ -245,6 +247,70 @@ export default function Automacoes() {
 
       {erro && <div style={{ color:'#B42318', fontSize:13 }}>⚠ {erro}</div>}
       {fase === 'carregando' && <Spinner/>}
+
+      {fase === 'pronto' && aba === 'saude' && (() => {
+        const problemas = saude.filter(x => x.situacao !== 'ok')
+        return (
+          <>
+            <div style={{ background: problemas.length ? '#7f1d1d' : '#052e1f', borderRadius:16, padding:'26px 30px' }}>
+              <div style={{ fontSize:10, fontWeight:800, letterSpacing:'.22em',
+                color: problemas.length ? '#fca5a5' : '#34d399', textTransform:'uppercase', marginBottom:10 }}>
+                {problemas.length ? 'Atenção necessária' : 'Tudo rodando'}
+              </div>
+              <div style={{ fontSize:26, fontWeight:800, color:'#fff', letterSpacing:'-.02em' }}>
+                {problemas.length
+                  ? `${problemas.length} automação(ões) sem rodar no prazo`
+                  : `${saude.length} automações em dia`}
+              </div>
+              <div style={{ fontSize:12.5, color: problemas.length ? '#fecaca' : '#6ee7b7', marginTop:8, lineHeight:1.6, maxWidth:640 }}>
+                Este painel não olha se a rotina disparou — olha se o <strong>dado chegou</strong>. Uma rotina pode
+                “executar com sucesso” e mesmo assim não trazer nada; aqui a conta é feita sobre o registro mais
+                recente de cada automação.
+              </div>
+            </div>
+
+            <Panel title="Última execução com resultado">
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
+                <thead><tr>
+                  {['Automação','Frequência','Último resultado','Há quanto tempo','Situação'].map((h,i)=>(
+                    <th key={h} style={{ padding:'8px 12px', background:'#F9FAFB', textAlign: i===3?'right':'left',
+                      fontSize:10, fontWeight:600, color:'#6B7280', textTransform:'uppercase',
+                      letterSpacing:'.04em', borderBottom:'1px solid #E5E7EB' }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {saude.map((x,i) => {
+                    const ok = x.situacao === 'ok'
+                    return (
+                      <tr key={i} style={{ borderTop:'1px solid #F9FAFB', background: ok ? 'transparent' : '#FFFBEB' }}>
+                        <td style={{ padding:'9px 12px', fontWeight:600 }}>{x.automacao}</td>
+                        <td style={{ padding:'9px 12px', color:'#6B7280' }}>{x.frequencia}</td>
+                        <td style={{ padding:'9px 12px', color:'#6B7280', whiteSpace:'nowrap' }}>
+                          {x.ultimo ? new Date(x.ultimo).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}
+                        </td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums',
+                          color: ok ? '#6B7280' : '#B42318', fontWeight: ok ? 400 : 700 }}>
+                          {x.horas_atras != null ? `${Number(x.horas_atras).toFixed(0)}h` : '—'}
+                        </td>
+                        <td style={{ padding:'9px 12px' }}>
+                          <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:5,
+                            color: ok ? '#12805C' : '#B42318', background: ok ? '#D1FAE5' : '#FEE2E2' }}>
+                            {ok ? '✓ em dia' : (x.situacao === 'sem dados' ? 'sem dados' : '⚠ atrasado')}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              <p style={{ margin:'14px 0 0', fontSize:11.5, color:'#9CA3AF', lineHeight:1.6 }}>
+                As diárias são cobradas em 26h (um dia + folga). As sob demanda, em 14 dias — não rodam sozinhas,
+                então só acendem se ficarem muito tempo sem uso.
+              </p>
+            </Panel>
+          </>
+        )
+      })()}
 
       {fase === 'pronto' && aba === 'painel' && (
         <>
