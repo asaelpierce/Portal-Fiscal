@@ -698,6 +698,14 @@ function FormEco({ inicial, onSalvar, onCancelar, salvando }) {
 // integracoes e pendencias. Alimentado pelo campo `detalhe` (jsonb).
 function DetalheProjeto({ p, onFechar }) {
   const d = p.detalhe || {}
+  const [vista, setVista] = useState('inventario')
+  const [ganhos, setGanhos] = useState([])
+  const [aceites, setAceites] = useState([])
+  const recarregar = () => {
+    sbFetch(`automacao_ganhos?select=*&projeto_id=eq.${p.id}&order=criado_em`).then(r=>setGanhos(r||[])).catch(()=>{})
+    sbFetch(`automacao_aceite?select=*&projeto_id=eq.${p.id}&order=assinado_em.desc`).then(r=>setAceites(r||[])).catch(()=>{})
+  }
+  useEffect(() => { recarregar() }, [p.id])
   const linha = (l, v) => v ? (
     <div style={{ marginBottom:12 }}>
       <div style={{ fontSize:9.5, fontWeight:800, letterSpacing:'.14em', color:'#71717a', textTransform:'uppercase', marginBottom:4 }}>{l}</div>
@@ -733,7 +741,18 @@ function DetalheProjeto({ p, onFechar }) {
           </div>
         </div>
 
-        <div style={{ padding:'24px 28px' }}>
+        <div style={{ display:'flex', gap:6, padding:'14px 28px 0' }}>
+          {[['inventario','Inventário'],['ganhos','Ganhos & Aceite']].map(([id,rot]) => (
+            <button key={id} onClick={()=>setVista(id)} style={{
+              fontSize:12, padding:'7px 16px', borderRadius:8, cursor:'pointer', fontFamily:'inherit',
+              border:'none', background: vista===id?'#facc15':'#18181b',
+              color: vista===id?'#09090b':'#a1a1aa', fontWeight:700 }}>{rot}</button>
+          ))}
+        </div>
+
+        {vista === 'ganhos' && <GanhosAceite p={p} ganhos={ganhos} aceites={aceites} onMudou={recarregar} />}
+
+        <div style={{ padding:'24px 28px', display: vista==='inventario' ? 'block' : 'none' }}>
           {Array.isArray(d.metricas) && d.metricas.length > 0 && (
             <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:26 }}>
               {d.metricas.map((m,i) => (
@@ -795,5 +814,166 @@ function DetalheProjeto({ p, onFechar }) {
         </div>
       </div>
     </>
+  )
+}
+
+
+const FREQ = { 'Diária':22, 'Semanal':4.33, 'Mensal':1, 'Por ocorrência':1 }
+const horasMes = g => ((Number(g.min_antes)-Number(g.min_depois)) * Number(g.ocorrencias) * (FREQ[g.frequencia]||1)) / 60
+
+// Onde o responsavel da area declara o que mudou e assina. O total de horas
+// nunca e digitado: sai do calculo tarefa a tarefa, para o documento ter
+// rastreabilidade de como se chegou ao numero.
+function GanhosAceite({ p, ganhos, aceites, onMudou }) {
+  const [nova, setNova] = useState({ tarefa:'', frequencia:'Diária', ocorrencias:1, min_antes:'', min_depois:'', quem_executava:'', eliminada:false })
+  const [ass, setAss] = useState({ nome_assinante:'', cargo:'', setor:p.setor||'', email:'', declaracao:'', assinatura:'' })
+  const [erro, setErro] = useState('')
+  const [salvando, setSalvando] = useState(false)
+
+  const totalMes = ganhos.reduce((s,g) => s + horasMes(g), 0)
+  const totalAno = totalMes * 12
+  const eliminadas = ganhos.filter(g => g.eliminada).length
+
+  const addTarefa = async () => {
+    if (!nova.tarefa.trim()) return
+    setSalvando(true); setErro('')
+    try {
+      await api('POST','automacao_ganhos', { ...nova, projeto_id: p.id,
+        ocorrencias:Number(nova.ocorrencias)||1, min_antes:Number(nova.min_antes)||0,
+        min_depois:Number(nova.min_depois)||0 })
+      setNova({ tarefa:'', frequencia:'Diária', ocorrencias:1, min_antes:'', min_depois:'', quem_executava:'', eliminada:false })
+      onMudou()
+    } catch(e){ setErro(e.message) } finally { setSalvando(false) }
+  }
+  const delTarefa = async (g) => {
+    if (!window.confirm(`Remover "${g.tarefa}"?`)) return
+    try { await api('DELETE',`automacao_ganhos?id=eq.${g.id}`); onMudou() } catch(e){ setErro(e.message) }
+  }
+  const assinar = async () => {
+    if (!ass.nome_assinante.trim() || !ass.assinatura.trim()) { setErro('Preencha o nome e a assinatura.'); return }
+    if (ass.assinatura.trim().toLowerCase() !== ass.nome_assinante.trim().toLowerCase()) {
+      setErro('A assinatura precisa ser exatamente o nome informado.'); return
+    }
+    setSalvando(true); setErro('')
+    try { await api('POST','automacao_aceite', { ...ass, projeto_id:p.id }); onMudou()
+      setAss({ nome_assinante:'', cargo:'', setor:p.setor||'', email:'', declaracao:'', assinatura:'' })
+    } catch(e){ setErro(e.message) } finally { setSalvando(false) }
+  }
+
+  const inp = { width:'100%', fontFamily:'inherit', fontSize:12.5, padding:'7px 9px', border:'1px solid #3f3f46',
+    borderRadius:6, boxSizing:'border-box', background:'#18181b', color:'#fafafa', marginTop:3 }
+  const lbl = { fontSize:9.5, fontWeight:700, color:'#71717a', textTransform:'uppercase', letterSpacing:'.1em', display:'block' }
+  const btn = (cor='#facc15', fg='#09090b') => ({ padding:'8px 16px', borderRadius:7, border:'none',
+    background:cor, color:fg, fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:'inherit' })
+
+  return (
+    <div style={{ padding:'20px 28px 40px' }}>
+      {erro && <div style={{ background:'#450a0a', color:'#fca5a5', padding:'9px 12px', borderRadius:7, fontSize:12, marginBottom:14 }}>⚠ {erro}</div>}
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:22 }}>
+        {[['Tarefas mapeadas', ganhos.length],['Eliminadas', eliminadas],
+          ['Horas/mês', totalMes.toFixed(1)]].map(([l,v],i) => (
+          <div key={i} style={{ background:'#18181b', border:'1px solid #27272a', borderRadius:10, padding:'14px 16px' }}>
+            <div style={{ fontSize:24, fontWeight:800, color:'#facc15', lineHeight:1 }}>{v}</div>
+            <div style={{ fontSize:9.5, fontWeight:700, color:'#71717a', textTransform:'uppercase', letterSpacing:'.1em', marginTop:6 }}>{l}</div>
+          </div>
+        ))}
+      </div>
+      {totalAno > 0 && (
+        <div style={{ background:'#052e1f', border:'1px solid #065f46', borderRadius:12, padding:'16px 20px', marginBottom:24 }}>
+          <div style={{ fontSize:9.5, fontWeight:800, color:'#34d399', textTransform:'uppercase', letterSpacing:'.14em' }}>Economia anual declarada</div>
+          <div style={{ fontSize:30, fontWeight:800, color:'#34d399', marginTop:6, lineHeight:1 }}>{totalAno.toFixed(0)} horas</div>
+          <div style={{ fontSize:11.5, color:'#059669', marginTop:6 }}>equivale a {(totalAno/8).toFixed(0)} dias de trabalho por ano</div>
+        </div>
+      )}
+
+      <div style={{ fontSize:11, fontWeight:800, color:'#facc15', textTransform:'uppercase', letterSpacing:'.14em',
+        marginBottom:10, paddingBottom:8, borderBottom:'1px solid #27272a' }}>Tarefas impactadas</div>
+
+      {ganhos.map(g => (
+        <div key={g.id} style={{ background:'#18181b', borderRadius:9, padding:'11px 14px', marginBottom:8,
+          display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 }}>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#fafafa' }}>
+              {g.tarefa}
+              {g.eliminada && <span style={{ marginLeft:8, fontSize:9.5, fontWeight:700, padding:'2px 7px',
+                borderRadius:4, background:'#052e1f', color:'#34d399' }}>eliminada</span>}
+            </div>
+            <div style={{ fontSize:11, color:'#71717a', marginTop:3 }}>
+              {g.frequencia} · {g.ocorrencias}× · {g.min_antes}min → {g.min_depois}min
+              {g.quem_executava && ` · ${g.quem_executava}`}
+            </div>
+          </div>
+          <div style={{ textAlign:'right' }}>
+            <div style={{ fontSize:15, fontWeight:700, color:'#34d399' }}>{horasMes(g).toFixed(1)}h</div>
+            <div style={{ fontSize:9, color:'#52525b' }}>por mês</div>
+          </div>
+          <button onClick={()=>delTarefa(g)} style={{ background:'none', border:'none', color:'#7f1d1d', cursor:'pointer', fontSize:11 }}>remover</button>
+        </div>
+      ))}
+
+      <div style={{ background:'#18181b', border:'1px dashed #3f3f46', borderRadius:10, padding:16, marginTop:12 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:10, marginBottom:10 }}>
+          <label style={lbl}>Tarefa<input style={inp} value={nova.tarefa} onChange={e=>setNova({...nova,tarefa:e.target.value})} placeholder="Ex: Conferir pedidos no ERP" /></label>
+          <label style={lbl}>Frequência
+            <select style={inp} value={nova.frequencia} onChange={e=>setNova({...nova,frequencia:e.target.value})}>
+              {Object.keys(FREQ).map(f=><option key={f}>{f}</option>)}</select></label>
+          <label style={lbl}>Vezes por período<input type="number" step="0.5" style={inp} value={nova.ocorrencias} onChange={e=>setNova({...nova,ocorrencias:e.target.value})} /></label>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 2fr', gap:10 }}>
+          <label style={lbl}>Minutos ANTES<input type="number" style={inp} value={nova.min_antes} onChange={e=>setNova({...nova,min_antes:e.target.value})} /></label>
+          <label style={lbl}>Minutos DEPOIS<input type="number" style={inp} value={nova.min_depois} onChange={e=>setNova({...nova,min_depois:e.target.value})} placeholder="0 se eliminou" /></label>
+          <label style={lbl}>Quem executava<input style={inp} value={nova.quem_executava} onChange={e=>setNova({...nova,quem_executava:e.target.value})} /></label>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:12 }}>
+          <label style={{ fontSize:12, color:'#a1a1aa', display:'flex', alignItems:'center', gap:7, cursor:'pointer' }}>
+            <input type="checkbox" checked={nova.eliminada} onChange={e=>setNova({...nova,eliminada:e.target.checked})} />
+            A tarefa deixou de existir
+          </label>
+          <button onClick={addTarefa} disabled={salvando || !nova.tarefa.trim()} style={btn()}>+ Adicionar tarefa</button>
+        </div>
+      </div>
+
+      <div style={{ fontSize:11, fontWeight:800, color:'#facc15', textTransform:'uppercase', letterSpacing:'.14em',
+        margin:'28px 0 10px', paddingBottom:8, borderBottom:'1px solid #27272a' }}>Aceite do responsável</div>
+
+      {aceites.map(a => (
+        <div key={a.id} style={{ background:'#052e1f', border:'1px solid #065f46', borderRadius:10, padding:'14px 16px', marginBottom:10 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#34d399' }}>✓ {a.nome_assinante}</div>
+          <div style={{ fontSize:11.5, color:'#059669', marginTop:3 }}>
+            {[a.cargo, a.setor].filter(Boolean).join(' · ')} — assinado em {new Date(a.assinado_em).toLocaleString('pt-BR')}
+          </div>
+          {a.declaracao && <div style={{ fontSize:12, color:'#a7f3d0', marginTop:8, fontStyle:'italic' }}>"{a.declaracao}"</div>}
+        </div>
+      ))}
+
+      <div style={{ background:'#18181b', border:'1px dashed #3f3f46', borderRadius:10, padding:16 }}>
+        <div style={{ fontSize:12, color:'#a1a1aa', lineHeight:1.6, marginBottom:14 }}>
+          Ao assinar, o responsável confirma que a automação está em uso na área e que os ganhos
+          declarados acima refletem a realidade da operação.
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+          <label style={lbl}>Nome completo *<input style={inp} value={ass.nome_assinante} onChange={e=>setAss({...ass,nome_assinante:e.target.value})} /></label>
+          <label style={lbl}>Cargo<input style={inp} value={ass.cargo} onChange={e=>setAss({...ass,cargo:e.target.value})} /></label>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+          <label style={lbl}>Setor<input style={inp} value={ass.setor} onChange={e=>setAss({...ass,setor:e.target.value})} /></label>
+          <label style={lbl}>E-mail<input style={inp} value={ass.email} onChange={e=>setAss({...ass,email:e.target.value})} /></label>
+        </div>
+        <label style={lbl}>Declaração / comentário
+          <textarea style={{...inp, minHeight:54, resize:'vertical'}} value={ass.declaracao} onChange={e=>setAss({...ass,declaracao:e.target.value})}
+            placeholder="O que mudou na rotina da área" /></label>
+        <label style={{...lbl, marginTop:10, display:'block'}}>Assinatura — digite seu nome exatamente como acima *
+          <input style={{...inp, fontFamily:'Georgia, serif', fontSize:17, fontStyle:'italic'}}
+            value={ass.assinatura} onChange={e=>setAss({...ass,assinatura:e.target.value})} /></label>
+        <button onClick={assinar} disabled={salvando} style={{...btn('#34d399','#052e1f'), marginTop:14}}>
+          {salvando ? 'Registrando…' : '✓ Assinar aceite'}
+        </button>
+      </div>
+
+      <button onClick={()=>window.print()} style={{...btn('#27272a','#fafafa'), marginTop:20, width:'100%'}}>
+        🖨 Gerar documento (imprimir / salvar em PDF)
+      </button>
+    </div>
   )
 }
