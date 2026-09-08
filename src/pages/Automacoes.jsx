@@ -83,6 +83,9 @@ export default function Automacoes() {
   const [editando, setEditando] = useState(null)  // objeto ou 'novo'
   const [salvando, setSalvando] = useState(false)
   const [aba, setAba] = useState('lista')
+  const [economia, setEconomia] = useState([])
+  const [cfg, setCfg] = useState({})
+  const [editEco, setEditEco] = useState(null)
 
   const carregar = () => {
     setFase('carregando')
@@ -90,7 +93,13 @@ export default function Automacoes() {
       .then(r => { setDados(r||[]); setFase('pronto') })
       .catch(e => { setErro(e.message); setFase('erro') })
   }
-  useEffect(() => { carregar() }, [])
+  const carregarEconomia = () => {
+    sbFetch('automacao_economia?select=*&order=horas_reais.desc').then(r=>setEconomia(r||[])).catch(()=>{})
+    sbFetch('automacao_config?select=*').then(r => {
+      const o = {}; (r||[]).forEach(c => { o[c.chave] = c.valor }); setCfg(o)
+    }).catch(()=>{})
+  }
+  useEffect(() => { carregar(); carregarEconomia() }, [])
 
   const salvar = async (f) => {
     setSalvando(true); setErro('')
@@ -159,7 +168,7 @@ export default function Automacoes() {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
       <div style={{ display:'flex', gap:8 }}>
-        {[['lista','📋 Controle semanal'],['painel','📊 Visão executiva']].map(([id,rot]) => (
+        {[['lista','📋 Controle semanal'],['painel','📊 Visão executiva'],['economia','💰 Impacto financeiro']].map(([id,rot]) => (
           <button key={id} onClick={()=>setAba(id)} style={{
             fontSize:13, padding:'8px 16px', borderRadius:6, cursor:'pointer', fontFamily:'inherit',
             border:`1px solid ${aba===id?'#1D5BBF':'#E5E7EB'}`, background: aba===id?'#1D5BBF':'#fff',
@@ -209,6 +218,11 @@ export default function Automacoes() {
             </ResponsiveContainer>
           </Panel>
         </div>
+      )}
+
+      {fase === 'pronto' && aba === 'economia' && (
+        <Economia economia={economia} cfg={cfg} onMudou={carregarEconomia}
+          editando={editEco} setEditando={setEditEco} />
       )}
 
       {fase === 'pronto' && aba === 'lista' && (
@@ -270,6 +284,183 @@ export default function Automacoes() {
           </div>
         </Panel>
       )}
+    </div>
+  )
+}
+
+
+const brl = n => new Intl.NumberFormat('pt-BR',{ style:'currency', currency:'BRL', maximumFractionDigits:0 }).format(Number(n)||0)
+const brl2 = n => new Intl.NumberFormat('pt-BR',{ style:'currency', currency:'BRL' }).format(Number(n)||0)
+
+// Duas leituras do mesmo trabalho: o custo real de desenvolvimento interno
+// e o que a consultoria cobraria se cada demanda virasse um chamado isolado
+// (ha um minimo de horas por chamado, entao demandas pequenas custam caro).
+function Economia({ economia, cfg, onMudou, editando, setEditando }) {
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState('')
+  const taxa = Number(cfg.valor_hora_consultoria || 240)
+  const minimo = Number(cfg.minimo_horas_chamado || 4)
+
+  const tot = useMemo(() => {
+    const hr = economia.reduce((s,e) => s + Number(e.horas_reais||0), 0)
+    const ha = economia.reduce((s,e) => s + Number(e.horas_avulso||0), 0)
+    return { hr, ha, vr: hr*taxa, va: ha*taxa }
+  }, [economia, taxa])
+
+  const hb = Number(cfg.horas_backend_portfolio||0), hf = Number(cfg.horas_frontend_portfolio||0)
+  const vb = hb * Number(cfg.valor_hora_backend||0), vf = hf * Number(cfg.valor_hora_frontend||0)
+  const ia = Number(cfg.investimento_ia_mensal||0)
+
+  const salvarItem = async (f) => {
+    setSalvando(true); setErro('')
+    const corpo = { demanda:f.demanda, prioridade:f.prioridade, faixa_tempo:f.faixa_tempo,
+      horas_reais:Number(f.horas_reais)||0, horas_avulso:Number(f.horas_avulso)||0, observacao:f.observacao }
+    try {
+      if (editando === 'novo') await api('POST','automacao_economia', corpo)
+      else await api('PATCH',`automacao_economia?id=eq.${editando.id}`, corpo)
+      setEditando(null); onMudou()
+    } catch (e) { setErro(e.message) } finally { setSalvando(false) }
+  }
+  const removerItem = async (e2) => {
+    if (!window.confirm(`Remover "${e2.demanda}"?`)) return
+    try { await api('DELETE',`automacao_economia?id=eq.${e2.id}`); onMudou() } catch (e) { setErro(e.message) }
+  }
+
+  const th = a => ({ padding:'8px 10px', background:'#F9FAFB', textAlign:a||'left', fontSize:10,
+    fontWeight:600, color:'#6B7280', textTransform:'uppercase', letterSpacing:'.04em',
+    borderBottom:'1px solid #E5E7EB', whiteSpace:'nowrap' })
+  const cel = { padding:'7px 10px' }
+  const inp = { width:'100%', fontFamily:'inherit', fontSize:12.5, padding:'6px 8px',
+    border:'1px solid #E5E7EB', borderRadius:5, boxSizing:'border-box' }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
+      {erro && <div style={{ color:'#B42318', fontSize:13 }}>⚠ {erro}</div>}
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+        <div style={{ background:'#F0FDF4', border:'1px solid #BBF7D0', borderRadius:10, padding:'18px 20px' }}>
+          <div style={{ fontSize:11, fontWeight:700, color:'#12805C', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>
+            Custo real do desenvolvimento interno
+          </div>
+          <div style={{ fontSize:30, fontWeight:700, color:'#12805C' }}>{brl(tot.vr)}</div>
+          <div style={{ fontSize:12, color:'#6B7280', marginTop:6 }}>
+            {tot.hr}h efetivamente trabalhadas × {brl2(taxa)}/h
+          </div>
+        </div>
+        <div style={{ background:'#F9FAFB', border:'1px solid #E5E7EB', borderRadius:10, padding:'18px 20px' }}>
+          <div style={{ fontSize:11, fontWeight:700, color:'#6B7280', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>
+            Se cada demanda fosse um chamado avulso
+          </div>
+          <div style={{ fontSize:30, fontWeight:700, color:'#374151' }}>{brl(tot.va)}</div>
+          <div style={{ fontSize:12, color:'#6B7280', marginTop:6 }}>
+            {tot.ha}h faturáveis — mínimo de {minimo}h por chamado
+          </div>
+        </div>
+      </div>
+
+      <Panel title={`Demandas Sankhya — ${int(economia.length)}`}
+        action={<Btn small primary onClick={()=>setEditando('novo')}>+ Nova demanda</Btn>}>
+        <p style={{ margin:'0 0 12px', fontSize:12.5, color:'#6B7280', lineHeight:1.6 }}>
+          Cada linha é uma demanda que teria virado chamado na consultoria. A coluna <strong>horas reais</strong> é
+          o tempo efetivamente gasto; a <strong>avulso</strong> aplica o mínimo de {minimo}h por chamado, que é
+          como a cobrança funcionaria na prática.
+        </p>
+
+        {editando && (
+          <FormEco inicial={editando === 'novo' ? null : editando}
+            onSalvar={salvarItem} onCancelar={()=>setEditando(null)} salvando={salvando} />
+        )}
+
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
+            <thead><tr>
+              <th style={th()}>Demanda</th><th style={th()}>Prioridade</th><th style={th()}>Faixa estimada</th>
+              <th style={th('right')}>Horas reais</th><th style={th('right')}>Custo real</th>
+              <th style={th('right')}>Horas avulso</th><th style={th('right')}>Custo avulso</th><th style={th('right')}></th>
+            </tr></thead>
+            <tbody>
+              {economia.map(e => (
+                <tr key={e.id} style={{ borderTop:'1px solid #F9FAFB' }}>
+                  <td style={{ ...cel, fontWeight:600 }}>{e.demanda}</td>
+                  <td style={cel}><span style={{ fontSize:10.5, fontWeight:600, padding:'2px 7px', borderRadius:4,
+                    background:'#F3F4F6', color:'#374151' }}>{e.prioridade}</span></td>
+                  <td style={{ ...cel, color:'#9CA3AF' }}>{e.faixa_tempo}</td>
+                  <td style={{ ...cel, textAlign:'right', fontWeight:600, fontVariantNumeric:'tabular-nums' }}>{e.horas_reais}h</td>
+                  <td style={{ ...cel, textAlign:'right', color:'#12805C', fontWeight:600, fontVariantNumeric:'tabular-nums' }}>{brl2(e.horas_reais*taxa)}</td>
+                  <td style={{ ...cel, textAlign:'right', color:'#6B7280', fontVariantNumeric:'tabular-nums' }}>{e.horas_avulso}h</td>
+                  <td style={{ ...cel, textAlign:'right', color:'#6B7280', fontVariantNumeric:'tabular-nums' }}>{brl2(e.horas_avulso*taxa)}</td>
+                  <td style={{ ...cel, textAlign:'right', whiteSpace:'nowrap' }}>
+                    <button onClick={()=>setEditando(e)} style={{ border:'none', background:'none', cursor:'pointer', color:'#1D5BBF', fontSize:11.5, marginRight:8 }}>editar</button>
+                    <button onClick={()=>removerItem(e)} style={{ border:'none', background:'none', cursor:'pointer', color:'#B42318', fontSize:11.5 }}>remover</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot><tr style={{ borderTop:'2px solid #E5E7EB', background:'#F9FAFB' }}>
+              <td colSpan={3} style={{ ...cel, fontWeight:700 }}>Total</td>
+              <td style={{ ...cel, textAlign:'right', fontWeight:700 }}>{tot.hr}h</td>
+              <td style={{ ...cel, textAlign:'right', fontWeight:700, color:'#12805C' }}>{brl(tot.vr)}</td>
+              <td style={{ ...cel, textAlign:'right', fontWeight:700 }}>{tot.ha}h</td>
+              <td style={{ ...cel, textAlign:'right', fontWeight:700, color:'#6B7280' }}>{brl(tot.va)}</td>
+              <td/></tr></tfoot>
+          </table>
+        </div>
+      </Panel>
+
+      <Panel title="Estimativa do portfólio completo">
+        <p style={{ margin:'0 0 14px', fontSize:12.5, color:'#6B7280', lineHeight:1.6 }}>
+          Diferente do quadro acima: aqui é uma <strong>ordem de grandeza</strong> do esforço total de todos os
+          projetos, calculada por porte, não por hora cronometrada. Serve pra dimensionar o tamanho do que foi
+          entregue — não como valor de cobrança.
+        </p>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14 }}>
+          {[
+            { l:'Back-end / integrações', h:hb, v:vb, t:`${brl2(cfg.valor_hora_backend||0)}/h`, c:'#1D5BBF' },
+            { l:'Front-end / UX', h:hf, v:vf, t:`${brl2(cfg.valor_hora_frontend||0)}/h`, c:'#7C3AED' },
+            { l:'Total estimado', h:hb+hf, v:vb+vf, t:'ordem de grandeza', c:'#101828' },
+          ].map((k,i) => (
+            <div key={i} style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:8, padding:'16px 18px', borderTop:`3px solid ${k.c}` }}>
+              <div style={{ fontSize:11.5, color:'#6B7280', fontWeight:600, marginBottom:8 }}>{k.l}</div>
+              <div style={{ fontSize:24, fontWeight:700, color:k.c }}>~{k.h}h</div>
+              <div style={{ fontSize:13, fontWeight:600, color:'#374151', marginTop:4 }}>{brl(k.v)}</div>
+              <div style={{ fontSize:10.5, color:'#9CA3AF', marginTop:2 }}>{k.t}</div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      {ia > 0 && (
+        <div style={{ background:'#fff', border:'1px dashed #D1D5DB', borderRadius:10, padding:'16px 20px', fontSize:12.5, color:'#6B7280', lineHeight:1.6 }}>
+          <strong style={{ color:'#374151' }}>Nota de transparência:</strong> as ferramentas de IA usadas para
+          construir estas automações são custeadas pelo próprio analista — {brl2(ia)}/mês. Esse valor não está
+          descontado dos números acima, que refletem apenas horas de desenvolvimento que a empresa deixou de contratar.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FormEco({ inicial, onSalvar, onCancelar, salvando }) {
+  const [f, setF] = useState({ demanda:'', prioridade:'Média', faixa_tempo:'', horas_reais:'', horas_avulso:'', observacao:'', ...inicial })
+  const set = (k,v) => setF(s => ({ ...s, [k]: v }))
+  const inp = { width:'100%', fontFamily:'inherit', fontSize:13, padding:'8px 10px',
+    border:'1px solid #E5E7EB', borderRadius:6, boxSizing:'border-box', marginTop:4 }
+  const lbl = { fontSize:11, color:'#6B7280', fontWeight:600, display:'block' }
+  return (
+    <div style={{ background:'#F9FAFB', border:'1px solid #E5E7EB', borderRadius:10, padding:16, marginBottom:16 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr', gap:12 }}>
+        <label style={lbl}>Demanda *<input style={inp} value={f.demanda} onChange={e=>set('demanda',e.target.value)} autoFocus /></label>
+        <label style={lbl}>Prioridade
+          <select style={inp} value={f.prioridade||'Média'} onChange={e=>set('prioridade',e.target.value)}>
+            {['Altíssima','Alta','Média-Alta','Média','Baixa'].map(x=><option key={x}>{x}</option>)}</select></label>
+        <label style={lbl}>Faixa estimada<input style={inp} value={f.faixa_tempo||''} onChange={e=>set('faixa_tempo',e.target.value)} placeholder="2h a 3h" /></label>
+        <label style={lbl}>Horas reais<input type="number" step="0.25" style={inp} value={f.horas_reais} onChange={e=>set('horas_reais',e.target.value)} /></label>
+        <label style={lbl}>Horas avulso<input type="number" step="0.25" style={inp} value={f.horas_avulso} onChange={e=>set('horas_avulso',e.target.value)} /></label>
+      </div>
+      <div style={{ display:'flex', gap:8, marginTop:14 }}>
+        <Btn primary onClick={()=>onSalvar(f)} disabled={salvando || !f.demanda.trim()}>{salvando?'Salvando…':'Salvar'}</Btn>
+        <Btn onClick={onCancelar} disabled={salvando}>Cancelar</Btn>
+      </div>
     </div>
   )
 }
