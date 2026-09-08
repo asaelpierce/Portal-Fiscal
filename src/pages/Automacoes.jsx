@@ -255,10 +255,11 @@ export default function Automacoes() {
             <div style={{ fontSize:10, fontWeight:800, letterSpacing:'.22em', color:'#facc15', textTransform:'uppercase', marginBottom:16 }}>
               Infraestrutura construída
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:16 }}>
               {[
                 { n: int(dados.filter(d=>d.repositorio).length), l:'Repositórios', d:'código versionado' },
                 { n: 7, l:'Bases Supabase', d:'Postgres + Edge Functions' },
+                { n: '60+', l:'Integrações ERP', d:'Edge Functions Sankhya' },
                 { n: int(new Set(dados.map(d=>d.setor).filter(Boolean)).size), l:'Setores atendidos', d:'da fábrica à diretoria' },
                 { n: int(dados.filter(d=>(d.stack||'').includes('Sankhya')).length), l:'Integrados ao ERP', d:'leitura e gravação' },
               ].map((x,i) => (
@@ -270,10 +271,11 @@ export default function Automacoes() {
               ))}
             </div>
             <div style={{ fontSize:12, color:'#a1a1aa', marginTop:20, lineHeight:1.7, maxWidth:760, borderTop:'1px solid #27272a', paddingTop:16 }}>
-              Toda integração com o Sankhya passa por <strong style={{ color:'#fff' }}>Supabase Edge Functions</strong> —
-              funções de backend que conectam cada portal ao ERP em tempo real ou por sincronização programada,
-              sem servidor dedicado. É essa camada que sustenta os portais e permite evoluir cada integração
-              sem retrabalho de infraestrutura.
+              Só o Sistema de Industrialização tem <strong style={{ color:'#fff' }}>60 Edge Functions</strong> em
+              produção — funções de backend que conectam o portal ao Sankhya em tempo real ou por sincronização
+              programada, sem servidor dedicado. Cobrem remessas, retornos, ordens de produção, saldo de
+              almoxarifado, qualidade e manutenção preventiva. É essa camada que transforma os portais em
+              plataforma: cada nova demanda reaproveita a integração existente em vez de recomeçar do zero.
             </div>
           </div>
         </div>
