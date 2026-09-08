@@ -25,6 +25,16 @@ async function api(metodo, caminho, corpo) {
   })
   if (!res.ok) throw new Error((await res.json().catch(()=>({})))?.message || `HTTP ${res.status}`)
 }
+const SYNC_KEY = 'kb2026sync!'
+async function fnAdmin(payload) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-usuarios`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', apikey: SUPABASE_ANON_KEY, Authorization:`Bearer ${SUPABASE_ANON_KEY}` },
+    body: JSON.stringify({ ...payload, _key: SYNC_KEY }),
+  })
+  return res.json()
+}
+
 export async function registrarAuditoria(email, acao, pagina, detalhe) {
   try { await api('POST', 'portal_auditoria', { email, acao, pagina, detalhe }) } catch {}
 }
@@ -40,6 +50,12 @@ function Usuarios({ emailAtual }) {
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
   const [msg, setMsg] = useState('')
+  const [contas, setContas] = useState([])
+  const [senhaGerada, setSenhaGerada] = useState(null)
+
+  const carregarContas = () => {
+    fnAdmin({ acao:'listar' }).then(d => { if (d.ok) setContas(d.contas || []) }).catch(()=>{})
+  }
 
   const carregar = () => {
     setFase('carregando')
@@ -47,7 +63,7 @@ function Usuarios({ emailAtual }) {
       .then(r => { setLista(r || []); setFase('pronto') })
       .catch(e => { setErro(e.message); setFase('erro') })
   }
-  useEffect(() => { carregar() }, [])
+  useEffect(() => { carregar(); carregarContas() }, [])
 
   const acao = async (fn, descricao) => {
     setSalvando(true); setErro(''); setMsg('')
@@ -66,18 +82,51 @@ function Usuarios({ emailAtual }) {
     acao(() => api('PATCH', `permissoes_usuario?id=eq.${u.id}`, { paginas: novas }),
       `${tem ? 'Removido' : 'Liberado'} "${paginaId}" para ${u.email}`)
   }
-  const criar = () => {
+  const criar = async () => {
     const email = novoEmail.trim().toLowerCase()
     if (!email.includes('@')) { setErro('E-mail inválido'); return }
-    acao(async () => {
-      await api('POST', 'permissoes_usuario', { email, paginas: ['visao'] })
+    setSalvando(true); setErro(''); setMsg(''); setSenhaGerada(null)
+    try {
+      const d = await fnAdmin({ acao:'criar', email })
+      if (!d.ok) throw new Error(d.erro)
+      setSenhaGerada({ email: d.email, senha: d.senha })
       setNovoEmail('')
-    }, `Usuário ${email} criado`)
+      await registrarAuditoria(emailAtual, 'usuario_criado', 'admin', { descricao:`Conta criada para ${email}` })
+      carregar(); carregarContas()
+    } catch (e) { setErro(e.message) }
+    finally { setSalvando(false) }
+  }
+
+  const redefinirSenha = async (u) => {
+    if (!window.confirm(`Gerar nova senha para ${u.email}? A senha atual deixa de funcionar.`)) return
+    setSalvando(true); setErro(''); setMsg(''); setSenhaGerada(null)
+    try {
+      const d = await fnAdmin({ acao:'redefinir_senha', email: u.email })
+      if (!d.ok) throw new Error(d.erro)
+      setSenhaGerada({ email: d.email, senha: d.senha })
+      await registrarAuditoria(emailAtual, 'senha_redefinida', 'admin', { descricao:`Senha redefinida para ${u.email}` })
+    } catch (e) { setErro(e.message) }
+    finally { setSalvando(false) }
+  }
+
+  const criarAcessoFaltante = async (u) => {
+    setSalvando(true); setErro(''); setMsg(''); setSenhaGerada(null)
+    try {
+      const d = await fnAdmin({ acao:'criar', email: u.email })
+      if (!d.ok) throw new Error(d.erro)
+      setSenhaGerada({ email: d.email, senha: d.senha })
+      await registrarAuditoria(emailAtual, 'usuario_criado', 'admin', { descricao:`Conta de acesso criada para ${u.email}` })
+      carregarContas()
+    } catch (e) { setErro(e.message) }
+    finally { setSalvando(false) }
   }
   const remover = (u) => {
     if (u.email === emailAtual) { setErro('Você não pode remover o próprio acesso.'); return }
     if (!window.confirm(`Remover o acesso de ${u.email} ao portal?`)) return
-    acao(() => api('DELETE', `permissoes_usuario?id=eq.${u.id}`), `Usuário ${u.email} removido`)
+    acao(async () => {
+      const d = await fnAdmin({ acao:'remover', email: u.email })
+      if (!d.ok) throw new Error(d.erro)
+    }, `Usuário ${u.email} removido (acesso e permissões)`)
   }
   const marcarTodas = (u, marcar) => {
     acao(() => api('PATCH', `permissoes_usuario?id=eq.${u.id}`,
@@ -91,6 +140,22 @@ function Usuarios({ emailAtual }) {
     <>
       {erro && <div style={{ color:'#B42318', fontSize:12.5, marginBottom:10 }}>⚠ {erro}</div>}
       {msg && <div style={{ color:'#12805C', fontSize:12.5, marginBottom:10 }}>{msg}</div>}
+      {senhaGerada && (
+        <div style={{ background:'#F0FDF4', border:'1px solid #BBF7D0', borderRadius:8, padding:'14px 16px', marginBottom:14 }}>
+          <div style={{ fontSize:13, color:'#12805C', fontWeight:600, marginBottom:6 }}>
+            Senha de {senhaGerada.email}
+          </div>
+          <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+            <code style={{ fontSize:16, fontWeight:700, letterSpacing:'.05em', background:'#fff',
+              padding:'8px 14px', borderRadius:6, border:'1px solid #BBF7D0' }}>{senhaGerada.senha}</code>
+            <Btn small onClick={() => { navigator.clipboard?.writeText(senhaGerada.senha); setMsg('Senha copiada.') }}>Copiar</Btn>
+            <Btn small onClick={() => setSenhaGerada(null)}>Ocultar</Btn>
+          </div>
+          <div style={{ fontSize:11.5, color:'#6B7280', marginTop:8 }}>
+            Anote agora — ela não fica guardada e não dá para consultar depois. Se perder, é só gerar outra.
+          </div>
+        </div>
+      )}
 
       <div style={{ display:'flex', gap:8, marginBottom:18, alignItems:'center' }}>
         <input value={novoEmail} onChange={e=>setNovoEmail(e.target.value)}
@@ -111,8 +176,23 @@ function Usuarios({ emailAtual }) {
                 <span style={{ marginLeft:8, fontSize:11.5, color:'#9CA3AF', fontWeight:400 }}>
                   {int((u.paginas||[]).length)} de {PAGINAS.length} abas
                 </span>
+                {(() => {
+                  const c = contas.find(x => x.email === u.email)
+                  return c
+                    ? <span style={{ marginLeft:8, fontSize:10.5, fontWeight:600, padding:'2px 7px', borderRadius:4, background:'#D1FAE5', color:'#12805C' }}
+                        title={c.ultimo_login ? `Último acesso: ${dataHoraBR(c.ultimo_login)}` : 'Nunca acessou'}>
+                        pode entrar
+                      </span>
+                    : <span style={{ marginLeft:8, fontSize:10.5, fontWeight:600, padding:'2px 7px', borderRadius:4, background:'#FEF3C7', color:'#B54708' }}
+                        title="Tem permissões, mas não tem conta de acesso — não consegue fazer login">
+                        sem senha
+                      </span>
+                })()}
               </div>
               <div style={{ display:'flex', gap:6 }}>
+                {contas.find(x => x.email === u.email)
+                  ? <Btn small onClick={() => redefinirSenha(u)} disabled={salvando}>🔑 Nova senha</Btn>
+                  : <Btn small primary onClick={() => criarAcessoFaltante(u)} disabled={salvando}>🔑 Criar acesso</Btn>}
                 <Btn small onClick={() => marcarTodas(u, true)} disabled={salvando}>Liberar todas</Btn>
                 <Btn small onClick={() => marcarTodas(u, false)} disabled={salvando}>Acesso mínimo</Btn>
                 <button onClick={() => remover(u)} disabled={salvando || u.email === emailAtual}
