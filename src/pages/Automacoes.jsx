@@ -825,13 +825,25 @@ const horasMes = g => ((Number(g.min_antes)-Number(g.min_depois)) * Number(g.oco
 // nunca e digitado: sai do calculo tarefa a tarefa, para o documento ter
 // rastreabilidade de como se chegou ao numero.
 function GanhosAceite({ p, ganhos, aceites, onMudou }) {
-  const [nova, setNova] = useState({ tarefa:'', frequencia:'Diária', ocorrencias:1, min_antes:'', min_depois:'', quem_executava:'', eliminada:false })
+  const [nova, setNova] = useState({ tarefa:'', frequencia:'Diária', ocorrencias:1, min_antes:'', min_depois:'', quem_executava:'', colaborador:'', eliminada:false, fonte_medicao:'' })
+  const [fontes, setFontes] = useState([])
+  useEffect(() => { sbFetch('automacao_medicao?select=*&order=eventos.desc').then(r=>setFontes(r||[])).catch(()=>{}) }, [])
+  const fonteDe = k => fontes.find(f => f.fonte === k)
   const [ass, setAss] = useState({ nome_assinante:'', cargo:'', setor:p.setor||'', email:'', declaracao:'', assinatura:'' })
   const [erro, setErro] = useState('')
   const [salvando, setSalvando] = useState(false)
 
+  // Quando a tarefa tem fonte, a economia vem do volume real contado no banco.
+  // Sem fonte, cai na estimativa declarada pelo responsável.
+  const horasMedidas = g => {
+    const f = fonteDe(g.fonte_medicao)
+    if (!f) return null
+    return ((Number(g.min_antes)-Number(g.min_depois)) * Number(f.eventos)) / 60
+  }
   const totalMes = ganhos.reduce((s,g) => s + horasMes(g), 0)
   const totalAno = totalMes * 12
+  const totalMedido = ganhos.reduce((s,g) => s + (horasMedidas(g) || 0), 0)
+  const qtdMedidas = ganhos.filter(g => horasMedidas(g) != null).length
   const eliminadas = ganhos.filter(g => g.eliminada).length
 
   const addTarefa = async () => {
@@ -840,8 +852,8 @@ function GanhosAceite({ p, ganhos, aceites, onMudou }) {
     try {
       await api('POST','automacao_ganhos', { ...nova, projeto_id: p.id,
         ocorrencias:Number(nova.ocorrencias)||1, min_antes:Number(nova.min_antes)||0,
-        min_depois:Number(nova.min_depois)||0 })
-      setNova({ tarefa:'', frequencia:'Diária', ocorrencias:1, min_antes:'', min_depois:'', quem_executava:'', eliminada:false })
+        min_depois:Number(nova.min_depois)||0, fonte_medicao: nova.fonte_medicao || null })
+      setNova({ tarefa:'', frequencia:'Diária', ocorrencias:1, min_antes:'', min_depois:'', quem_executava:'', colaborador:'', eliminada:false, fonte_medicao:'' })
       onMudou()
     } catch(e){ setErro(e.message) } finally { setSalvando(false) }
   }
@@ -872,16 +884,38 @@ function GanhosAceite({ p, ganhos, aceites, onMudou }) {
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:22 }}>
         {[['Tarefas mapeadas', ganhos.length],['Eliminadas', eliminadas],
-          ['Horas/mês', totalMes.toFixed(1)]].map(([l,v],i) => (
+          [totalMedido>0?'Horas medidas':'Horas/mês', totalMedido>0?totalMedido.toFixed(0):totalMes.toFixed(1)]].map(([l,v],i) => (
           <div key={i} style={{ background:'#18181b', border:'1px solid #27272a', borderRadius:10, padding:'14px 16px' }}>
             <div style={{ fontSize:24, fontWeight:800, color:'#facc15', lineHeight:1 }}>{v}</div>
             <div style={{ fontSize:9.5, fontWeight:700, color:'#71717a', textTransform:'uppercase', letterSpacing:'.1em', marginTop:6 }}>{l}</div>
           </div>
         ))}
       </div>
+      {totalMedido > 0 && (
+        <div style={{ background:'#052e1f', border:'1px solid #10b981', borderRadius:12, padding:'18px 20px', marginBottom:14 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16 }}>
+            <div>
+              <div style={{ fontSize:9.5, fontWeight:800, color:'#34d399', textTransform:'uppercase', letterSpacing:'.14em' }}>
+                Economia medida · volume real
+              </div>
+              <div style={{ fontSize:34, fontWeight:800, color:'#34d399', marginTop:6, lineHeight:1 }}>
+                {totalMedido.toFixed(0)} horas
+              </div>
+              <div style={{ fontSize:11.5, color:'#059669', marginTop:6 }}>
+                acumuladas desde o início · {qtdMedidas} tarefa(s) com contagem automática
+              </div>
+            </div>
+            <div style={{ background:'#064e3b', borderRadius:9, padding:'10px 14px', textAlign:'center' }}>
+              <div style={{ fontSize:20, fontWeight:800, color:'#a7f3d0' }}>{(totalMedido/8).toFixed(0)}</div>
+              <div style={{ fontSize:9, color:'#059669', textTransform:'uppercase', letterSpacing:'.1em', marginTop:2 }}>dias úteis</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {totalAno > 0 && (
         <div style={{ background:'#052e1f', border:'1px solid #065f46', borderRadius:12, padding:'16px 20px', marginBottom:24 }}>
-          <div style={{ fontSize:9.5, fontWeight:800, color:'#34d399', textTransform:'uppercase', letterSpacing:'.14em' }}>Economia anual declarada</div>
+          <div style={{ fontSize:9.5, fontWeight:800, color:'#34d399', textTransform:'uppercase', letterSpacing:'.14em' }}>Projeção anual · estimativa declarada</div>
           <div style={{ fontSize:30, fontWeight:800, color:'#34d399', marginTop:6, lineHeight:1 }}>{totalAno.toFixed(0)} horas</div>
           <div style={{ fontSize:11.5, color:'#059669', marginTop:6 }}>equivale a {(totalAno/8).toFixed(0)} dias de trabalho por ano</div>
         </div>
@@ -898,15 +932,29 @@ function GanhosAceite({ p, ganhos, aceites, onMudou }) {
               {g.tarefa}
               {g.eliminada && <span style={{ marginLeft:8, fontSize:9.5, fontWeight:700, padding:'2px 7px',
                 borderRadius:4, background:'#052e1f', color:'#34d399' }}>eliminada</span>}
+              {g.fonte_medicao && <span style={{ marginLeft:6, fontSize:9.5, fontWeight:700, padding:'2px 7px',
+                borderRadius:4, background:'#1e3a5f', color:'#93c5fd' }}
+                title={fonteDe(g.fonte_medicao)?.descricao}>📊 contagem automática</span>}
             </div>
             <div style={{ fontSize:11, color:'#71717a', marginTop:3 }}>
               {g.frequencia} · {g.ocorrencias}× · {g.min_antes}min → {g.min_depois}min
               {g.quem_executava && ` · ${g.quem_executava}`}
             </div>
           </div>
-          <div style={{ textAlign:'right' }}>
-            <div style={{ fontSize:15, fontWeight:700, color:'#34d399' }}>{horasMes(g).toFixed(1)}h</div>
-            <div style={{ fontSize:9, color:'#52525b' }}>por mês</div>
+          <div style={{ textAlign:'right', minWidth:104 }}>
+            {horasMedidas(g) != null ? (
+              <>
+                <div style={{ fontSize:16, fontWeight:800, color:'#34d399' }}>{horasMedidas(g).toFixed(1)}h</div>
+                <div style={{ fontSize:9, color:'#059669', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em' }}>
+                  medido · {Number(fonteDe(g.fonte_medicao).eventos).toLocaleString('pt-BR')}×
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize:15, fontWeight:700, color:'#a1a1aa' }}>{horasMes(g).toFixed(1)}h</div>
+                <div style={{ fontSize:9, color:'#52525b' }}>estimado / mês</div>
+              </>
+            )}
           </div>
           <button onClick={()=>delTarefa(g)} style={{ background:'none', border:'none', color:'#7f1d1d', cursor:'pointer', fontSize:11 }}>remover</button>
         </div>
@@ -920,11 +968,29 @@ function GanhosAceite({ p, ganhos, aceites, onMudou }) {
               {Object.keys(FREQ).map(f=><option key={f}>{f}</option>)}</select></label>
           <label style={lbl}>Vezes por período<input type="number" step="0.5" style={inp} value={nova.ocorrencias} onChange={e=>setNova({...nova,ocorrencias:e.target.value})} /></label>
         </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 2fr', gap:10 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:10 }}>
           <label style={lbl}>Minutos ANTES<input type="number" style={inp} value={nova.min_antes} onChange={e=>setNova({...nova,min_antes:e.target.value})} /></label>
           <label style={lbl}>Minutos DEPOIS<input type="number" style={inp} value={nova.min_depois} onChange={e=>setNova({...nova,min_depois:e.target.value})} placeholder="0 se eliminou" /></label>
           <label style={lbl}>Quem executava<input style={inp} value={nova.quem_executava} onChange={e=>setNova({...nova,quem_executava:e.target.value})} /></label>
+          <label style={lbl}>Colaborador<input style={inp} value={nova.colaborador} onChange={e=>setNova({...nova,colaborador:e.target.value})} placeholder="nome" /></label>
         </div>
+        <label style={{...lbl, marginTop:10, display:'block'}}>Contagem automática (opcional)
+          <select style={inp} value={nova.fonte_medicao} onChange={e=>setNova({...nova,fonte_medicao:e.target.value})}>
+            <option value="">Sem contagem — usar a estimativa acima</option>
+            {fontes.map(f => (
+              <option key={f.fonte} value={f.fonte}>
+                {f.descricao} — {Number(f.eventos).toLocaleString('pt-BR')} desde {f.desde ? new Date(f.desde+'T00:00').toLocaleDateString('pt-BR') : '—'}
+              </option>
+            ))}
+          </select>
+        </label>
+        {nova.fonte_medicao && Number(nova.min_antes) > 0 && (
+          <div style={{ background:'#052e1f', borderRadius:7, padding:'9px 12px', marginTop:8, fontSize:12, color:'#34d399' }}>
+            Com o volume atual, isso daria <strong>
+            {(((Number(nova.min_antes)-Number(nova.min_depois||0)) * Number(fonteDe(nova.fonte_medicao)?.eventos||0))/60).toFixed(1)}h
+            </strong> economizadas até agora — e o número cresce sozinho a cada execução.
+          </div>
+        )}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:12 }}>
           <label style={{ fontSize:12, color:'#a1a1aa', display:'flex', alignItems:'center', gap:7, cursor:'pointer' }}>
             <input type="checkbox" checked={nova.eliminada} onChange={e=>setNova({...nova,eliminada:e.target.checked})} />
