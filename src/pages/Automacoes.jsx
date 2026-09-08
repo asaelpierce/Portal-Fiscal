@@ -94,6 +94,7 @@ export default function Automacoes() {
   const [cfg, setCfg] = useState({})
   const [editEco, setEditEco] = useState(null)
   const [saude, setSaude] = useState([])
+  const [detalhe, setDetalhe] = useState(null)
 
   const carregar = () => {
     setFase('carregando')
@@ -353,40 +354,59 @@ export default function Automacoes() {
           </div>
         </div>
 
-        <Panel title="Entregas por mês">
+        <div style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:14, padding:'20px 24px' }}>
+          <div style={{ fontSize:10, fontWeight:800, letterSpacing:'.16em', color:'#9CA3AF', textTransform:'uppercase', marginBottom:4 }}>
+            Ritmo de entrega
+          </div>
+          <div style={{ fontSize:16, fontWeight:700, color:'#111827', marginBottom:14 }}>Projetos concluídos por mês</div>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={porMes} margin={{ top:6, right:10, left:0, bottom:0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
               <XAxis dataKey="mes" tick={{ fontSize:11, fill:'#6B7280' }} axisLine={false} tickLine={false} />
               <YAxis allowDecimals={false} tick={{ fontSize:11, fill:'#6B7280' }} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={{ fontSize:12, borderRadius:8 }} />
-              <Bar dataKey="qtd" fill="#facc15" radius={[6,6,0,0]} name="Entregas" />
+              <Bar dataKey="qtd" fill="#facc15" radius={[6,6,0,0]} name="Entregas" barSize={34} />
             </BarChart>
           </ResponsiveContainer>
-        </Panel>
+        </div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-          <Panel title="Por status">
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie data={porStatus} dataKey="qtd" nameKey="nome" cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={2}>
-                  {porStatus.map((p,i) => <Cell key={i} fill={COR[p.nome] || '#9CA3AF'} />)}
-                </Pie>
-                <Tooltip contentStyle={{ fontSize:12, borderRadius:8 }} />
-                <Legend wrapperStyle={{ fontSize:11 }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </Panel>
-          <Panel title="Por setor">
-            <ResponsiveContainer width="100%" height={Math.max(260, porSetor.length*30)}>
+          <div style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:14, padding:'20px 22px' }}>
+            <div style={{ fontSize:10, fontWeight:800, letterSpacing:'.16em', color:'#9CA3AF', textTransform:'uppercase', marginBottom:4 }}>
+              Distribuição
+            </div>
+            <div style={{ fontSize:16, fontWeight:700, color:'#111827', marginBottom:14 }}>Por status</div>
+            <div style={{ position:'relative' }}>
+              <ResponsiveContainer width="100%" height={250}>
+                <PieChart>
+                  <Pie data={porStatus} dataKey="qtd" nameKey="nome" cx="50%" cy="46%" innerRadius={62} outerRadius={92} paddingAngle={3} stroke="none">
+                    {porStatus.map((p,i) => <Cell key={i} fill={COR[p.nome] || '#9CA3AF'} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ fontSize:12, borderRadius:10, border:'1px solid #E5E7EB' }} />
+                  <Legend wrapperStyle={{ fontSize:11 }} iconType="circle" />
+                </PieChart>
+              </ResponsiveContainer>
+              <div style={{ position:'absolute', top:'40%', left:0, right:0, textAlign:'center',
+                transform:'translateY(-50%)', pointerEvents:'none' }}>
+                <div style={{ fontSize:32, fontWeight:800, color:'#111827', lineHeight:1 }}>{int(kpi.total)}</div>
+                <div style={{ fontSize:9.5, fontWeight:700, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'.12em', marginTop:3 }}>projetos</div>
+              </div>
+            </div>
+          </div>
+          <div style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:14, padding:'20px 22px' }}>
+            <div style={{ fontSize:10, fontWeight:800, letterSpacing:'.16em', color:'#9CA3AF', textTransform:'uppercase', marginBottom:4 }}>
+              Alcance
+            </div>
+            <div style={{ fontSize:16, fontWeight:700, color:'#111827', marginBottom:14 }}>Por setor</div>
+            <ResponsiveContainer width="100%" height={Math.max(250, porSetor.length*30)}>
               <BarChart data={porSetor} layout="vertical" margin={{ left:8, right:16 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" horizontal={false} />
                 <XAxis type="number" allowDecimals={false} tick={{ fontSize:11, fill:'#6B7280' }} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="nome" width={110} tick={{ fontSize:11, fill:'#374151' }} axisLine={false} tickLine={false} />
                 <Tooltip contentStyle={{ fontSize:12, borderRadius:8 }} />
-                <Bar dataKey="qtd" fill="#1D5BBF" radius={[0,4,4,0]} />
+                <Bar dataKey="qtd" fill="#09090b" radius={[0,6,6,0]} barSize={16} />
               </BarChart>
             </ResponsiveContainer>
-          </Panel>
+          </div>
         </div>
         </>
       )}
@@ -395,6 +415,8 @@ export default function Automacoes() {
         <Economia economia={economia} cfg={cfg} onMudou={carregarEconomia}
           editando={editEco} setEditando={setEditEco} />
       )}
+
+      {detalhe && <DetalheProjeto p={detalhe} onFechar={()=>setDetalhe(null)} />}
 
       {fase === 'pronto' && aba === 'lista' && (
         <Panel
@@ -427,7 +449,11 @@ export default function Automacoes() {
                   <tr key={p.id} style={{ borderTop:'1px solid #F9FAFB' }}>
                     <td style={{ ...cel, whiteSpace:'nowrap', color:'#6B7280' }}>{dBR(p.data_pedido)}</td>
                     <td style={{ ...cel, fontWeight:600, minWidth:170 }}>
-                      {p.nome_projeto}
+                      <span onClick={()=>setDetalhe(p)} style={{ cursor:'pointer', color:'#1D5BBF' }}>
+                        {p.nome_projeto}
+                        {p.detalhe && <span style={{ marginLeft:6, fontSize:9.5, fontWeight:700, padding:'1px 6px',
+                          borderRadius:4, background:'#DBEAFE', color:'#1D5BBF', verticalAlign:'middle' }}>detalhe</span>}
+                      </span>
                       {p.stack && <div style={{ fontSize:10, color:'#9CA3AF', fontWeight:400, marginTop:2, maxWidth:220 }}>{p.stack}</div>}
                       {p.prioridade && <div style={{ fontSize:10, fontWeight:600, color:'#9CA3AF' }}>{p.prioridade}</div>}
                     </td>
@@ -664,5 +690,110 @@ function FormEco({ inicial, onSalvar, onCancelar, salvando }) {
         <Btn onClick={onCancelar} disabled={salvando}>Cancelar</Btn>
       </div>
     </div>
+  )
+}
+
+
+// Painel lateral com tudo que se sabe do projeto: metricas, modulos,
+// integracoes e pendencias. Alimentado pelo campo `detalhe` (jsonb).
+function DetalheProjeto({ p, onFechar }) {
+  const d = p.detalhe || {}
+  const linha = (l, v) => v ? (
+    <div style={{ marginBottom:12 }}>
+      <div style={{ fontSize:9.5, fontWeight:800, letterSpacing:'.14em', color:'#71717a', textTransform:'uppercase', marginBottom:4 }}>{l}</div>
+      <div style={{ fontSize:13, color:'#e4e4e7', lineHeight:1.6 }}>{v}</div>
+    </div>
+  ) : null
+
+  return (
+    <>
+      <div onClick={onFechar} style={{ position:'fixed', inset:0, background:'rgba(9,9,11,.6)', zIndex:70 }} />
+      <div style={{ position:'fixed', top:0, right:0, bottom:0, width:'min(720px,94vw)', background:'#09090b',
+        zIndex:71, overflowY:'auto', boxShadow:'-20px 0 60px rgba(0,0,0,.4)' }}>
+
+        <div style={{ position:'sticky', top:0, background:'#09090b', borderBottom:'1px solid #27272a',
+          padding:'22px 28px', zIndex:2 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16 }}>
+            <div>
+              <div style={{ fontSize:9.5, fontWeight:800, letterSpacing:'.2em', color:'#facc15', textTransform:'uppercase', marginBottom:8 }}>
+                {p.setor || 'Projeto'}
+              </div>
+              <div style={{ fontSize:22, fontWeight:800, color:'#fff', letterSpacing:'-.02em' }}>{p.nome_projeto}</div>
+              <div style={{ display:'flex', gap:8, marginTop:10, flexWrap:'wrap' }}>
+                <span style={{ fontSize:10.5, fontWeight:700, padding:'3px 10px', borderRadius:5,
+                  color:'#09090b', background: COR[p.status] || '#a1a1aa' }}>{p.status}</span>
+                {p.prioridade && <span style={{ fontSize:10.5, fontWeight:700, padding:'3px 10px', borderRadius:5,
+                  color:'#a1a1aa', background:'#27272a' }}>{p.prioridade}</span>}
+                {p.repositorio && <span style={{ fontSize:10.5, fontWeight:600, padding:'3px 10px', borderRadius:5,
+                  color:'#71717a', background:'#18181b', fontFamily:'monospace' }}>{p.repositorio}</span>}
+              </div>
+            </div>
+            <button onClick={onFechar} style={{ background:'none', border:'none', color:'#71717a',
+              fontSize:22, cursor:'pointer', lineHeight:1, padding:4 }}>×</button>
+          </div>
+        </div>
+
+        <div style={{ padding:'24px 28px' }}>
+          {Array.isArray(d.metricas) && d.metricas.length > 0 && (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:26 }}>
+              {d.metricas.map((m,i) => (
+                <div key={i} style={{ background:'#18181b', border:'1px solid #27272a', borderRadius:10, padding:'14px 16px' }}>
+                  <div style={{ fontSize:24, fontWeight:800, color:'#facc15', lineHeight:1 }}>{m.n}</div>
+                  <div style={{ fontSize:10, fontWeight:700, color:'#71717a', textTransform:'uppercase', letterSpacing:'.1em', marginTop:6 }}>{m.l}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {linha('Resumo', p.resumo)}
+          {linha('Benefício', p.beneficio)}
+          {linha('Stack', p.stack)}
+          {linha('Solicitante', p.solicitante)}
+          {linha('Observações', p.obs)}
+
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12, margin:'18px 0 26px' }}>
+            {[['Pedido',p.data_pedido],['Início',p.data_inicio],['Prev. encerramento',p.prev_encerramento],['Encerramento',p.data_encerramento]]
+              .filter(([,v])=>v).map(([l,v]) => (
+              <div key={l} style={{ background:'#18181b', borderRadius:8, padding:'10px 14px' }}>
+                <div style={{ fontSize:9.5, fontWeight:700, color:'#71717a', textTransform:'uppercase', letterSpacing:'.1em' }}>{l}</div>
+                <div style={{ fontSize:13, color:'#e4e4e7', marginTop:3 }}>{dBR(v)}</div>
+              </div>
+            ))}
+          </div>
+
+          {Array.isArray(d.secoes) && d.secoes.map((sec,i) => (
+            <div key={i} style={{ marginBottom:22 }}>
+              <div style={{ fontSize:11, fontWeight:800, color:'#facc15', textTransform:'uppercase',
+                letterSpacing:'.14em', marginBottom:10, paddingBottom:8, borderBottom:'1px solid #27272a' }}>
+                {sec.titulo}
+                <span style={{ marginLeft:8, color:'#52525b', fontWeight:600 }}>{(sec.itens||[]).length}</span>
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+                {(sec.itens||[]).map((it,j) => {
+                  const [t1, ...resto] = String(it).split(' — ')
+                  return (
+                    <div key={j} style={{ display:'flex', gap:10, fontSize:12.5, lineHeight:1.55 }}>
+                      <span style={{ color:'#3f3f46', flexShrink:0 }}>▸</span>
+                      <span>
+                        <strong style={{ color:'#fafafa' }}>{t1}</strong>
+                        {resto.length > 0 && <span style={{ color:'#a1a1aa' }}> — {resto.join(' — ')}</span>}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+
+          {!d.secoes && (
+            <div style={{ background:'#18181b', border:'1px dashed #3f3f46', borderRadius:10,
+              padding:'20px', fontSize:12.5, color:'#71717a', lineHeight:1.6, textAlign:'center' }}>
+              Este projeto ainda não tem o inventário detalhado.<br/>
+              Rode o prompt de levantamento no portal dele e me envie o resultado.
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   )
 }
