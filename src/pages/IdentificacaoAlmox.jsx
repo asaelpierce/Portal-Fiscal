@@ -59,7 +59,7 @@ export default function IdentificacaoAlmox({ sessao }) {
       const [i, r, d, s] = await Promise.all([
         sbFetch('almox_identificacao_indicadores?select=*'),
         sbFetch('almox_identificacao_resumo?select=*&order=mes.asc'),
-        sbFetch('almox_identificacao_detalhe?select=*&order=data_chegada.desc,numero_pedido.desc'),
+        sbFetch('almox_identificacao_detalhe?select=*&order=data_pedido.desc,numero_pedido.desc'),
         sbFetch('almox_identificacao_sync?select=*&order=iniciado_em.desc&limit=15'),
       ])
       setInd(i?.[0] || null)
@@ -155,14 +155,16 @@ export default function IdentificacaoAlmox({ sessao }) {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 14 }}>
-        <Card title="Itens em aberto" value={int(ind?.itens_abertos)}
-              sub={`${int(ind?.pedidos_total)} pedido(s) no total`} color="blue" />
-        <Card title="Novos hoje" value={int(ind?.novos_hoje)}
-              sub={`${int(ind?.novos_24h)} nas últimas 24h`} color={Number(ind?.novos_hoje) ? 'orange' : 'gray'} />
-        <Card title="Tempo economizado" value={horas(ind?.horas_economizadas_piso)}
+        <Card title="No mês" value={int(ind?.itens_mes)}
+              sub={`${int(ind?.pedidos_mes)} pedido(s) · ${horas(ind?.horas_mes_piso)} a ${horas(ind?.horas_mes_teto)}`}
+              color="blue" />
+        <Card title="Total acumulado" value={int(ind?.itens_total)}
+              sub={`${int(ind?.pedidos_total)} pedido(s) desde 01/03/2026`} color="gray" />
+        <Card title="Tempo economizado (total)" value={horas(ind?.horas_economizadas_piso)}
               sub={`até ${horas(ind?.horas_economizadas_teto)} no teto de 10 min`} color="green" />
-        <Card title="Identificações feitas" value={int(ind?.itens_total)}
-              sub="desde 01/03/2026" color="gray" />
+        <Card title="Itens em aberto" value={int(ind?.itens_abertos)}
+              sub={`${int(ind?.novos_hoje)} novo(s) hoje · ${int(ind?.novos_24h)} em 24h`}
+              color={Number(ind?.novos_hoje) ? 'orange' : 'gray'} />
         <Card title="Última atualização" value={dtBR(ind?.ultima_sync_ok)}
               sub={ind?.status_ultima_sync === 'erro' ? '⚠ última tentativa falhou' : 'automático 08h · 12h · 17h'}
               color={ind?.status_ultima_sync === 'erro' ? 'red' : 'gray'} />
@@ -222,6 +224,7 @@ export default function IdentificacaoAlmox({ sessao }) {
               <thead>
                 <tr>
                   <th style={th()}>Pedido</th>
+                  <th style={th()}>Criado em</th>
                   <th style={th()}>Chegada</th>
                   <th style={th()}>Projeto</th>
                   <th style={th()}>Código</th>
@@ -235,7 +238,11 @@ export default function IdentificacaoAlmox({ sessao }) {
                   <tr key={`${r.numero_pedido}-${r.codigo_produto}`}
                       style={{ borderTop: '1px solid #F9FAFB', background: r.ativo ? 'transparent' : '#FAFAFA' }}>
                     <td style={{ ...cel, fontWeight: 600 }}>{r.numero_pedido}</td>
-                    <td style={cel}>{dBR(r.data_chegada)}</td>
+                    <td style={cel}>{dBR(r.data_pedido)}</td>
+                    <td style={{ ...cel, color: r.chegada_em_outro_mes ? '#B54708' : '#101828' }}
+                        title={r.chegada_em_outro_mes ? 'Chegada prevista em mês diferente do pedido' : ''}>
+                      {dBR(r.data_chegada)}{r.chegada_em_outro_mes ? ' ⚠' : ''}
+                    </td>
                     <td style={{ ...cel, color: r.sem_projeto ? '#9CA3AF' : '#101828' }}>
                       {r.sem_projeto ? 'sem projeto' : r.projeto}
                     </td>
