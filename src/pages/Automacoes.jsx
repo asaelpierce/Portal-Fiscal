@@ -143,6 +143,18 @@ export default function Automacoes() {
     dados.forEach(d => m.set(d.status, (m.get(d.status)||0)+1))
     return [...m.entries()].map(([nome,qtd]) => ({ nome, qtd })).sort((a,b)=>b.qtd-a.qtd)
   }, [dados])
+  // Entregas concluidas agrupadas por mes, para mostrar ritmo de entrega
+  const porMes = useMemo(() => {
+    const m = new Map()
+    dados.filter(d => d.data_encerramento).forEach(d => {
+      const k = String(d.data_encerramento).slice(0,7)
+      m.set(k, (m.get(k)||0)+1)
+    })
+    const MES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez']
+    return [...m.entries()].sort((a,b)=>a[0].localeCompare(b[0]))
+      .map(([k,qtd]) => ({ mes: `${MES[Number(k.slice(5,7))-1]}/${k.slice(2,4)}`, qtd }))
+  }, [dados])
+
   const porSetor = useMemo(() => {
     const m = new Map()
     dados.forEach(d => { const s = d.setor||'—'; m.set(s,(m.get(s)||0)+1) })
@@ -167,25 +179,59 @@ export default function Automacoes() {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
-      <div style={{ display:'flex', gap:8 }}>
+      {/* Faixa de abertura - identidade Kalenborn (preto + amarelo) */}
+      <div style={{ background:'#09090b', borderRadius:16, padding:'26px 30px', position:'relative', overflow:'hidden' }}>
+        <div style={{ position:'absolute', top:-60, right:-40, width:260, height:260,
+          background:'#facc15', opacity:.07, borderRadius:'50%', filter:'blur(60px)' }} />
+        <div style={{ position:'relative', display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:24, flexWrap:'wrap' }}>
+          <div>
+            <div style={{ fontSize:10, fontWeight:800, letterSpacing:'.22em', color:'#facc15', textTransform:'uppercase', marginBottom:10 }}>
+              Centro de Automações
+            </div>
+            <div style={{ fontSize:26, fontWeight:800, color:'#fff', letterSpacing:'-.02em', lineHeight:1.2 }}>
+              {int(kpi.concluidos)} entregas em produção
+            </div>
+            <div style={{ fontSize:13, color:'#a1a1aa', marginTop:8, maxWidth:560, lineHeight:1.6 }}>
+              Automações construídas internamente em Comercial, Engenharia, RH, Qualidade, Fiscal e Almoxarifado —
+              com integração direta ao Sankhya e retenção do conhecimento técnico na casa.
+            </div>
+          </div>
+          <div style={{ display:'flex', gap:12 }}>
+            {[['Iniciativas', int(kpi.total)], ['Em curso', int(kpi.andamento)]].map(([l,v]) => (
+              <div key={l} style={{ background:'#18181b', border:'1px solid #27272a', borderRadius:12, padding:'14px 20px', textAlign:'center', minWidth:96 }}>
+                <div style={{ fontSize:22, fontWeight:800, color:'#fff' }}>{v}</div>
+                <div style={{ fontSize:9, fontWeight:800, letterSpacing:'.16em', color:'#71717a', textTransform:'uppercase', marginTop:4 }}>{l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display:'flex', gap:6, background:'#F3F4F6', padding:5, borderRadius:12, width:'fit-content' }}>
         {[['lista','📋 Controle semanal'],['painel','📊 Visão executiva'],['economia','💰 Impacto financeiro']].map(([id,rot]) => (
           <button key={id} onClick={()=>setAba(id)} style={{
-            fontSize:13, padding:'8px 16px', borderRadius:6, cursor:'pointer', fontFamily:'inherit',
-            border:`1px solid ${aba===id?'#1D5BBF':'#E5E7EB'}`, background: aba===id?'#1D5BBF':'#fff',
-            color: aba===id?'#fff':'#374151', fontWeight: aba===id?600:400 }}>{rot}</button>
+            fontSize:12.5, padding:'9px 18px', borderRadius:9, cursor:'pointer', fontFamily:'inherit',
+            border:'none', background: aba===id?'#09090b':'transparent',
+            color: aba===id?'#facc15':'#6B7280', fontWeight: aba===id?700:500,
+            transition:'all .15s' }}>{rot}</button>
         ))}
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
         {[
-          { l:'Total de projetos', v:int(kpi.total), c:'#101828' },
-          { l:'Concluídos / em produção', v:int(kpi.concluidos), c:'#12805C' },
-          { l:'Em andamento', v:int(kpi.andamento), c:'#1D5BBF' },
-          { l:'Cancelados', v:int(kpi.cancelados), c:'#B42318' },
+          { l:'Total de projetos', v:int(kpi.total), c:'#09090b', ic:'📁' },
+          { l:'Concluídos / produção', v:int(kpi.concluidos), c:'#12805C', ic:'✅' },
+          { l:'Em andamento', v:int(kpi.andamento), c:'#1D5BBF', ic:'⚡' },
+          { l:'Cancelados', v:int(kpi.cancelados), c:'#B42318', ic:'✕' },
         ].map((k,i) => (
-          <div key={i} style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:8, padding:'16px 18px', borderTop:`3px solid ${k.c}` }}>
-            <div style={{ fontSize:12, color:'#6B7280', marginBottom:8, fontWeight:500 }}>{k.l}</div>
-            <div style={{ fontSize:24, fontWeight:700, color:k.c }}>{k.v}</div>
+          <div key={i} style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:14,
+            padding:'20px 22px', boxShadow:'0 1px 3px rgba(16,24,40,.04)' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
+              <div style={{ width:38, height:38, borderRadius:10, background:k.c+'14', display:'flex',
+                alignItems:'center', justifyContent:'center', fontSize:16 }}>{k.ic}</div>
+              <div style={{ fontSize:9, fontWeight:800, letterSpacing:'.14em', color:'#9CA3AF', textTransform:'uppercase', textAlign:'right', maxWidth:80, lineHeight:1.4 }}>{k.l}</div>
+            </div>
+            <div style={{ fontSize:34, fontWeight:800, color:k.c, letterSpacing:'-.03em', lineHeight:1 }}>{k.v}</div>
           </div>
         ))}
       </div>
@@ -194,6 +240,18 @@ export default function Automacoes() {
       {fase === 'carregando' && <Spinner/>}
 
       {fase === 'pronto' && aba === 'painel' && (
+        <>
+        <Panel title="Entregas por mês">
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={porMes} margin={{ top:6, right:10, left:0, bottom:0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+              <XAxis dataKey="mes" tick={{ fontSize:11, fill:'#6B7280' }} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fontSize:11, fill:'#6B7280' }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ fontSize:12, borderRadius:8 }} />
+              <Bar dataKey="qtd" fill="#facc15" radius={[6,6,0,0]} name="Entregas" />
+            </BarChart>
+          </ResponsiveContainer>
+        </Panel>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
           <Panel title="Por status">
             <ResponsiveContainer width="100%" height={260}>
@@ -218,6 +276,7 @@ export default function Automacoes() {
             </ResponsiveContainer>
           </Panel>
         </div>
+        </>
       )}
 
       {fase === 'pronto' && aba === 'economia' && (
@@ -337,23 +396,46 @@ function Economia({ economia, cfg, onMudou, editando, setEditando }) {
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
       {erro && <div style={{ color:'#B42318', fontSize:13 }}>⚠ {erro}</div>}
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-        <div style={{ background:'#F0FDF4', border:'1px solid #BBF7D0', borderRadius:10, padding:'18px 20px' }}>
-          <div style={{ fontSize:11, fontWeight:700, color:'#12805C', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>
-            Custo real do desenvolvimento interno
+      {/* Comparativo em destaque: o que custou x o que custaria */}
+      <div style={{ background:'#09090b', borderRadius:16, padding:'30px 34px', position:'relative', overflow:'hidden' }}>
+        <div style={{ position:'absolute', top:-70, right:-30, width:280, height:280,
+          background:'#10b981', opacity:.09, borderRadius:'50%', filter:'blur(70px)' }} />
+        <div style={{ position:'relative' }}>
+          <div style={{ fontSize:10, fontWeight:800, letterSpacing:'.22em', color:'#facc15', textTransform:'uppercase', marginBottom:20 }}>
+            Economia gerada
           </div>
-          <div style={{ fontSize:30, fontWeight:700, color:'#12805C' }}>{brl(tot.vr)}</div>
-          <div style={{ fontSize:12, color:'#6B7280', marginTop:6 }}>
-            {tot.hr}h efetivamente trabalhadas × {brl2(taxa)}/h
-          </div>
-        </div>
-        <div style={{ background:'#F9FAFB', border:'1px solid #E5E7EB', borderRadius:10, padding:'18px 20px' }}>
-          <div style={{ fontSize:11, fontWeight:700, color:'#6B7280', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>
-            Se cada demanda fosse um chamado avulso
-          </div>
-          <div style={{ fontSize:30, fontWeight:700, color:'#374151' }}>{brl(tot.va)}</div>
-          <div style={{ fontSize:12, color:'#6B7280', marginTop:6 }}>
-            {tot.ha}h faturáveis — mínimo de {minimo}h por chamado
+          <div style={{ display:'flex', alignItems:'flex-end', gap:36, flexWrap:'wrap' }}>
+            <div>
+              <div style={{ fontSize:11, color:'#71717a', fontWeight:700, textTransform:'uppercase', letterSpacing:'.1em', marginBottom:8 }}>
+                Custaria na consultoria
+              </div>
+              <div style={{ fontSize:38, fontWeight:800, color:'#71717a', letterSpacing:'-.03em', lineHeight:1, textDecoration:'line-through', textDecorationThickness:2 }}>
+                {brl(tot.va)}
+              </div>
+              <div style={{ fontSize:11.5, color:'#52525b', marginTop:8 }}>{tot.ha}h · mínimo {minimo}h por chamado</div>
+            </div>
+            <div style={{ fontSize:26, color:'#3f3f46', marginBottom:14 }}>→</div>
+            <div>
+              <div style={{ fontSize:11, color:'#34d399', fontWeight:700, textTransform:'uppercase', letterSpacing:'.1em', marginBottom:8 }}>
+                Custo real interno
+              </div>
+              <div style={{ fontSize:48, fontWeight:800, color:'#fff', letterSpacing:'-.035em', lineHeight:1 }}>
+                {brl(tot.vr)}
+              </div>
+              <div style={{ fontSize:11.5, color:'#71717a', marginTop:8 }}>{tot.hr}h reais × {brl2(taxa)}/h</div>
+            </div>
+            <div style={{ marginLeft:'auto', background:'#052e1f', border:'1px solid #065f46',
+              borderRadius:14, padding:'18px 26px', textAlign:'center' }}>
+              <div style={{ fontSize:9.5, fontWeight:800, letterSpacing:'.16em', color:'#34d399', textTransform:'uppercase', marginBottom:8 }}>
+                Deixou de gastar
+              </div>
+              <div style={{ fontSize:34, fontWeight:800, color:'#34d399', letterSpacing:'-.03em', lineHeight:1 }}>
+                {brl(tot.va - tot.vr)}
+              </div>
+              <div style={{ fontSize:10.5, color:'#059669', marginTop:6 }}>
+                {tot.va > 0 ? Math.round((1 - tot.vr/tot.va)*100) : 0}% abaixo do orçamento externo
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -419,11 +501,18 @@ function Economia({ economia, cfg, onMudou, editando, setEditando }) {
             { l:'Front-end / UX', h:hf, v:vf, t:`${brl2(cfg.valor_hora_frontend||0)}/h`, c:'#7C3AED' },
             { l:'Total estimado', h:hb+hf, v:vb+vf, t:'ordem de grandeza', c:'#101828' },
           ].map((k,i) => (
-            <div key={i} style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:8, padding:'16px 18px', borderTop:`3px solid ${k.c}` }}>
-              <div style={{ fontSize:11.5, color:'#6B7280', fontWeight:600, marginBottom:8 }}>{k.l}</div>
-              <div style={{ fontSize:24, fontWeight:700, color:k.c }}>~{k.h}h</div>
-              <div style={{ fontSize:13, fontWeight:600, color:'#374151', marginTop:4 }}>{brl(k.v)}</div>
-              <div style={{ fontSize:10.5, color:'#9CA3AF', marginTop:2 }}>{k.t}</div>
+            <div key={i} style={{
+              background: i===2 ? '#facc15' : (i===0 ? '#09090b' : '#F3F4F6'),
+              borderRadius:14, padding:'20px 22px',
+              border: i===1 ? '1px solid #E5E7EB' : 'none' }}>
+              <div style={{ fontSize:9.5, fontWeight:800, letterSpacing:'.16em', textTransform:'uppercase', marginBottom:10,
+                color: i===2 ? '#78350f' : (i===0 ? '#71717a' : '#6B7280') }}>{k.l}</div>
+              <div style={{ fontSize:32, fontWeight:800, letterSpacing:'-.03em', lineHeight:1,
+                color: i===2 ? '#422006' : (i===0 ? '#fff' : '#111827') }}>~{k.h}h</div>
+              <div style={{ fontSize:15, fontWeight:700, marginTop:8,
+                color: i===2 ? '#78350f' : (i===0 ? '#d4d4d8' : '#374151') }}>{brl(k.v)}</div>
+              <div style={{ fontSize:10.5, marginTop:4,
+                color: i===2 ? '#92400e' : (i===0 ? '#52525b' : '#9CA3AF') }}>{k.t}</div>
             </div>
           ))}
         </div>
