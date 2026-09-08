@@ -43,6 +43,10 @@ export default function RequisicaoAlmox({ sessao }) {
       `${p.numnota} ${p.nunota} ${p.solicitante||''} ${p.centro_resultado||''}`.toLowerCase().includes(q))
   }, [dados, busca])
 
+  // Itens cujo estoque no local e menor que a quantidade pedida. Nao bloqueia
+  // a requisicao (o saldo pode entrar ate a entrega), mas precisa ficar visivel.
+  const semSaldo = p => (p.itens || []).filter(i => Number(i.estoque_no_local) < Number(i.qtd))
+
   const elegiveis = lista.filter(p => p.elegivel)
   const alternar = n => setSel(s => { const x = new Set(s); x.has(n) ? x.delete(n) : x.add(n); return x })
   const todos = () => setSel(sel.size === elegiveis.length ? new Set() : new Set(elegiveis.map(p=>p.nunota)))
@@ -84,6 +88,8 @@ export default function RequisicaoAlmox({ sessao }) {
               <SearchInput value={busca} onChange={setBusca} placeholder="Nº, solicitante, centro…" />
               <span style={{ fontSize:12.5, color:'#6B7280' }}>
                 {int(dados.total)} pendente(s) · <strong style={{ color:'#12805C' }}>{int(dados.elegiveis)} elegível(is)</strong>
+                {(() => { const n = lista.filter(p => p.elegivel && semSaldo(p).length).length
+                  return n ? <strong style={{ color:'#B42318', marginLeft:6 }}>· {n} com item sem saldo</strong> : null })()}
               </span>
               {elegiveis.length > 0 && (
                 <Btn small onClick={todos}>{sel.size === elegiveis.length ? 'Desmarcar todas' : 'Marcar todas elegíveis'}</Btn>
@@ -106,7 +112,7 @@ export default function RequisicaoAlmox({ sessao }) {
                   <tbody>
                     {lista.map(p => (
                       <React.Fragment key={p.nunota}>
-                      <tr style={{ borderTop:'1px solid #F9FAFB', background: p.elegivel ? (sel.has(p.nunota) ? '#F0F9FF' : 'transparent') : '#FFFBEB' }}>
+                      <tr style={{ borderTop:'1px solid #F9FAFB', background: !p.elegivel ? '#FFFBEB' : (semSaldo(p).length ? '#FFF7F7' : (sel.has(p.nunota) ? '#F0F9FF' : 'transparent')) }}>
                         <td style={cel}>
                           <input type="checkbox" disabled={!p.elegivel || executando}
                             checked={sel.has(p.nunota)} onChange={() => alternar(p.nunota)} />
@@ -123,7 +129,12 @@ export default function RequisicaoAlmox({ sessao }) {
                         <td style={{ ...cel, textAlign:'right', fontVariantNumeric:'tabular-nums' }}>R$ {brl(p.valor)}</td>
                         <td style={cel}>
                           {p.elegivel
-                            ? <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:5, background:'#D1FAE5', color:'#12805C' }}>pronta</span>
+                            ? (semSaldo(p).length
+                                ? <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:5, background:'#FEE2E2', color:'#B42318' }}
+                                    title={`Sem saldo: ${semSaldo(p).map(i=>`${i.codprod} (tem ${i.estoque_no_local}, pede ${i.qtd})`).join(' · ')}`}>
+                                    ⚠ {semSaldo(p).length} sem saldo
+                                  </span>
+                                : <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:5, background:'#D1FAE5', color:'#12805C' }}>pronta</span>)
                             : <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:5, background:'#FEF3C7', color:'#B54708' }} title={p.motivo_bloqueio}>{p.motivo_bloqueio}</span>}
                         </td>
                       </tr>
@@ -191,6 +202,23 @@ export default function RequisicaoAlmox({ sessao }) {
                     <p style={{ margin:'0 0 10px', fontSize:13, color:'#B42318', fontWeight:600 }}>
                       Confirmar {sel.size} requisição(ões), R$ {brl(vlrSel)}? Isso baixa o estoque no Sankhya.
                     </p>
+                    {(() => {
+                      const comFalta = selecionados.filter(p => semSaldo(p).length)
+                      return comFalta.length ? (
+                        <div style={{ background:'#fff', border:'1px solid #FECACA', borderRadius:6, padding:'10px 12px', marginBottom:10, fontSize:12.5 }}>
+                          <strong style={{ color:'#B42318' }}>⚠ {comFalta.length} requisição(ões) têm item sem saldo suficiente.</strong>
+                          <div style={{ marginTop:6, color:'#6B7280' }}>
+                            O Sankhya pode recusar essas. Se recusar, elas aparecem com erro no resultado e as demais seguem normalmente.
+                          </div>
+                          <ul style={{ margin:'8px 0 0', paddingLeft:18, color:'#6B7280' }}>
+                            {comFalta.slice(0,5).map(p => (
+                              <li key={p.nunota}>Req. {p.numnota}: {semSaldo(p).map(i=>`${i.codprod} (tem ${i.estoque_no_local}, pede ${i.qtd})`).join(', ')}</li>
+                            ))}
+                            {comFalta.length > 5 && <li>e mais {comFalta.length - 5}…</li>}
+                          </ul>
+                        </div>
+                      ) : null
+                    })()}
                     <div style={{ display:'flex', gap:8 }}>
                       <Btn primary onClick={executar} disabled={executando}>{executando ? '↻ Confirmando…' : '✓ Sim, confirmar'}</Btn>
                       <Btn onClick={() => setConfirmando(false)} disabled={executando}>Cancelar</Btn>
