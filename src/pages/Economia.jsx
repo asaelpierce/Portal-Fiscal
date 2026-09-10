@@ -37,6 +37,7 @@ export default function Economia() {
   const [erro, setErro] = useState('')
   const [foco, setFoco] = useState(null)      // tarefa em destaque
   const [horizonte, setHorizonte] = useState('acumulado')  // acumulado | ano
+  const [setorAberto, setSetorAberto] = useState(null)
   const [revelar, setRevelar] = useState(false)
   const jaRevelou = useRef(false)
 
@@ -83,8 +84,8 @@ export default function Economia() {
 
   const total = useMemo(() => lista.reduce((s, t) => s + t.valor, 0), [lista])
   const maiorSetor = useMemo(
-    () => Math.max(1, ...setores.map((s) => Number(s.horas_acumuladas) || 0)),
-    [setores],
+    () => Math.max(1, ...setores.map((s) => Number(s[porAno ? 'horas_ano' : 'horas_acumuladas']) || 0)),
+    [setores, porAno],
   )
   const temBaseline = lista.some((t) => t.tem_baseline_declarado)
 
@@ -251,28 +252,93 @@ export default function Economia() {
       </h2>
       <p style={{ fontSize: 12.5, color: SUAVE, margin: '0 0 20px', maxWidth: 620, lineHeight: 1.55 }}>
         Tarefas que atravessam mais de um setor são divididas por igual entre eles. O Checklist
-        Digital, por exemplo, entra em Comercial, Engenharia e Fiscal.
+        Digital, por exemplo, entra em Comercial, Engenharia e Fiscal. Clique num setor para ver de onde vem o tempo dele.
       </p>
 
       <div style={{ marginBottom: 40, maxWidth: 780 }}>
         {setores.map((s) => {
-          const v = Number(s.horas_acumuladas) || 0
+          const v = Number(s[porAno ? 'horas_ano' : 'horas_acumuladas']) || 0
+          const aberto = setorAberto === s.setor
+          const contrib = lista
+            .filter((t) => (t.setores || []).includes(s.setor))
+            .map((t) => {
+              const divisor = (t.setores || []).length || 1
+              return { ...t, divisor, fatia: t.valor / divisor }
+            })
+            .sort((a, b) => b.fatia - a.fatia)
+
           return (
-            <div key={s.setor} style={{
-              display: 'grid', gridTemplateColumns: '132px 1fr 96px',
-              alignItems: 'center', gap: 16, padding: '11px 0',
-              borderBottom: `1px solid ${TRACO}`,
-            }}>
-              <div style={{ fontSize: 13.5, color: TINTA }}>{s.setor}</div>
-              <div style={{ height: 9, background: '#EFEDE8' }}>
-                <div className="ec-seg" style={{
-                  width: `${(v / maiorSetor) * 100}%`, height: '100%', background: RAMPA[1],
-                  animation: revelar ? 'ec-crescer .55s .12s cubic-bezier(.2,.7,.3,1) both' : 'none',
-                }} />
-              </div>
-              <div style={{ ...num, fontSize: 13.5, textAlign: 'right', color: TINTA }}>
-                {nf(v)} h
-              </div>
+            <div key={s.setor} style={{ borderBottom: `1px solid ${TRACO}` }}>
+              <button
+                onClick={() => setSetorAberto(aberto ? null : s.setor)}
+                aria-expanded={aberto}
+                className="ec-chip"
+                style={{
+                  width: '100%', display: 'grid',
+                  gridTemplateColumns: '14px 118px 1fr 96px',
+                  alignItems: 'center', gap: 16, padding: '11px 0',
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  fontFamily: 'inherit', textAlign: 'left', color: TINTA,
+                }}
+              >
+                <span style={{
+                  fontSize: 10, color: SUAVE, lineHeight: 1,
+                  transition: 'transform .18s ease',
+                  transform: aberto ? 'rotate(90deg)' : 'none',
+                }}>▶</span>
+                <span style={{ fontSize: 13.5 }}>{s.setor}</span>
+                <span style={{ height: 9, background: '#EFEDE8', display: 'block' }}>
+                  <span className="ec-seg" style={{
+                    width: `${(v / maiorSetor) * 100}%`, height: '100%', background: RAMPA[1],
+                    display: 'block',
+                    animation: revelar ? 'ec-crescer .55s .12s cubic-bezier(.2,.7,.3,1) both' : 'none',
+                  }} />
+                </span>
+                <span style={{ ...num, fontSize: 13.5, textAlign: 'right' }}>{nf(v)} h</span>
+              </button>
+
+              {aberto && (
+                <div style={{
+                  padding: '4px 0 16px 30px', marginLeft: 4,
+                  borderLeft: `1px solid ${TRACO}`,
+                }}>
+                  {contrib.map((t) => (
+                    <div key={t.id} style={{
+                      display: 'grid', gridTemplateColumns: '1fr 210px 84px',
+                      gap: 14, alignItems: 'baseline', padding: '7px 0 7px 14px',
+                    }}>
+                      <span style={{ fontSize: 12.5, color: TINTA, lineHeight: 1.4 }}>
+                        <span style={{
+                          display: 'inline-block', width: 7, height: 7, background: t.cor,
+                          marginRight: 8, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.14)',
+                        }} />
+                        {t.tarefa}
+                        {t.tem_baseline_declarado && (
+                          <span style={{ color: SINAL, marginLeft: 5, fontWeight: 600 }}>*</span>
+                        )}
+                      </span>
+                      <span style={{ fontSize: 11.5, color: SUAVE, lineHeight: 1.4 }}>
+                        {t.divisor > 1
+                          ? `1/${t.divisor} de ${nf(t.valor)} h, dividida com ${
+                              t.setores.filter((x) => x !== s.setor).join(' e ')}`
+                          : t.nome_projeto}
+                      </span>
+                      <span style={{ ...num, fontSize: 12.5, textAlign: 'right', color: TINTA }}>
+                        {nf(t.fatia)} h
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{
+                    display: 'grid', gridTemplateColumns: '1fr 210px 84px', gap: 14,
+                    padding: '9px 0 0 14px', marginTop: 4, borderTop: `1px solid ${TRACO}`,
+                    fontSize: 12.5, fontWeight: 600, color: TINTA,
+                  }}>
+                    <span>{contrib.length} tarefa{contrib.length > 1 ? 's' : ''} em {s.setor}</span>
+                    <span />
+                    <span style={{ ...num, textAlign: 'right' }}>{nf(v)} h</span>
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}
