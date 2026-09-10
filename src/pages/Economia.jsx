@@ -349,8 +349,9 @@ export default function Economia() {
         Como cada número foi apurado
       </h2>
       <p style={{ fontSize: 12.5, color: SUAVE, margin: '0 0 16px', maxWidth: 620, lineHeight: 1.55 }}>
-        O volume vem da contagem real no banco. O tempo por item foi informado por quem
-        executava a tarefa antes da automação.
+        O volume vem da contagem real no banco e cresce sozinho a cada sincronização.
+        A coluna por mês mostra o ritmo de entrada. O tempo por item foi informado por
+        quem executava a tarefa antes da automação.
       </p>
 
       <div style={{ overflowX: 'auto', border: `1px solid ${TRACO}`, background: '#fff' }}>
@@ -360,9 +361,10 @@ export default function Economia() {
               <th style={th()}>Tarefa</th>
               <th style={th()}>Automação</th>
               <th style={th('right')}>Volume</th>
+              <th style={th('right')}>Entrando/mês</th>
               <th style={th('right')}>Min/item</th>
-              <th style={th('right')}>Acumulado</th>
-              <th style={th('right')}>Por mês</th>
+              <th style={th('right')}>Horas acum.</th>
+              <th style={th('right')}>Horas/mês</th>
             </tr>
           </thead>
           <tbody>
@@ -381,6 +383,9 @@ export default function Economia() {
                 </td>
                 <td style={{ ...td(), color: SUAVE, fontSize: 12.5 }}>{t.nome_projeto}</td>
                 <td style={{ ...td('right'), ...num }}>{ni(t.vol_medido)}</td>
+                <td style={{ ...td('right'), ...num, color: SUAVE }}>
+                  +{nf(t.vol_medido_mes, 0)}
+                </td>
                 <td style={{ ...td('right'), ...num }}>{nf(t.min_antes, 1)}</td>
                 <td style={{ ...td('right'), ...num, fontWeight: 600 }}>{nf(t.horas_acumuladas)} h</td>
                 <td style={{ ...td('right'), ...num, color: SUAVE }}>{nf(t.horas_mes)} h</td>
@@ -394,6 +399,7 @@ export default function Economia() {
               <td style={{ ...td('right'), ...num, fontWeight: 600, borderBottom: 'none' }}>
                 {ni(totais?.eventos_processados)}
               </td>
+              <td style={{ ...td(), borderBottom: 'none' }} />
               <td style={{ ...td(), borderBottom: 'none' }} />
               <td style={{ ...td('right'), ...num, fontWeight: 700, borderBottom: 'none' }}>
                 {nf(totais?.horas_acumuladas)} h
