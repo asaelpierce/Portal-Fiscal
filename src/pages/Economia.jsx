@@ -14,6 +14,12 @@ const SUAVE = '#6E6A64'
 const SINAL = '#A2600F'
 const LINHA = '#12805C'
 
+const TIPO_BENEF = {
+  material:   { cor: '#166534', rot: 'Material',   sub: 'Recurso físico que deixou de ser consumido' },
+  risco:      { cor: '#A2600F', rot: 'Risco',      sub: 'Erro, esquecimento ou retrabalho que saiu do processo' },
+  eficiencia: { cor: '#1F60A8', rot: 'Eficiência', sub: 'Trabalho que ficou mais rápido ou deixou de depender de alguém' },
+}
+
 const nf = (v, d = 1) =>
   Number(v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d })
 const ni = (v) => Number(v ?? 0).toLocaleString('pt-BR')
@@ -71,20 +77,22 @@ export default function Economia({ embutido = false }) {
   const [setorAberto, setSetorAberto] = useState(null)
   const [proc, setProc] = useState(null)
   const [fin, setFin] = useState(null)
+  const [benef, setBenef] = useState([])
 
   const carregar = async () => {
     setErro('')
     try {
-      const [t, g, s, m, pr, fi] = await Promise.all([
+      const [t, g, s, m, pr, fi, bn] = await Promise.all([
         sbFetch('automacao_ganhos_totais?select=*'),
         sbFetch('automacao_ganhos_tarefas?select=*&order=horas_acumuladas.desc'),
         sbFetch('automacao_ganhos_por_setor?select=*&order=horas_acumuladas.desc'),
         sbFetch('automacao_ganhos_mensal?select=*&order=mes.asc'),
         sbFetch('automacao_procedencia?select=*'),
         sbFetch('automacao_financeiro?select=*'),
+        sbFetch('automacao_beneficio_lista?select=*'),
       ])
       setTotais(t?.[0] || null); setTarefas(g || []); setSetores(s || []); setMensal(m || [])
-      setProc(pr?.[0] || null); setFin(fi?.[0] || null)
+      setProc(pr?.[0] || null); setFin(fi?.[0] || null); setBenef(bn || [])
       setFase('pronto')
     } catch (e) { setErro(e.message); setFase('erro') }
   }
@@ -182,6 +190,13 @@ export default function Economia({ embutido = false }) {
         }
         @media (prefers-reduced-motion: reduce) { .ec-barra { animation: none } }
       `}</style>
+
+      <div className="ec-nao-imprime" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <button onClick={() => window.print()} style={{
+          fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', padding: '6px 13px',
+          border: `1px solid ${TRACO}`, background: '#fff', color: TINTA, borderRadius: 3,
+        }}>Imprimir ou salvar em PDF</button>
+      </div>
 
       <div className="ec-resumo" style={{
         background: '#fff', border: `1px solid ${TRACO}`, borderLeft: `3px solid ${RAMPA[0]}`,
@@ -440,6 +455,45 @@ export default function Economia({ embutido = false }) {
                   </div>
                 </div>
               )}
+            </div>
+          )
+        })}
+      </div>
+
+      <h2 style={h2}>Ganhos que não viram hora</h2>
+      <p style={sub}>
+        Nem todo resultado cabe numa conta de minutos. Papel que deixou de ser impresso, risco que
+        saiu do processo, informação que passou a chegar sozinha — {ni(benef.length)} registros.
+      </p>
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(270px,1fr))',
+        gap: 14, marginBottom: 40,
+      }}>
+        {['material', 'risco', 'eficiencia'].map((tipo) => {
+          const itens = benef.filter((b) => b.tipo === tipo)
+          if (!itens.length) return null
+          const c = TIPO_BENEF[tipo]
+          return (
+            <div key={tipo} className="ec-bloco" style={{
+              background: '#fff', border: `1px solid ${TRACO}`, borderTop: `2px solid ${c.cor}`,
+              padding: '14px 16px',
+            }}>
+              <div style={{
+                fontSize: 11, fontWeight: 700, color: c.cor, letterSpacing: '.05em',
+                textTransform: 'uppercase', marginBottom: 3,
+              }}>{c.rot}</div>
+              <div style={{ fontSize: 11.5, color: SUAVE, marginBottom: 12 }}>{c.sub}</div>
+              {itens.map((b, k) => (
+                <div key={b.id} style={{ padding: '8px 0', borderTop: k ? `1px solid ${TRACO}` : 'none' }}>
+                  <div style={{ fontSize: 12.5, color: TINTA, fontWeight: 600, lineHeight: 1.35 }}>
+                    {b.titulo}
+                    {b.valor && (
+                      <span style={{ ...num, color: c.cor, fontWeight: 500, marginLeft: 7 }}>{b.valor}</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: SUAVE, marginTop: 2 }}>{b.nome_projeto}</div>
+                </div>
+              ))}
             </div>
           )
         })}
