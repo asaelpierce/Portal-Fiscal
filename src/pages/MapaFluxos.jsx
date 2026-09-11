@@ -60,7 +60,8 @@ function NoFluxo({ data, selected }) {
       border: `${selected ? 2 : 1.5}px ${f.traco} ${s.cor}`,
       borderRadius: f.borda,
       padding: '10px 13px', minWidth: 168, maxWidth: 230,
-      boxShadow: selected ? `0 0 0 3px ${s.cor}22` : 'none',
+      boxShadow: selected ? `0 0 0 3px ${s.cor}22`
+        : data.__irmao ? '0 0 0 2px #6D28D9, 0 0 0 5px #6D28D91A' : 'none',
       borderLeft: data.execucao === 'automatico'
         ? `4px solid ${EXEC.automatico.cor}`
         : `${selected ? 2 : 1.5}px ${f.traco} ${s.cor}`,
@@ -91,8 +92,14 @@ function NoFluxo({ data, selected }) {
       <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1A1A18', lineHeight: 1.3 }}>
         {data.rotulo}
       </div>
-      {data.sistema && data.sistema !== 'Externo' && (
-        <div style={{ fontSize: 9.5, color: '#6E6A64', marginTop: 4 }}>{data.sistema}</div>
+      {(data.artefato_nome || (data.sistema && data.sistema !== 'Externo')) && (
+        <div style={{ fontSize: 9.5, color: '#6E6A64', marginTop: 4, lineHeight: 1.3 }}>
+          {data.artefato_nome
+            ? <span title={data.artefato_nome}>
+                {data.artefato_nome.length > 30 ? data.artefato_nome.slice(0, 30) + '…' : data.artefato_nome}
+              </span>
+            : data.sistema}
+        </div>
       )}
       {data.volume_medido != null && (
         <div style={{
@@ -211,13 +218,14 @@ export default function MapaFluxos({ embutido = false }) {
   const [projetos, setProjetos] = useState([])
   const [ganhos, setGanhos] = useState([])
   const [listaAreas, setListaAreas] = useState([])
+  const [artefatos, setArtefatos] = useState([])
   const [selLigacao, setSelLigacao] = useState(null)
   const [conexBruto, setConexBruto] = useState([])
 
   const carregar = useCallback(async () => {
     setErro('')
     try {
-      const [m, c, o, ar, pj, gh, ax] = await Promise.all([
+      const [m, c, o, ar, pj, gh, ax, af] = await Promise.all([
         sbFetch('fluxo_mapa?select=*&ativo=eq.true'),
         sbFetch('fluxo_conexao?select=*'),
         sbFetch('fluxo_orfaos?select=*'),
@@ -225,6 +233,7 @@ export default function MapaFluxos({ embutido = false }) {
         sbFetch('automacao_projetos?select=id,nome_projeto,setor,status&order=nome_projeto.asc'),
         sbFetch('automacao_ganhos_tarefas?select=id,projeto_id,tarefa,min_antes,min_depois,vol_medido,horas_acumuladas,horas_mes'),
         sbFetch('area?select=id,nome,cor&order=ordem.asc'),
+        sbFetch('artefato_resumo?select=*'),
       ])
       setBruto(m || [])
       setConexBruto(c || [])
@@ -233,6 +242,7 @@ export default function MapaFluxos({ embutido = false }) {
       setProjetos(pj || [])
       setGanhos(gh || [])
       setListaAreas(ax || [])
+      setArtefatos(af || [])
       // preserva o que o usuário moveu: qualquer ação que recarregue o mapa
       // (salvar nó, criar ligação, excluir) estava jogando as posições fora
       setNos((antes) => {
@@ -410,6 +420,16 @@ export default function MapaFluxos({ embutido = false }) {
     if (!r.ok) throw new Error(await r.text())
   }
 
+  const criarArtefato = async (nome, tipo, sistema) => {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/automacao_artefato`, {
+      method: 'POST', headers: cab(),
+      body: JSON.stringify({ nome, tipo, sistema, status: 'Ativo' }),
+    })
+    if (!r.ok) throw new Error(await r.text())
+    const d = await r.json()
+    return d?.[0]?.id
+  }
+
   const salvarNo = async (chave, campos) => {
     await fetch(`${SUPABASE_URL}/rest/v1/fluxo_no?chave=eq.${encodeURIComponent(chave)}`, {
       method: 'PATCH', headers: cab('minimal'),
@@ -427,6 +447,14 @@ export default function MapaFluxos({ embutido = false }) {
   // Recorte por área. Os nós de fora que conversam com a área entram
   // apagados: é na fronteira que estão os acordos entre setores, e sem
   // eles o mapa da área parece um sistema fechado, que não é.
+  // passos do mesmo artefato: ao selecionar um, os irmãos ganham contorno
+  const irmaos = useMemo(() => {
+    const atual = nos.find((n) => n.id === sel)
+    const art = atual?.data?.artefato_id
+    if (!art) return new Set()
+    return new Set(nos.filter((n) => n.data.artefato_id === art).map((n) => n.id))
+  }, [nos, sel])
+
   const { nosFiltrados, linhasFiltradas } = useMemo(() => {
     // camada primeiro: a instrumentação de medição não é processo do
     // negócio e, misturada, cruza linha com tudo
@@ -439,7 +467,7 @@ export default function MapaFluxos({ embutido = false }) {
     if (area === 'todas') {
       const base = (filtro === 'todos' ? nosBase
         : nosBase.map((n) => ({ ...n, style: { opacity: n.data.sistema === filtro ? 1 : .22 } })))
-        .map((n) => ({ ...n, data: { ...n.data, __corPorArea: modoCor === 'area' } }))
+        .map((n) => ({ ...n, data: { ...n.data, __corPorArea: modoCor === 'area', __irmao: irmaos.has(n.id) } }))
       return { nosFiltrados: base, linhasFiltradas: linhasBase }
     }
     const dentro = new Set(
@@ -456,7 +484,7 @@ export default function MapaFluxos({ embutido = false }) {
         const apagadoPorSistema = filtro !== 'todos' && n.data.sistema !== filtro
         return {
           ...n,
-          data: { ...n.data, __corPorArea: modoCor === 'area' },
+          data: { ...n.data, __corPorArea: modoCor === 'area', __irmao: irmaos.has(n.id) },
           style: { opacity: fora ? 0.3 : (apagadoPorSistema ? 0.22 : 1) },
         }
       })
@@ -465,7 +493,7 @@ export default function MapaFluxos({ embutido = false }) {
       nosFiltrados: visiveis,
       linhasFiltradas: linhasBase.filter((l) => chaves.has(l.source) && chaves.has(l.target)),
     }
-  }, [nos, linhas, filtro, area, camada, modoCor])
+  }, [nos, linhas, filtro, area, camada, modoCor, irmaos])
 
   const legenda = useMemo(() => {
     const conta = new Map()
@@ -706,6 +734,7 @@ export default function MapaFluxos({ embutido = false }) {
               <DetalheNo no={selNo} onSalvar={salvarNo} onExcluir={excluirNo}
                          onFechar={() => setSel(null)}
                          projetos={projetos} ganhos={ganhos} areas={listaAreas}
+                         artefatos={artefatos} onCriarArtefato={criarArtefato}
                          onVincular={vincularProjeto} onCriarProjeto={criarProjeto}
                          onCriarTarefa={criarTarefa} onRecarregar={carregar} />
             ) : (
@@ -734,7 +763,7 @@ export default function MapaFluxos({ embutido = false }) {
   )
 }
 
-function DetalheNo({ no, onSalvar, onExcluir, onFechar, projetos, ganhos, areas, onVincular, onCriarProjeto, onCriarTarefa, onRecarregar }) {
+function DetalheNo({ no, onSalvar, onExcluir, onFechar, projetos, ganhos, areas, artefatos, onCriarArtefato, onVincular, onCriarProjeto, onCriarTarefa, onRecarregar }) {
   const [edicao, setEdicao] = useState(false)
   const [f, setF] = useState({ rotulo: no.rotulo, descricao: no.descricao || '', sistema: no.sistema, tipo: no.tipo })
   const [salvando, setSalvando] = useState(false)
@@ -836,6 +865,9 @@ function DetalheNo({ no, onSalvar, onExcluir, onFechar, projetos, ganhos, areas,
               {EXEC[no.execucao || 'manual']?.desc}
             </div>
           </div>
+
+          <BlocoArtefato no={no} artefatos={artefatos}
+            onSalvar={onSalvar} onCriarArtefato={onCriarArtefato} />
 
           <BlocoAutomacao no={no} projetos={projetos} ganhos={ganhos}
             onVincular={onVincular} onCriarProjeto={onCriarProjeto}
@@ -1173,6 +1205,131 @@ function DetalheLigacao({ ligacao, deNome, paraNome, onSalvar, onRemover, onFech
           border: '1px solid #F3C6C0', background: '#fff', borderRadius: 3, padding: '7px 12px',
         }}>Remover</button>
       </div>
+    </div>
+  )
+}
+
+
+const TIPO_ARTEFATO = [
+  ['fluxo_power_automate', 'Fluxo do Power Automate', 'Power Automate'],
+  ['portal',               'Portal',                  'Portal'],
+  ['edge_function',        'Edge Function',           'Supabase'],
+  ['extracao_sankhya',     'Extração do Sankhya',     'Sankhya'],
+  ['forms',                'Formulário',              'Microsoft 365'],
+  ['script',              'Serviço ou script',        null],
+  ['planner',              'Planner',                 'Microsoft 365'],
+]
+
+// Qual fluxo, qual portal. Marcar "Power Automate" não diz nada sozinho;
+// e vários passos costumam pertencer ao MESMO fluxo.
+function BlocoArtefato({ no, artefatos, onSalvar, onCriarArtefato }) {
+  const [modo, setModo] = useState(null)
+  const [novo, setNovo] = useState({ nome: '', tipo: 'fluxo_power_automate' })
+  const [ocupado, setOcupado] = useState(false)
+
+  useEffect(() => { setModo(null) }, [no.chave])
+
+  const meu = (artefatos || []).find((a) => a.id === no.artefato_id)
+  // sugere primeiro os do mesmo sistema do nó
+  const ordenados = [...(artefatos || [])].sort((a, b) => {
+    const pa = a.sistema === no.sistema ? 0 : 1
+    const pb = b.sistema === no.sistema ? 0 : 1
+    return pa - pb || a.nome.localeCompare(b.nome)
+  })
+
+  const campo = {
+    width: '100%', fontFamily: 'inherit', fontSize: 12.5, padding: '6px 8px',
+    border: '1px solid #E4E1DC', borderRadius: 3, marginBottom: 8, background: '#fff',
+  }
+  const btn = (p) => ({
+    fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', padding: '6px 11px', borderRadius: 3,
+    border: p ? 'none' : '1px solid #E4E1DC', background: p ? '#1A1A18' : '#fff',
+    color: p ? '#fff' : '#1A1A18',
+  })
+
+  return (
+    <div style={{ marginTop: 16, paddingTop: 13, borderTop: '1px solid #E4E1DC' }}>
+      <div style={{ fontSize: 11, color: '#6E6A64', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 7 }}>
+        Onde este passo roda
+      </div>
+
+      {meu ? (
+        <div style={{ marginBottom: 9 }}>
+          <div style={{ fontSize: 12.5, color: '#1A1A18', fontWeight: 600 }}>{meu.nome}</div>
+          <div style={{ fontSize: 11, color: '#6E6A64', marginTop: 2 }}>
+            {TIPO_ARTEFATO.find(([k]) => k === meu.tipo)?.[1] || meu.tipo}
+            {meu.identificador ? ` · ${meu.identificador}` : ''}
+          </div>
+          {meu.nos > 1 && (
+            <div style={{
+              fontSize: 11.5, color: '#4A4741', marginTop: 8, padding: '8px 10px',
+              background: '#F1EBFD', border: '1px solid #DDD0F7', borderRadius: 3, lineHeight: 1.5,
+            }}>
+              Este fluxo cobre <strong>{meu.nos} passos</strong> do mapa, destacados em roxo:
+              <div style={{ color: '#6E6A64', marginTop: 4 }}>{meu.passos}</div>
+            </div>
+          )}
+          {meu.url && (
+            <a href={meu.url} target="_blank" rel="noreferrer"
+               style={{ fontSize: 11.5, color: '#1F60A8', display: 'inline-block', marginTop: 6 }}>abrir</a>
+          )}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: '#A2600F', marginBottom: 9 }}>
+          Não está ligado a nenhum fluxo ou portal.
+          {no.sistema && no.sistema !== 'Externo' && ` Marcado como ${no.sistema}, mas qual?`}
+        </div>
+      )}
+
+      {!modo && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button style={btn(false)} onClick={() => setModo('escolher')}>
+            {meu ? 'Trocar' : 'Escolher fluxo ou portal'}
+          </button>
+          <button style={btn(false)} onClick={() => {
+            setNovo({ nome: '', tipo: TIPO_ARTEFATO.find(([, , sis]) => sis === no.sistema)?.[0] || 'fluxo_power_automate' })
+            setModo('novo')
+          }}>+ Cadastrar novo</button>
+        </div>
+      )}
+
+      {modo === 'escolher' && (
+        <div>
+          <select style={campo} value={no.artefato_id || ''}
+            onChange={(e) => { onSalvar(no.chave, { artefato_id: e.target.value || null }); setModo(null) }}>
+            <option value="">— nenhum —</option>
+            {ordenados.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.nome}{a.nos > 0 ? ` (${a.nos} passo${a.nos > 1 ? 's' : ''})` : ''}
+              </option>
+            ))}
+          </select>
+          <button style={btn(false)} onClick={() => setModo(null)}>Cancelar</button>
+        </div>
+      )}
+
+      {modo === 'novo' && (
+        <div>
+          <select style={campo} value={novo.tipo} onChange={(e) => setNovo({ ...novo, tipo: e.target.value })}>
+            {TIPO_ARTEFATO.map(([k, r]) => <option key={k} value={k}>{r}</option>)}
+          </select>
+          <input style={campo} value={novo.nome} autoFocus
+                 placeholder="Nome do fluxo ou portal"
+                 onChange={(e) => setNovo({ ...novo, nome: e.target.value })} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button style={btn(true)} disabled={ocupado || !novo.nome.trim()} onClick={async () => {
+              setOcupado(true)
+              try {
+                const sis = TIPO_ARTEFATO.find(([k]) => k === novo.tipo)?.[2] || no.sistema
+                const id = await onCriarArtefato(novo.nome.trim(), novo.tipo, sis)
+                if (id) await onSalvar(no.chave, { artefato_id: id })
+              } catch (e) { /* erro tratado no pai */ }
+              setOcupado(false); setModo(null)
+            }}>{ocupado ? 'Criando…' : 'Criar e vincular'}</button>
+            <button style={btn(false)} onClick={() => setModo(null)}>Cancelar</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
