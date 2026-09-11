@@ -36,7 +36,13 @@ const FORMA = {
 const ni = (v) => Number(v ?? 0).toLocaleString('pt-BR')
 
 function NoFluxo({ data, selected }) {
-  const s = info(data.sistema)
+  const porArea = data.__corPorArea
+  const base = info(data.sistema)
+  // cor da área vem do cadastro; sem área, cai no cinza neutro
+  const s = porArea
+    ? { cor: data.area_cor || '#6E6A64', fundo: (data.area_cor || '#6E6A64') + '14',
+        sigla: (data.area || 'Sem área').slice(0, 12) }
+    : base
   const f = FORMA[data.tipo] || FORMA.passo
   return (
     <div style={{
@@ -105,26 +111,30 @@ export default function MapaFluxos({ embutido = false }) {
   const [criando, setCriando] = useState(false)
   const [area, setArea] = useState('todas')
   const [camada, setCamada] = useState('processo')
+  const [modoCor, setModoCor] = useState('area')
   const nosRef = useRef([])
   const [projetos, setProjetos] = useState([])
   const [ganhos, setGanhos] = useState([])
+  const [listaAreas, setListaAreas] = useState([])
 
   const carregar = useCallback(async () => {
     setErro('')
     try {
-      const [m, c, o, ar, pj, gh] = await Promise.all([
+      const [m, c, o, ar, pj, gh, ax] = await Promise.all([
         sbFetch('fluxo_mapa?select=*&ativo=eq.true'),
         sbFetch('fluxo_conexao?select=*'),
         sbFetch('fluxo_orfaos?select=*'),
         sbFetch('fluxo_area_resumo?select=*'),
         sbFetch('automacao_projetos?select=id,nome_projeto,setor,status&order=nome_projeto.asc'),
         sbFetch('automacao_ganhos_tarefas?select=id,projeto_id,tarefa,min_antes,min_depois,vol_medido,horas_acumuladas,horas_mes'),
+        sbFetch('area?select=id,nome,cor&order=ordem.asc'),
       ])
       setBruto(m || [])
       setOrfaos(o || [])
       setAreas(ar || [])
       setProjetos(pj || [])
       setGanhos(gh || [])
+      setListaAreas(ax || [])
       // preserva o que o usuário moveu: qualquer ação que recarregue o mapa
       // (salvar nó, criar ligação, excluir) estava jogando as posições fora
       setNos((antes) => {
@@ -316,8 +326,9 @@ export default function MapaFluxos({ embutido = false }) {
       (l) => chavesCamada.has(l.source) && chavesCamada.has(l.target))
     const nosBase = nosCamada, linhasBase = linhasCamada
     if (area === 'todas') {
-      const base = filtro === 'todos' ? nosBase
-        : nosBase.map((n) => ({ ...n, style: { opacity: n.data.sistema === filtro ? 1 : .22 } }))
+      const base = (filtro === 'todos' ? nosBase
+        : nosBase.map((n) => ({ ...n, style: { opacity: n.data.sistema === filtro ? 1 : .22 } })))
+        .map((n) => ({ ...n, data: { ...n.data, __corPorArea: modoCor === 'area' } }))
       return { nosFiltrados: base, linhasFiltradas: linhasBase }
     }
     const dentro = new Set(
@@ -332,14 +343,44 @@ export default function MapaFluxos({ embutido = false }) {
       .map((n) => {
         const fora = !dentro.has(n.id)
         const apagadoPorSistema = filtro !== 'todos' && n.data.sistema !== filtro
-        return { ...n, style: { opacity: fora ? 0.3 : (apagadoPorSistema ? 0.22 : 1) } }
+        return {
+          ...n,
+          data: { ...n.data, __corPorArea: modoCor === 'area' },
+          style: { opacity: fora ? 0.3 : (apagadoPorSistema ? 0.22 : 1) },
+        }
       })
     const chaves = new Set(visiveis.map((n) => n.id))
     return {
       nosFiltrados: visiveis,
       linhasFiltradas: linhasBase.filter((l) => chaves.has(l.source) && chaves.has(l.target)),
     }
-  }, [nos, linhas, filtro, area, camada])
+  }, [nos, linhas, filtro, area, camada, modoCor])
+
+  const legenda = useMemo(() => {
+    const conta = new Map()
+    for (const n of nos) {
+      const k = n.data.area || 'Sem área'
+      const c = conta.get(k) || { nome: k, cor: n.data.area_cor || '#6E6A64', qtd: 0 }
+      c.qtd += 1
+      if (n.data.area_cor) c.cor = n.data.area_cor
+      conta.set(k, c)
+    }
+    return [...conta.values()].sort((a, b) => b.qtd - a.qtd)
+  }, [nos])
+
+  const criarArea = async () => {
+    const nome = window.prompt('Nome da nova área:')
+    if (!nome?.trim()) return
+    const cor = window.prompt('Cor em hexadecimal (ex: #1F60A8):', '#6E6A64')
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/area`, {
+        method: 'POST', headers: cab('minimal'),
+        body: JSON.stringify({ nome: nome.trim(), cor: (cor || '#6E6A64').trim(), ordem: 99 }),
+      })
+      if (!r.ok) throw new Error(await r.text())
+      await carregar()
+    } catch (e) { setErro(`Não consegui criar a área: ${e.message}`) }
+  }
 
   const dentroDaArea = useMemo(
     () => area === 'todas' ? nosFiltrados.length
@@ -376,6 +417,16 @@ export default function MapaFluxos({ embutido = false }) {
             ? `${bruto.length} nós · ${linhas.length} ligações`
             : `${dentroDaArea} na área · ${nosFiltrados.length - dentroDaArea} na fronteira`}
         </div>
+
+        <button onClick={() => setModoCor((m) => m === 'area' ? 'sistema' : 'area')}
+          title="Alterna a cor dos nós entre área responsável e sistema onde roda"
+          style={{
+            fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', padding: '5px 11px',
+            border: '1px solid #E4E1DC', background: '#fff', color: '#1A1A18', borderRadius: 3,
+            whiteSpace: 'nowrap',
+          }}>
+          Cor: {modoCor === 'area' ? 'área' : 'sistema'}
+        </button>
 
         <div style={{ display: 'flex', gap: 4 }}>
           {[['processo','Processo'],['medicao','Medição'],['tudo','Tudo']].map(([k, r]) => (
@@ -449,7 +500,36 @@ export default function MapaFluxos({ embutido = false }) {
       </div>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <div style={{ flex: 1, background: '#FBFAF8' }}>
+        <div style={{ flex: 1, background: '#FBFAF8', position: 'relative' }}>
+          {modoCor === 'area' && (
+            <div style={{
+              position: 'absolute', left: 12, top: 12, zIndex: 5, background: '#fff',
+              border: '1px solid #E4E1DC', borderRadius: 4, padding: '9px 11px', maxWidth: 210,
+              boxShadow: '0 1px 6px rgba(0,0,0,.06)',
+            }}>
+              <div style={{ fontSize: 10, color: '#6E6A64', textTransform: 'uppercase',
+                            letterSpacing: '.05em', marginBottom: 7 }}>Áreas</div>
+              {legenda.map((l) => (
+                <button key={l.nome} onClick={() => setArea(area === l.nome ? 'todas' : l.nome)}
+                  title={`${l.qtd} nó(s) · clique para filtrar`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 7, width: '100%', padding: '3px 0',
+                    background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                    opacity: area === 'todas' || area === l.nome ? 1 : .4, textAlign: 'left',
+                  }}>
+                  <span style={{ width: 10, height: 10, background: l.cor, borderRadius: 2, flexShrink: 0,
+                                 boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.15)' }} />
+                  <span style={{ fontSize: 11.5, color: '#1A1A18', flex: 1,
+                                 fontWeight: area === l.nome ? 600 : 400 }}>{l.nome}</span>
+                  <span style={{ fontSize: 10.5, color: '#6E6A64', fontVariantNumeric: 'tabular-nums' }}>{l.qtd}</span>
+                </button>
+              ))}
+              <button onClick={criarArea} style={{
+                marginTop: 7, fontSize: 11, color: '#1F60A8', background: 'transparent',
+                border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit',
+              }}>+ nova área</button>
+            </div>
+          )}
           <ReactFlow
             nodes={nosFiltrados}
             edges={linhasFiltradas}
@@ -473,7 +553,7 @@ export default function MapaFluxos({ embutido = false }) {
             <Controls showInteractive={false} />
             <MiniMap
               pannable zoomable
-              nodeColor={(n) => info(n.data?.sistema).cor}
+              nodeColor={(n) => modoCor === 'area' ? (n.data?.area_cor || '#6E6A64') : info(n.data?.sistema).cor}
               style={{ background: '#F4F2EE', border: '1px solid #E4E1DC' }}
             />
           </ReactFlow>
@@ -489,7 +569,7 @@ export default function MapaFluxos({ embutido = false }) {
             ) : selNo ? (
               <DetalheNo no={selNo} onSalvar={salvarNo} onExcluir={excluirNo}
                          onFechar={() => setSel(null)}
-                         projetos={projetos} ganhos={ganhos}
+                         projetos={projetos} ganhos={ganhos} areas={listaAreas}
                          onVincular={vincularProjeto} onCriarProjeto={criarProjeto}
                          onCriarTarefa={criarTarefa} onRecarregar={carregar} />
             ) : (
@@ -518,7 +598,7 @@ export default function MapaFluxos({ embutido = false }) {
   )
 }
 
-function DetalheNo({ no, onSalvar, onExcluir, onFechar, projetos, ganhos, onVincular, onCriarProjeto, onCriarTarefa, onRecarregar }) {
+function DetalheNo({ no, onSalvar, onExcluir, onFechar, projetos, ganhos, areas, onVincular, onCriarProjeto, onCriarTarefa, onRecarregar }) {
   const [edicao, setEdicao] = useState(false)
   const [f, setF] = useState({ rotulo: no.rotulo, descricao: no.descricao || '', sistema: no.sistema, tipo: no.tipo })
   const [salvando, setSalvando] = useState(false)
@@ -579,6 +659,25 @@ function DetalheNo({ no, onSalvar, onExcluir, onFechar, projetos, ganhos, onVinc
               </div>
             ))}
           </dl>
+          <div style={{ marginTop: 16, paddingTop: 13, borderTop: '1px solid #E4E1DC' }}>
+            <label style={{ fontSize: 11, color: '#6E6A64', marginBottom: 4, display: 'block' }}>
+              Área responsável
+            </label>
+            <select value={no.area_id || ''}
+              onChange={(e) => onSalvar(no.chave, { area_id: e.target.value || null })}
+              style={{
+                width: '100%', fontFamily: 'inherit', fontSize: 12.5, padding: '6px 8px',
+                border: '1px solid #E4E1DC', borderRadius: 3, background: '#fff',
+              }}>
+              <option value="">— sem área —</option>
+              {(areas || []).map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}
+            </select>
+            <div style={{ fontSize: 11, color: '#6E6A64', marginTop: 5, lineHeight: 1.45 }}>
+              Vale para qualquer passo, mesmo os que não são automação — o e-mail que chega
+              na caixa do Comercial é do Comercial.
+            </div>
+          </div>
+
           <BlocoAutomacao no={no} projetos={projetos} ganhos={ganhos}
             onVincular={onVincular} onCriarProjeto={onCriarProjeto}
             onCriarTarefa={onCriarTarefa} onRecarregar={onRecarregar} />
