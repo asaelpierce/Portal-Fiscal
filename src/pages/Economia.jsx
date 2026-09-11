@@ -24,6 +24,10 @@ const nf = (v, d = 1) =>
   Number(v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d })
 const ni = (v) => Number(v ?? 0).toLocaleString('pt-BR')
 const num = { fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum"' }
+const dMes = (iso) => {
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})/)
+  return m ? `${MES[+m[2] - 1]}/${m[1].slice(2)}` : '—'
+}
 
 const MES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez']
 const rotuloMes = (iso) => {
@@ -203,7 +207,7 @@ export default function Economia({ embutido = false }) {
         padding: '16px 20px', marginBottom: 26, maxWidth: 900,
       }}>
         <p style={{ margin: 0, fontSize: 14, lineHeight: 1.65, color: TINTA }}>
-          De março a setembro de 2026, <strong>{ni(totais?.projetos)} automações</strong> devolveram{' '}
+          De {dMes(totais?.primeira_medicao)} a {dMes(totais?.dado_mais_recente)}, <strong>{ni(totais?.projetos)} automações</strong> devolveram{' '}
           <strong>{nf(totais?.horas_acumuladas)} horas</strong> de trabalho manual ao time — o
           equivalente a <strong>{nf(totais?.dias_uteis)} dias</strong> de oito horas. O ritmo atual é
           de <strong>{nf(totais?.horas_mes)} horas por mês</strong>, projetando{' '}
@@ -219,6 +223,11 @@ export default function Economia({ embutido = false }) {
             O tempo por item é sempre informado por quem executava a tarefa antes da automação.
           </p>
         )}
+        <p style={{ margin: '10px 0 0', fontSize: 12.5, lineHeight: 1.6, color: SUAVE }}>
+          <strong style={{ color: TINTA }}>Idades diferentes: </strong>
+          as automações entraram em operação em momentos distintos, de set/25 a ago/26. Comparar o
+          acumulado entre elas favorece as mais antigas — a coluna <em>por mês</em> é a comparação justa.
+        </p>
       </div>
 
       {fin && (
@@ -326,7 +335,10 @@ export default function Economia({ embutido = false }) {
               <div style={{ fontSize: 13, color: TINTA, lineHeight: 1.35 }}>
                 {t.tarefa}
                 {t.tem_baseline_declarado && <span style={{ color: SINAL, marginLeft: 5, fontWeight: 600 }}>*</span>}
-                <span style={{ color: SUAVE, fontSize: 11.5, marginLeft: 8 }}>{t.nome_projeto}</span>
+                <span style={{ color: SUAVE, fontSize: 11.5, marginLeft: 8 }}>
+                  {t.nome_projeto}
+                  {t.medido_desde && ` · desde ${dMes(t.medido_desde)}`}
+                </span>
               </div>
               <div style={{ display: 'flex', height: 18, background: '#F1EFEB' }}>
                 <div className="ec-barra" style={{
@@ -510,6 +522,8 @@ export default function Economia({ embutido = false }) {
             <tr>
               <th style={th()}>Tarefa</th>
               <th style={th()}>Automação</th>
+              <th style={th()}>Desde</th>
+              <th style={th('right')}>Meses</th>
               <th style={th('right')}>Volume</th>
               <th style={th('right')}>Entrando/mês</th>
               <th style={th('right')}>Min/item</th>
@@ -529,6 +543,10 @@ export default function Economia({ embutido = false }) {
                   {t.tem_baseline_declarado && <span style={{ color: SINAL, marginLeft: 5, fontWeight: 600 }}>*</span>}
                 </td>
                 <td style={{ ...td(), color: SUAVE, fontSize: 12.5 }}>{t.nome_projeto}</td>
+                <td style={{ ...td(), color: SUAVE, fontSize: 12 }}>{dMes(t.medido_desde)}</td>
+                <td style={{ ...td('right'), ...num, color: SUAVE, fontSize: 12 }}>
+                  {t.meses_ativa != null ? nf(t.meses_ativa, 1) : '—'}
+                </td>
                 <td style={{ ...td('right'), ...num }}>{ni(t.vol_medido)}</td>
                 <td style={{ ...td('right'), ...num, color: SUAVE }}>+{nf(t.vol_medido_mes, 0)}</td>
                 <td style={{ ...td('right'), ...num }}>{nf(t.min_antes, 1)}</td>
@@ -540,6 +558,8 @@ export default function Economia({ embutido = false }) {
           <tfoot>
             <tr>
               <td style={{ ...td(), fontWeight: 600, borderBottom: 'none' }}>Total</td>
+              <td style={{ ...td(), borderBottom: 'none' }} />
+              <td style={{ ...td(), borderBottom: 'none' }} />
               <td style={{ ...td(), borderBottom: 'none' }} />
               <td style={{ ...td('right'), ...num, fontWeight: 600, borderBottom: 'none' }}>{ni(totais?.eventos_processados)}</td>
               <td style={{ ...td(), borderBottom: 'none' }} />
