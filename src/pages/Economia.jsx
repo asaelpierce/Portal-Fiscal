@@ -69,17 +69,20 @@ export default function Economia({ embutido = false }) {
   const [fase, setFase] = useState('carregando')
   const [erro, setErro] = useState('')
   const [setorAberto, setSetorAberto] = useState(null)
+  const [proc, setProc] = useState(null)
 
   const carregar = async () => {
     setErro('')
     try {
-      const [t, g, s, m] = await Promise.all([
+      const [t, g, s, m, pr] = await Promise.all([
         sbFetch('automacao_ganhos_totais?select=*'),
         sbFetch('automacao_ganhos_tarefas?select=*&order=horas_acumuladas.desc'),
         sbFetch('automacao_ganhos_por_setor?select=*&order=horas_acumuladas.desc'),
         sbFetch('automacao_ganhos_mensal?select=*&order=mes.asc'),
+        sbFetch('automacao_procedencia?select=*'),
       ])
       setTotais(t?.[0] || null); setTarefas(g || []); setSetores(s || []); setMensal(m || [])
+      setProc(pr?.[0] || null)
       setFase('pronto')
     } catch (e) { setErro(e.message); setFase('erro') }
   }
@@ -152,8 +155,39 @@ export default function Economia({ embutido = false }) {
         @keyframes ec-crescer { from { transform: scaleX(0) } to { transform: scaleX(1) } }
         .ec-barra { transform-origin: left center; animation: ec-crescer .5s cubic-bezier(.2,.7,.3,1) both }
         .ec-linha:hover { background: #F4F2EE }
+        @media print {
+          @page { size: A4 portrait; margin: 14mm 12mm; }
+          .ec-barra { animation: none !important; transform: none !important }
+          .ec-nao-imprime { display: none !important }
+          h2 { break-after: avoid }
+          .ec-bloco { break-inside: avoid }
+          .ec-resumo { border-left-width: 3px }
+        }
         @media (prefers-reduced-motion: reduce) { .ec-barra { animation: none } }
       `}</style>
+
+      <div className="ec-resumo" style={{
+        background: '#fff', border: `1px solid ${TRACO}`, borderLeft: `3px solid ${RAMPA[0]}`,
+        padding: '16px 20px', marginBottom: 26, maxWidth: 900,
+      }}>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.65, color: TINTA }}>
+          De março a setembro de 2026, <strong>{ni(totais?.projetos)} automações</strong> devolveram{' '}
+          <strong>{nf(totais?.horas_acumuladas)} horas</strong> de trabalho manual ao time — o
+          equivalente a <strong>{nf(totais?.dias_uteis)} dias</strong> de oito horas. O ritmo atual é
+          de <strong>{nf(totais?.horas_mes)} horas por mês</strong>, projetando{' '}
+          <strong>{nf(totais?.horas_ano, 0)} horas ao ano</strong>.
+        </p>
+        {proc && (
+          <p style={{ margin: '12px 0 0', fontSize: 12.5, lineHeight: 1.6, color: SUAVE }}>
+            <strong style={{ color: TINTA }}>Procedência: </strong>
+            {nf(proc.pct_contado, 0)}% desse total ({nf(proc.horas_volume_contado)} h) vem de volume
+            contado automaticamente no banco, em {ni(proc.tarefas_volume_contado)} de{' '}
+            {ni(proc.tarefas)} tarefas. O restante apoia-se em volume declarado pela área e está
+            marcado com <span style={{ color: SINAL, fontWeight: 600 }}>*</span> ao longo da página.
+            O tempo por item é sempre informado por quem executava a tarefa antes da automação.
+          </p>
+        )}
+      </div>
 
       {!embutido && (
       <div style={{
@@ -191,7 +225,7 @@ export default function Economia({ embutido = false }) {
         As barras mostram quanto cada automação devolveu naquele mês. A linha verde é o total somado desde
         o começo. O mês marcado com · ainda está correndo, por isso a barra é menor.
       </p>
-      <div style={{ background: '#fff', border: `1px solid ${TRACO}`, padding: '18px 14px 10px', marginBottom: 40 }}>
+      <div className="ec-bloco" style={{ background: '#fff', border: `1px solid ${TRACO}`, padding: '18px 14px 10px', marginBottom: 40 }}>
         <div style={{ width: '100%', height: 330 }}>
           <ResponsiveContainer>
             <ComposedChart data={serie} margin={{ top: 6, right: 14, left: 0, bottom: 0 }}>
@@ -259,7 +293,7 @@ export default function Economia({ embutido = false }) {
         volume; no alto, as que rendem porque cada ocorrência custava caro. Escala logarítmica
         nos dois eixos — sem ela as pequenas desapareceriam.
       </p>
-      <div style={{ background: '#fff', border: `1px solid ${TRACO}`, padding: '18px 14px 10px', marginBottom: 40 }}>
+      <div className="ec-bloco" style={{ background: '#fff', border: `1px solid ${TRACO}`, padding: '18px 14px 10px', marginBottom: 40 }}>
         <div style={{ width: '100%', height: 340 }}>
           <ResponsiveContainer>
             <ScatterChart margin={{ top: 34, right: 46, left: 4, bottom: 22 }}>
