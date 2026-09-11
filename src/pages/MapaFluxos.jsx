@@ -4,6 +4,7 @@ import {
   useNodesState, useEdgesState, MarkerType, addEdge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import dagre from '@dagrejs/dagre'
 import { SUPABASE_URL, SUPABASE_ANON_KEY, sbFetch } from '../config.js'
 import { Spinner, EmptyState, Btn } from '../components/UI.jsx'
 
@@ -65,6 +66,27 @@ function NoFluxo({ data, selected }) {
 }
 const tiposNo = { fluxo: NoFluxo }
 
+// Layout em camadas da esquerda para a direita. Com 27 nós posicionados
+// à mão o mapa vira espaguete; o dagre resolve o cruzamento de arestas.
+function organizar(nos, linhas, espacamento = 'normal') {
+  const g = new dagre.graphlib.Graph()
+  g.setGraph({
+    rankdir: 'LR',
+    nodesep: espacamento === 'largo' ? 70 : 42,
+    ranksep: espacamento === 'largo' ? 160 : 110,
+    marginx: 30, marginy: 30,
+  })
+  g.setDefaultEdgeLabel(() => ({}))
+  const L = 210, A = 74
+  nos.forEach((n) => g.setNode(n.id, { width: L, height: A }))
+  linhas.forEach((e) => { if (e.source && e.target) g.setEdge(e.source, e.target) })
+  dagre.layout(g)
+  return nos.map((n) => {
+    const p = g.node(n.id)
+    return p ? { ...n, position: { x: p.x - L / 2, y: p.y - A / 2 } } : n
+  })
+}
+
 const CORLINHA = { dados: '#8B8781', gatilho: '#1F60A8', notificacao: '#B45309', condicional: '#6D28D9' }
 
 export default function MapaFluxos({ embutido = false }) {
@@ -82,6 +104,7 @@ export default function MapaFluxos({ embutido = false }) {
   const [expandido, setExpandido] = useState(false)
   const [criando, setCriando] = useState(false)
   const [area, setArea] = useState('todas')
+  const [camada, setCamada] = useState('processo')
 
   const carregar = useCallback(async () => {
     setErro('')
@@ -233,19 +256,27 @@ export default function MapaFluxos({ embutido = false }) {
   // apagados: é na fronteira que estão os acordos entre setores, e sem
   // eles o mapa da área parece um sistema fechado, que não é.
   const { nosFiltrados, linhasFiltradas } = useMemo(() => {
+    // camada primeiro: a instrumentação de medição não é processo do
+    // negócio e, misturada, cruza linha com tudo
+    const nosCamada = camada === 'tudo'
+      ? nos : nos.filter((n) => (n.data.camada || 'processo') === camada)
+    const chavesCamada = new Set(nosCamada.map((n) => n.id))
+    const linhasCamada = linhas.filter(
+      (l) => chavesCamada.has(l.source) && chavesCamada.has(l.target))
+    const nosBase = nosCamada, linhasBase = linhasCamada
     if (area === 'todas') {
-      const base = filtro === 'todos' ? nos
-        : nos.map((n) => ({ ...n, style: { opacity: n.data.sistema === filtro ? 1 : .22 } }))
-      return { nosFiltrados: base, linhasFiltradas: linhas }
+      const base = filtro === 'todos' ? nosBase
+        : nosBase.map((n) => ({ ...n, style: { opacity: n.data.sistema === filtro ? 1 : .22 } }))
+      return { nosFiltrados: base, linhasFiltradas: linhasBase }
     }
     const dentro = new Set(
-      nos.filter((n) => (n.data.area || 'Sem área') === area).map((n) => n.id))
+      nosBase.filter((n) => (n.data.area || 'Sem área') === area).map((n) => n.id))
     const vizinhos = new Set()
-    for (const l of linhas) {
+    for (const l of linhasBase) {
       if (dentro.has(l.source) && !dentro.has(l.target)) vizinhos.add(l.target)
       if (dentro.has(l.target) && !dentro.has(l.source)) vizinhos.add(l.source)
     }
-    const visiveis = nos
+    const visiveis = nosBase
       .filter((n) => dentro.has(n.id) || vizinhos.has(n.id))
       .map((n) => {
         const fora = !dentro.has(n.id)
@@ -255,9 +286,9 @@ export default function MapaFluxos({ embutido = false }) {
     const chaves = new Set(visiveis.map((n) => n.id))
     return {
       nosFiltrados: visiveis,
-      linhasFiltradas: linhas.filter((l) => chaves.has(l.source) && chaves.has(l.target)),
+      linhasFiltradas: linhasBase.filter((l) => chaves.has(l.source) && chaves.has(l.target)),
     }
-  }, [nos, linhas, filtro, area])
+  }, [nos, linhas, filtro, area, camada])
 
   const dentroDaArea = useMemo(
     () => area === 'todas' ? nosFiltrados.length
@@ -295,6 +326,20 @@ export default function MapaFluxos({ embutido = false }) {
             : `${dentroDaArea} na área · ${nosFiltrados.length - dentroDaArea} na fronteira`}
         </div>
 
+        <div style={{ display: 'flex', gap: 4 }}>
+          {[['processo','Processo'],['medicao','Medição'],['tudo','Tudo']].map(([k, r]) => (
+            <button key={k} onClick={() => setCamada(k)}
+              title={k === 'processo' ? 'Só o processo do negócio'
+                   : k === 'medicao' ? 'Só a instrumentação que mede' : 'Processo e medição juntos'}
+              style={{
+                fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', padding: '5px 11px',
+                border: `1px solid ${camada === k ? '#1A1A18' : '#E4E1DC'}`,
+                background: camada === k ? '#1A1A18' : '#fff',
+                color: camada === k ? '#fff' : '#6E6A64', borderRadius: 2,
+              }}>{r}</button>
+          ))}
+        </div>
+
         <select value={area} onChange={(e) => setArea(e.target.value)}
           style={{
             fontFamily: 'inherit', fontSize: 12.5, padding: '5px 9px',
@@ -322,6 +367,12 @@ export default function MapaFluxos({ embutido = false }) {
             {salvando ? 'Salvando…' : 'Salvar posições'}
           </Btn>
         )}
+        <button onClick={() => { setNos(organizar(nosFiltrados, linhasFiltradas)); setSujo(true) }}
+          title="Reposiciona os nós em camadas, da esquerda para a direita"
+          style={{
+            fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', padding: '5px 11px',
+            border: '1px solid #E4E1DC', background: '#fff', color: '#1A1A18', borderRadius: 3,
+          }}>⇄  Organizar</button>
         <button onClick={() => { setCriando(true); setSel(null) }}
           style={{
             fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', padding: '5px 11px',
