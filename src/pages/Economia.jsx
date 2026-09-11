@@ -3,7 +3,7 @@ import { sbFetch } from '../config.js'
 import { Spinner, EmptyState, Btn } from '../components/UI.jsx'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, ScatterChart, Scatter, ZAxis, Cell,
+  Legend, ResponsiveContainer, Treemap, Cell,
 } from 'recharts'
 
 const RAMPA = ['#0D2B54', '#1F60A8', '#3D86CC', '#6BAAE2', '#A3C8EE', '#C9DEF5', '#E2EDF9']
@@ -70,19 +70,21 @@ export default function Economia({ embutido = false }) {
   const [erro, setErro] = useState('')
   const [setorAberto, setSetorAberto] = useState(null)
   const [proc, setProc] = useState(null)
+  const [fin, setFin] = useState(null)
 
   const carregar = async () => {
     setErro('')
     try {
-      const [t, g, s, m, pr] = await Promise.all([
+      const [t, g, s, m, pr, fi] = await Promise.all([
         sbFetch('automacao_ganhos_totais?select=*'),
         sbFetch('automacao_ganhos_tarefas?select=*&order=horas_acumuladas.desc'),
         sbFetch('automacao_ganhos_por_setor?select=*&order=horas_acumuladas.desc'),
         sbFetch('automacao_ganhos_mensal?select=*&order=mes.asc'),
         sbFetch('automacao_procedencia?select=*'),
+        sbFetch('automacao_financeiro?select=*'),
       ])
       setTotais(t?.[0] || null); setTarefas(g || []); setSetores(s || []); setMensal(m || [])
-      setProc(pr?.[0] || null)
+      setProc(pr?.[0] || null); setFin(fi?.[0] || null)
       setFase('pronto')
     } catch (e) { setErro(e.message); setFase('erro') }
   }
@@ -108,6 +110,21 @@ export default function Economia({ embutido = false }) {
     }
     return { serie: ord, projetos: nomes, coresProjeto: cores }
   }, [mensal])
+
+  const arvore = useMemo(
+    () => lista
+      .filter((t) => Number(t.horas_acumuladas) > 0)
+      .map((t) => ({
+        name: t.tarefa,
+        projeto: t.nome_projeto,
+        valor: Number(t.horas_acumuladas),
+        volume: Number(t.vol_medido) || 0,
+        min: Number(t.min_antes) - Number(t.min_depois),
+        cor: t.cor,
+        baseline: !!t.tem_baseline_declarado,
+      })),
+    [lista],
+  )
 
   const dispersao = useMemo(
     () => lista
@@ -188,6 +205,37 @@ export default function Economia({ embutido = false }) {
           </p>
         )}
       </div>
+
+      {fin && (
+        <div className="ec-bloco" style={{
+          background: '#fff', border: `1px solid ${TRACO}`, padding: '16px 20px',
+          marginBottom: 26, maxWidth: 900,
+        }}>
+          <div style={{ fontSize: 11, color: SUAVE, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>
+            Convertido em custo de mão de obra
+          </div>
+          <div style={{ display: 'flex', gap: 34, flexWrap: 'wrap' }}>
+            {[
+              ['Já economizado', `R$ ${ni(fin.acumulado_min)} a ${ni(fin.acumulado_max)}`],
+              ['Por mês', `R$ ${ni(fin.mensal_min)} a ${ni(fin.mensal_max)}`],
+              ['Por ano', `R$ ${ni(fin.anual_min)} a ${ni(fin.anual_max)}`],
+            ].map(([r, v]) => (
+              <div key={r}>
+                <div style={{ fontSize: 12, color: SUAVE, marginBottom: 5 }}>{r}</div>
+                <div style={{ ...num, fontSize: 19, color: TINTA, fontWeight: 500 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+          <p style={{ fontSize: 11.5, color: SUAVE, lineHeight: 1.6, margin: '12px 0 0' }}>
+            Premissa: salário mensal de R$ {ni(fin.sal_min)} a R$ {ni(fin.sal_max)} sobre jornada de{' '}
+            {ni(fin.jornada)} h, resultando em R$ {nf(fin.custo_hora_min, 2)} a{' '}
+            R$ {nf(fin.custo_hora_max, 2)} por hora.
+            {Number(fin.encargos) <= 1
+              ? ' É salário puro: encargos, benefícios e provisões não estão incluídos, então o custo real para a empresa é maior.'
+              : ` Inclui fator de encargos de ${nf(fin.encargos, 2)}.`}
+          </p>
+        </div>
+      )}
 
       {!embutido && (
       <div style={{
@@ -287,52 +335,41 @@ export default function Economia({ embutido = false }) {
         })}
       </div>
 
-      <h2 style={h2}>Volume ou tempo unitário</h2>
+      <h2 style={h2}>O peso de cada automação</h2>
       <p style={sub}>
-        Cada bolha é uma tarefa; o tamanho é a economia acumulada. À direita, as que rendem por
-        volume; no alto, as que rendem porque cada ocorrência custava caro. Escala logarítmica
-        nos dois eixos — sem ela as pequenas desapareceriam.
+        Cada retângulo é uma tarefa, e a área é proporcional às horas economizadas. Serve para
+        enxergar de uma vez onde está o resultado — e onde ainda não está.
       </p>
-      <div className="ec-bloco" style={{ background: '#fff', border: `1px solid ${TRACO}`, padding: '18px 14px 10px', marginBottom: 40 }}>
-        <div style={{ width: '100%', height: 340 }}>
+      <div className="ec-bloco" style={{
+        background: '#fff', border: `1px solid ${TRACO}`, padding: 14, marginBottom: 16,
+      }}>
+        <div style={{ width: '100%', height: 380 }}>
           <ResponsiveContainer>
-            <ScatterChart margin={{ top: 34, right: 46, left: 4, bottom: 22 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#F1EFEB" />
-              <XAxis type="number" dataKey="vol" name="Volume" scale="log" domain={[1, 4000]}
-                     ticks={[1, 10, 100, 1000]}
-                     tick={{ fontSize: 11.5, fill: SUAVE }} axisLine={{ stroke: TRACO }} tickLine={false}
-                     label={{ value: 'itens processados', position: 'insideBottom', offset: -10,
-                              fontSize: 11, fill: SUAVE }} />
-              <YAxis type="number" dataKey="min" name="Min/item" scale="log" domain={[1, 120]}
-                     ticks={[1, 3, 10, 30, 100]}
-                     tick={{ fontSize: 11.5, fill: SUAVE }} axisLine={false} tickLine={false} unit=" min"
-                     width={66} />
-              <ZAxis type="number" dataKey="horas" range={[60, 900]} />
-              <Tooltip
-                cursor={{ strokeDasharray: '3 3' }}
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null
-                  const d = payload[0].payload
-                  return (
-                    <div style={{
-                      background: '#fff', border: `1px solid ${TRACO}`, padding: '10px 12px',
-                      fontSize: 12, maxWidth: 250, boxShadow: '0 2px 10px rgba(0,0,0,.07)',
-                    }}>
-                      <div style={{ fontWeight: 600, color: TINTA, marginBottom: 5 }}>{d.tarefa}</div>
-                      <div style={{ color: SUAVE, marginBottom: 6 }}>{d.projeto}</div>
-                      <div style={{ ...num }}>
-                        {ni(d.vol)} itens × {nf(d.min, 1)} min ={' '}
-                        <strong style={{ color: TINTA }}>{nf(d.horas)} h</strong>
-                      </div>
-                    </div>
-                  )
-                }} />
-              <Scatter data={dispersao} fillOpacity={0.82}>
-                {dispersao.map((d, i) => <Cell key={i} fill={d.cor} />)}
-              </Scatter>
-            </ScatterChart>
+            <Treemap
+              data={arvore}
+              dataKey="valor"
+              aspectRatio={16 / 9}
+              stroke="#fff"
+              isAnimationActive={false}
+              content={<Celula />}
+            />
           </ResponsiveContainer>
         </div>
+      </div>
+      <div style={{
+        display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 40,
+        fontSize: 11.5, color: SUAVE,
+      }}>
+        {lista.filter((t) => Number(t.horas_acumuladas) > 0).map((t) => (
+          <span key={t.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{
+              width: 9, height: 9, background: t.cor,
+              boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.14)',
+            }} />
+            {t.nome_projeto}
+            <span style={{ ...num, color: TINTA }}>{nf(t.horas_acumuladas)} h</span>
+          </span>
+        ))}
       </div>
 
       <h2 style={h2}>Quem ganhou esse tempo</h2>
@@ -470,5 +507,54 @@ export default function Economia({ embutido = false }) {
         no período, por isso a barra delas é constante. As demais usam a data real de cada registro.
       </p>
     </div>
+  )
+}
+
+
+// Retângulo do treemap: rotula só quando cabe, senão o gráfico vira poluição.
+function claro(hex) {
+  const h = String(hex || '').replace('#', '')
+  if (h.length !== 6) return false
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16))
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150
+}
+
+function Celula(props) {
+  const { x, y, width, height, cor, name, projeto, valor, baseline } = props
+  if (width == null || height == null) return null
+  const tinta = claro(cor) ? '#0D2B54' : '#fff'
+  const cabeTexto = width > 92 && height > 46
+  const cabeHoras = width > 62 && height > 30
+  return (
+    <g>
+      <rect x={x} y={y} width={width} height={height}
+            fill={cor || '#1F60A8'} stroke="#fff" strokeWidth={2}
+            style={{ filter: baseline ? 'none' : 'none' }} />
+      {baseline && (
+        <rect x={x} y={y} width={width} height={height} fill="url(#ec-hachura)" opacity={0.5} />
+      )}
+      {cabeTexto && (
+        <text x={x + 10} y={y + 21} fill={tinta} fontSize={11.5} fontWeight={600}>
+          {projeto?.length > Math.floor(width / 7) ? `${projeto.slice(0, Math.floor(width / 7))}…` : projeto}
+        </text>
+      )}
+      {cabeTexto && (
+        <text x={x + 10} y={y + 37} fill={tinta} fontSize={10} opacity={0.85}>
+          {name?.length > Math.floor(width / 5.6) ? `${name.slice(0, Math.floor(width / 5.6))}…` : name}
+        </text>
+      )}
+      {cabeHoras && (
+        <text x={x + 10} y={y + height - 12} fill={tinta} fontSize={14} fontWeight={600}
+              style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
+        </text>
+      )}
+      <defs>
+        <pattern id="ec-hachura" width="8" height="8" patternTransform="rotate(135)"
+                 patternUnits="userSpaceOnUse">
+          <line x1="0" y="0" x2="0" y2="8" stroke="#000" strokeWidth="2" opacity="0.13" />
+        </pattern>
+      </defs>
+    </g>
   )
 }
