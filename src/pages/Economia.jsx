@@ -3,7 +3,7 @@ import { sbFetch } from '../config.js'
 import { Spinner, EmptyState, Btn } from '../components/UI.jsx'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer,
+  Legend, ResponsiveContainer, ScatterChart, Scatter, ZAxis, Cell,
 } from 'recharts'
 
 const RAMPA = ['#0D2B54', '#1F60A8', '#3D86CC', '#6BAAE2', '#A3C8EE', '#C9DEF5', '#E2EDF9']
@@ -106,6 +106,18 @@ export default function Economia({ embutido = false }) {
     return { serie: ord, projetos: nomes, coresProjeto: cores }
   }, [mensal])
 
+  const dispersao = useMemo(
+    () => lista
+      .filter((t) => Number(t.vol_medido) > 0 && Number(t.horas_acumuladas) > 0)
+      .map((t) => ({
+        tarefa: t.tarefa, projeto: t.nome_projeto, cor: t.cor,
+        vol: Number(t.vol_medido),
+        min: Number(t.min_antes) - Number(t.min_depois),
+        horas: Number(t.horas_acumuladas),
+      })),
+    [lista],
+  )
+
   const maiorMin = useMemo(() => Math.max(1, ...lista.map((t) => Number(t.min_antes) || 0)), [lista])
   const maiorSetor = useMemo(
     () => Math.max(1, ...setores.map((s) => Number(s.horas_acumuladas) || 0)), [setores])
@@ -199,36 +211,94 @@ export default function Economia({ embutido = false }) {
         </div>
       </div>
 
-      <h2 style={h2}>Quanto custava cada tarefa</h2>
+      <h2 style={h2}>O que cada tarefa custava, e o que custa hoje</h2>
       <p style={sub}>
-        Tempo que uma pessoa gastava por item antes da automação. Hoje todas levam zero:
-        nenhuma exige acompanhamento.
+        A barra escura é o tempo que sobrou. A clara é o que a automação devolveu.
+        Nem toda tarefa foi a zero: algumas só encolheram.
       </p>
-      <div style={{ marginBottom: 40, maxWidth: 830 }}>
-        {lista.map((t, i) => (
-          <div key={t.id} style={{
-            display: 'grid', gridTemplateColumns: '1fr 250px 112px', gap: 16,
-            alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${TRACO}`,
-          }}>
-            <div style={{ fontSize: 13, color: TINTA, lineHeight: 1.35 }}>
-              {t.tarefa}
-              {t.tem_baseline_declarado && <span style={{ color: SINAL, marginLeft: 5, fontWeight: 600 }}>*</span>}
-              <span style={{ color: SUAVE, fontSize: 11.5, marginLeft: 8 }}>{t.nome_projeto}</span>
+      <div style={{ marginBottom: 40, maxWidth: 880 }}>
+        {lista.map((t, i) => {
+          const antes = Number(t.min_antes) || 0
+          const depois = Number(t.min_depois) || 0
+          const pct = antes ? Math.round(((antes - depois) / antes) * 100) : 0
+          return (
+            <div key={t.id} style={{
+              display: 'grid', gridTemplateColumns: '1fr 300px 104px 60px', gap: 14,
+              alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${TRACO}`,
+            }}>
+              <div style={{ fontSize: 13, color: TINTA, lineHeight: 1.35 }}>
+                {t.tarefa}
+                {t.tem_baseline_declarado && <span style={{ color: SINAL, marginLeft: 5, fontWeight: 600 }}>*</span>}
+                <span style={{ color: SUAVE, fontSize: 11.5, marginLeft: 8 }}>{t.nome_projeto}</span>
+              </div>
+              <div style={{ display: 'flex', height: 18, background: '#F1EFEB' }}>
+                <div className="ec-barra" style={{
+                  width: `${(depois / maiorMin) * 100}%`, background: '#4A4741',
+                  animationDelay: `${i * 0.04}s`,
+                }} title={`Ainda leva ${nf(depois, 1)} min`} />
+                <div className="ec-barra" style={{
+                  width: `${((antes - depois) / maiorMin) * 100}%`, background: t.cor,
+                  animationDelay: `${i * 0.04}s`,
+                }} title={`Economiza ${nf(antes - depois, 1)} min`} />
+              </div>
+              <div style={{ ...num, fontSize: 12, color: SUAVE, whiteSpace: 'nowrap' }}>
+                {nf(antes, 1)} → {nf(depois, 1)} min
+              </div>
+              <div style={{
+                ...num, fontSize: 12.5, textAlign: 'right', fontWeight: 600,
+                color: pct === 100 ? '#12805C' : TINTA,
+              }}>−{pct}%</div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-              <div className="ec-barra" style={{
-                height: 20, background: t.cor, animationDelay: `${i * 0.05}s`,
-                width: `${(Number(t.min_antes) / maiorMin) * 100}%`, minWidth: 3,
-              }} />
-              <span style={{ ...num, fontSize: 12, color: SUAVE, whiteSpace: 'nowrap' }}>
-                {nf(t.min_antes, 1)} min → 0
-              </span>
-            </div>
-            <div style={{ ...num, fontSize: 13, textAlign: 'right', color: TINTA, fontWeight: 600 }}>
-              {nf(t.horas_acumuladas)} h
-            </div>
-          </div>
-        ))}
+          )
+        })}
+      </div>
+
+      <h2 style={h2}>Volume ou tempo unitário</h2>
+      <p style={sub}>
+        Cada bolha é uma tarefa; o tamanho é a economia acumulada. À direita, as que rendem por
+        volume; no alto, as que rendem porque cada ocorrência custava caro. Escala logarítmica
+        nos dois eixos — sem ela as pequenas desapareceriam.
+      </p>
+      <div style={{ background: '#fff', border: `1px solid ${TRACO}`, padding: '18px 14px 10px', marginBottom: 40 }}>
+        <div style={{ width: '100%', height: 340 }}>
+          <ResponsiveContainer>
+            <ScatterChart margin={{ top: 34, right: 46, left: 4, bottom: 22 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F1EFEB" />
+              <XAxis type="number" dataKey="vol" name="Volume" scale="log" domain={[1, 4000]}
+                     ticks={[1, 10, 100, 1000]}
+                     tick={{ fontSize: 11.5, fill: SUAVE }} axisLine={{ stroke: TRACO }} tickLine={false}
+                     label={{ value: 'itens processados', position: 'insideBottom', offset: -10,
+                              fontSize: 11, fill: SUAVE }} />
+              <YAxis type="number" dataKey="min" name="Min/item" scale="log" domain={[1, 120]}
+                     ticks={[1, 3, 10, 30, 100]}
+                     tick={{ fontSize: 11.5, fill: SUAVE }} axisLine={false} tickLine={false} unit=" min"
+                     width={66} />
+              <ZAxis type="number" dataKey="horas" range={[60, 900]} />
+              <Tooltip
+                cursor={{ strokeDasharray: '3 3' }}
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null
+                  const d = payload[0].payload
+                  return (
+                    <div style={{
+                      background: '#fff', border: `1px solid ${TRACO}`, padding: '10px 12px',
+                      fontSize: 12, maxWidth: 250, boxShadow: '0 2px 10px rgba(0,0,0,.07)',
+                    }}>
+                      <div style={{ fontWeight: 600, color: TINTA, marginBottom: 5 }}>{d.tarefa}</div>
+                      <div style={{ color: SUAVE, marginBottom: 6 }}>{d.projeto}</div>
+                      <div style={{ ...num }}>
+                        {ni(d.vol)} itens × {nf(d.min, 1)} min ={' '}
+                        <strong style={{ color: TINTA }}>{nf(d.horas)} h</strong>
+                      </div>
+                    </div>
+                  )
+                }} />
+              <Scatter data={dispersao} fillOpacity={0.82}>
+                {dispersao.map((d, i) => <Cell key={i} fill={d.cor} />)}
+              </Scatter>
+            </ScatterChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       <h2 style={h2}>Quem ganhou esse tempo</h2>
