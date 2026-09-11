@@ -112,12 +112,25 @@ export default function Processos() {
               <div style={{ fontSize: 12, color: TINTA, fontWeight: 600, lineHeight: 1.3 }}>
                 {r.nome_projeto}
               </div>
-              <div style={{ ...num, fontSize: 15, color: TINTA, marginTop: 5 }}>
-                {nf(r.horas_acumuladas)} h
-              </div>
-              <div style={{ fontSize: 10.5, color: SUAVE, marginTop: 3 }}>
-                {r.nos > 0 ? `${r.nos} nós · ` : 'sem nó no mapa · '}{ni(r.volume)} itens
-              </div>
+              {Number(r.horas_acumuladas) > 0 ? (
+                <>
+                  <div style={{ ...num, fontSize: 15, color: TINTA, marginTop: 5 }}>
+                    {nf(r.horas_acumuladas)} h
+                  </div>
+                  <div style={{ fontSize: 10.5, color: SUAVE, marginTop: 3 }}>
+                    {r.nos > 0 ? `${r.nos} nós · ` : 'sem nó no mapa · '}{ni(r.volume)} itens
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13, color: '#1F60A8', marginTop: 6, fontWeight: 500 }}>
+                    {ni(r.beneficios)} benefício{r.beneficios > 1 ? 's' : ''}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: SUAVE, marginTop: 3 }}>
+                    sem hora medida ainda
+                  </div>
+                </>
+              )}
             </button>
           )
         })}
@@ -160,7 +173,7 @@ function PainelBeneficios({ dados, carregando, onFechar }) {
   }
   if (!dados) return null
   const tarefas = dados.tarefas_detalhe || []
-  const benef = dados.beneficios || []
+  const benef = dados.beneficios_lista || []
 
   return (
     <div style={{ background: '#fff', borderBottom: `1px solid ${TRACO}`, padding: '20px 26px 24px' }}>
