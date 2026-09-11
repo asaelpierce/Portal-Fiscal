@@ -67,7 +67,7 @@ const tiposNo = { fluxo: NoFluxo }
 
 const CORLINHA = { dados: '#8B8781', gatilho: '#1F60A8', notificacao: '#B45309', condicional: '#6D28D9' }
 
-export default function MapaFluxos() {
+export default function MapaFluxos({ embutido = false }) {
   const [nos, setNos, aoMudarNos] = useNodesState([])
   const [linhas, setLinhas, aoMudarLinhas] = useEdgesState([])
   const [bruto, setBruto] = useState([])
@@ -167,7 +167,9 @@ export default function MapaFluxos() {
   const selNo = sel ? bruto.find((n) => n.chave === sel) : null
 
   return (
-    <div style={{ margin: '-22px -26px -60px', height: 'calc(100vh - 62px)', display: 'flex', flexDirection: 'column' }}>
+    <div style={ embutido
+      ? { height: 'calc(100vh - 250px)', minHeight: 460, display: 'flex', flexDirection: 'column' }
+      : { margin: '-22px -26px -60px', height: 'calc(100vh - 62px)', display: 'flex', flexDirection: 'column' } }>
       <div style={{
         padding: '12px 26px', borderBottom: '1px solid #E4E1DC', background: '#fff',
         display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',

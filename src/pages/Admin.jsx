@@ -12,7 +12,7 @@ export const PAGINAS = [
   { id:'baixagas', label:'Baixa Automática Gás' }, { id:'vinculofrete', label:'Vínculo NF × CT-e' },
   { id:'contas', label:'Contas contábeis' }, { id:'historico', label:'Histórico' },
   { id:'sync', label:'Importar período' }, { id:'reqalmox', label:'Requisições Almoxarifado' },
-  { id:'automacoes', label:'Controle de Automações' }, { id:'economia', label:'Economia de Horas' }, { id:'mapa', label:'Mapa dos Processos' }, { id:'admin', label:'Administração' },
+  { id:'automacoes', label:'Controle de Automações' }, { id:'processos', label:'Processos & Economia' }, { id:'admin', label:'Administração' },
 ]
 
 const HDR = {

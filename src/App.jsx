@@ -20,8 +20,7 @@ import Auditoria from './pages/Auditoria.jsx'
 import VinculoFrete from './pages/VinculoFrete.jsx'
 import Admin, { registrarAuditoria } from './pages/Admin.jsx'
 import RequisicaoAlmox from './pages/RequisicaoAlmox.jsx'
-import Economia from './pages/Economia.jsx'
-import MapaFluxos from './pages/MapaFluxos.jsx'
+import Processos from './pages/Processos.jsx'
 import TrocarSenha from './components/TrocarSenha.jsx'
 import Automacoes from './pages/Automacoes.jsx'
 import BaixaGas from './pages/BaixaGas.jsx'
@@ -44,8 +43,7 @@ const MENU_COMPLETO = [
   { id: 'sync', label: 'Importar período', icon: '↻' },
   { id: 'reqalmox', label: 'Requisições Almoxarifado', icon: '📦' },
   { id: 'automacoes', label: 'Controle de Automações', icon: '🚀' },
-  { id: 'economia', label: 'Economia de Horas', icon: '⏱' },
-  { id: 'mapa', label: 'Mapa dos Processos', icon: '🕸' },
+  { id: 'processos', label: 'Processos & Economia', icon: '🕸' },
   { id: 'admin', label: 'Administração', icon: '🔐' },
 ]
 
@@ -314,10 +312,8 @@ function AppAutenticado({ sessao, onLogout }) {
             <VinculoFrete />
           ) : pagina === 'reqalmox' ? (
             <RequisicaoAlmox sessao={sessao} />
-          ) : pagina === 'economia' ? (
-            <Economia />
-          ) : pagina === 'mapa' ? (
-            <MapaFluxos />
+          ) : pagina === 'processos' ? (
+            <Processos />
           ) : pagina === 'automacoes' ? (
             <Automacoes />
           ) : pagina === 'admin' ? (

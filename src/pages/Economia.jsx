@@ -61,7 +61,7 @@ function Dica({ active, payload, label }) {
   )
 }
 
-export default function Economia() {
+export default function Economia({ embutido = false }) {
   const [totais, setTotais] = useState(null)
   const [tarefas, setTarefas] = useState([])
   const [setores, setSetores] = useState([])
@@ -133,7 +133,9 @@ export default function Economia() {
   const sub = { fontSize: 12.5, color: SUAVE, margin: '0 0 18px', maxWidth: 660, lineHeight: 1.55 }
 
   return (
-    <div style={{ background: PAPEL, margin: '-22px -26px -60px', padding: '30px 26px 56px', minHeight: '100%' }}>
+    <div style={ embutido
+      ? { background: 'transparent' }
+      : { background: PAPEL, margin: '-22px -26px -60px', padding: '30px 26px 56px', minHeight: '100%' } }>
       <style>{`
         @keyframes ec-crescer { from { transform: scaleX(0) } to { transform: scaleX(1) } }
         .ec-barra { transform-origin: left center; animation: ec-crescer .5s cubic-bezier(.2,.7,.3,1) both }
@@ -141,6 +143,7 @@ export default function Economia() {
         @media (prefers-reduced-motion: reduce) { .ec-barra { animation: none } }
       `}</style>
 
+      {!embutido && (
       <div style={{
         display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
         gap: 28, flexWrap: 'wrap', paddingBottom: 26,
@@ -169,6 +172,7 @@ export default function Economia() {
           ))}
         </div>
       </div>
+      )}
 
       <h2 style={h2}>Como a economia foi crescendo</h2>
       <p style={sub}>
