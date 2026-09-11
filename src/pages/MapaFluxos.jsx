@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow, Background, Controls, MiniMap, Handle, Position,
   useNodesState, useEdgesState, MarkerType, addEdge,
@@ -105,22 +105,36 @@ export default function MapaFluxos({ embutido = false }) {
   const [criando, setCriando] = useState(false)
   const [area, setArea] = useState('todas')
   const [camada, setCamada] = useState('processo')
+  const nosRef = useRef([])
+  const [projetos, setProjetos] = useState([])
+  const [ganhos, setGanhos] = useState([])
 
   const carregar = useCallback(async () => {
     setErro('')
     try {
-      const [m, c, o, ar] = await Promise.all([
+      const [m, c, o, ar, pj, gh] = await Promise.all([
         sbFetch('fluxo_mapa?select=*&ativo=eq.true'),
         sbFetch('fluxo_conexao?select=*'),
         sbFetch('fluxo_orfaos?select=*'),
         sbFetch('fluxo_area_resumo?select=*'),
+        sbFetch('automacao_projetos?select=id,nome_projeto,setor,status&order=nome_projeto.asc'),
+        sbFetch('automacao_ganhos_tarefas?select=id,projeto_id,tarefa,min_antes,min_depois,vol_medido,horas_acumuladas,horas_mes'),
       ])
       setBruto(m || [])
       setOrfaos(o || [])
       setAreas(ar || [])
-      setNos((m || []).map((n) => ({
-        id: n.chave, type: 'fluxo', position: { x: n.x, y: n.y }, data: { ...n },
-      })))
+      setProjetos(pj || [])
+      setGanhos(gh || [])
+      // preserva o que o usuário moveu: qualquer ação que recarregue o mapa
+      // (salvar nó, criar ligação, excluir) estava jogando as posições fora
+      setNos((antes) => {
+        const posAtual = new Map(antes.map((n) => [n.id, n.position]))
+        return (m || []).map((n) => ({
+          id: n.chave, type: 'fluxo',
+          position: posAtual.get(n.chave) ?? { x: n.x, y: n.y },
+          data: { ...n },
+        }))
+      })
       setLinhas((c || []).map((e) => ({
         id: e.id, source: e.de, target: e.para, label: e.rotulo || undefined,
         animated: e.tipo === 'gatilho',
@@ -138,6 +152,8 @@ export default function MapaFluxos({ embutido = false }) {
     } catch (e) { setErro(e.message); setFase('erro') }
   }, [setNos, setLinhas])
 
+  useEffect(() => { nosRef.current = nos }, [nos])
+
   useEffect(() => { carregar() }, [carregar])
 
   useEffect(() => {
@@ -152,32 +168,31 @@ export default function MapaFluxos({ embutido = false }) {
     }
   }, [expandido])
 
-  const salvarPosicoes = async () => {
-    setSalvando(true)
-    try {
-      await Promise.all(nos.map((n) =>
-        fetch(`${SUPABASE_URL}/rest/v1/fluxo_no?chave=eq.${encodeURIComponent(n.id)}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-            Prefer: 'return=minimal',
-          },
-          body: JSON.stringify({
-            x: Math.round(n.position.x), y: Math.round(n.position.y),
-            atualizado_em: new Date().toISOString(),
-          }),
-        })))
-      setSujo(false)
-    } catch (e) { setErro(e.message) } finally { setSalvando(false) }
+  // usado antes de recarregar: evita perder arrastos não salvos
+  const gravarPosicoes = async (lista) => {
+    const alvo = lista ?? nosRef.current
+    if (!alvo?.length) return
+    await Promise.all(alvo.map((n) =>
+      fetch(`${SUPABASE_URL}/rest/v1/fluxo_no?chave=eq.${encodeURIComponent(n.id)}`, {
+        method: 'PATCH', headers: cab('minimal'),
+        body: JSON.stringify({
+          x: Math.round(n.position.x), y: Math.round(n.position.y),
+          atualizado_em: new Date().toISOString(),
+        }),
+      })))
   }
 
-  const cab = () => ({
+  const salvarPosicoes = async () => {
+    setSalvando(true)
+    try { await gravarPosicoes(nos); setSujo(false) }
+    catch (e) { setErro(e.message) } finally { setSalvando(false) }
+  }
+
+  const cab = (prefer = 'representation') => ({
     'Content-Type': 'application/json',
     apikey: SUPABASE_ANON_KEY,
     Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-    Prefer: 'return=representation',
+    Prefer: `return=${prefer}`,
   })
 
   // ligar dois nós arrastando de um para o outro
@@ -190,6 +205,7 @@ export default function MapaFluxos({ embutido = false }) {
         body: JSON.stringify({ de: c.source, para: c.target, rotulo: rotulo || null, tipo: 'dados' }),
       })
       if (!r.ok) throw new Error(await r.text())
+      if (sujo) { await gravarPosicoes(); setSujo(false) }
       await carregar()
     } catch (e) { setErro(`Não consegui criar a ligação: ${e.message}`) }
   }
@@ -233,17 +249,52 @@ export default function MapaFluxos({ embutido = false }) {
     } catch (e) { setErro(e.message) }
   }
 
+  // Vincula o nó a uma automação. É o que liga o desenho do processo ao
+  // controle de ganhos: mapeando o fluxo, já se registra o que foi automatizado.
+  const vincularProjeto = async (chave, projeto_id) => {
+    await salvarNo(chave, { projeto_id: projeto_id || null })
+  }
+
+  const criarProjeto = async (nome, setor) => {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/automacao_projetos`, {
+      method: 'POST', headers: cab(),
+      body: JSON.stringify({
+        nome_projeto: nome, tipo: 'Automação', setor: setor || null,
+        status: 'Em produção', prioridade: 'Média',
+        criado_em: new Date().toISOString(), atualizado_em: new Date().toISOString(),
+      }),
+    })
+    if (!r.ok) throw new Error(await r.text())
+    const d = await r.json()
+    return d?.[0]?.id
+  }
+
+  const criarTarefa = async (projeto_id, t) => {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/automacao_ganhos`, {
+      method: 'POST', headers: cab('minimal'),
+      body: JSON.stringify({
+        projeto_id,
+        tarefa: t.tarefa,
+        frequencia: 'Mensal',
+        ocorrencias: Number(t.ocorrencias) || 0,
+        min_antes: Number(t.min_antes) || 0,
+        min_depois: Number(t.min_depois) || 0,
+        eliminada: Number(t.min_depois) === 0,
+        quem_executava: t.quem || null,
+        setores: t.setor ? [t.setor] : null,
+        observacao: 'Registrada pelo mapa de processos em ' + new Date().toLocaleDateString('pt-BR')
+          + '. Volume informado à mão; sem contador automático.',
+      }),
+    })
+    if (!r.ok) throw new Error(await r.text())
+  }
+
   const salvarNo = async (chave, campos) => {
     await fetch(`${SUPABASE_URL}/rest/v1/fluxo_no?chave=eq.${encodeURIComponent(chave)}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        Prefer: 'return=minimal',
-      },
+      method: 'PATCH', headers: cab('minimal'),
       body: JSON.stringify({ ...campos, atualizado_em: new Date().toISOString() }),
     })
+    if (sujo) { await gravarPosicoes(); setSujo(false) }
     await carregar()
   }
 
@@ -436,7 +487,11 @@ export default function MapaFluxos({ embutido = false }) {
             {criando ? (
               <NovoNo onCriar={criarNo} onFechar={() => setCriando(false)} />
             ) : selNo ? (
-              <DetalheNo no={selNo} onSalvar={salvarNo} onExcluir={excluirNo} onFechar={() => setSel(null)} />
+              <DetalheNo no={selNo} onSalvar={salvarNo} onExcluir={excluirNo}
+                         onFechar={() => setSel(null)}
+                         projetos={projetos} ganhos={ganhos}
+                         onVincular={vincularProjeto} onCriarProjeto={criarProjeto}
+                         onCriarTarefa={criarTarefa} onRecarregar={carregar} />
             ) : (
               <div>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: '#B45309', marginBottom: 6 }}>
@@ -463,7 +518,7 @@ export default function MapaFluxos({ embutido = false }) {
   )
 }
 
-function DetalheNo({ no, onSalvar, onExcluir, onFechar }) {
+function DetalheNo({ no, onSalvar, onExcluir, onFechar, projetos, ganhos, onVincular, onCriarProjeto, onCriarTarefa, onRecarregar }) {
   const [edicao, setEdicao] = useState(false)
   const [f, setF] = useState({ rotulo: no.rotulo, descricao: no.descricao || '', sistema: no.sistema, tipo: no.tipo })
   const [salvando, setSalvando] = useState(false)
@@ -524,6 +579,10 @@ function DetalheNo({ no, onSalvar, onExcluir, onFechar }) {
               </div>
             ))}
           </dl>
+          <BlocoAutomacao no={no} projetos={projetos} ganhos={ganhos}
+            onVincular={onVincular} onCriarProjeto={onCriarProjeto}
+            onCriarTarefa={onCriarTarefa} onRecarregar={onRecarregar} />
+
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <button onClick={() => setEdicao(true)} style={{
               fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer',
@@ -613,6 +672,169 @@ function NovoNo({ onCriar, onFechar }) {
           color: '#fff', border: 'none', background: f.rotulo.trim() ? '#1A1A18' : '#C9C5BE',
           borderRadius: 3, padding: '7px 14px',
         }}>{salvando ? 'Criando…' : 'Criar nó'}</button>
+    </div>
+  )
+}
+
+
+// Liga o nó do processo ao controle de automações: enquanto se desenha o
+// fluxo, já se registra o que foi automatizado e quanto tempo custava.
+function BlocoAutomacao({ no, projetos, ganhos, onVincular, onCriarProjeto, onCriarTarefa, onRecarregar }) {
+  const [modo, setModo] = useState(null)          // vincular | novoProjeto | novaTarefa
+  const [sel, setSel] = useState(no.projeto_id || '')
+  const [nome, setNome] = useState(no.rotulo)
+  const [ocupado, setOcupado] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [t, setT] = useState({ tarefa: '', min_antes: '', min_depois: '0', ocorrencias: '', quem: '', setor: no.area || '' })
+
+  useEffect(() => { setSel(no.projeto_id || ''); setModo(null); setMsg('') }, [no.chave])
+
+  const meus = (ganhos || []).filter((g) => g.projeto_id === no.projeto_id)
+  const campo = {
+    width: '100%', fontFamily: 'inherit', fontSize: 12.5, padding: '6px 8px',
+    border: '1px solid #E4E1DC', borderRadius: 3, marginBottom: 8, background: '#fff',
+  }
+  const rot = { fontSize: 11, color: '#6E6A64', marginBottom: 3, display: 'block' }
+  const btn = (primario) => ({
+    fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', padding: '6px 11px', borderRadius: 3,
+    border: primario ? 'none' : '1px solid #E4E1DC',
+    background: primario ? '#1A1A18' : '#fff', color: primario ? '#fff' : '#1A1A18',
+  })
+
+  const aviso = (texto) => { setMsg(texto); setTimeout(() => setMsg(''), 5000) }
+
+  return (
+    <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #E4E1DC' }}>
+      <div style={{ fontSize: 11, color: '#6E6A64', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>
+        Automação deste passo
+      </div>
+
+      {no.nome_projeto ? (
+        <div style={{ fontSize: 12.5, color: '#1A1A18', marginBottom: 8 }}>
+          {no.nome_projeto}
+          {meus.length > 0 && (
+            <div style={{ marginTop: 7 }}>
+              {meus.map((g) => (
+                <div key={g.id} style={{ fontSize: 11.5, color: '#6E6A64', padding: '3px 0', lineHeight: 1.4 }}>
+                  · {g.tarefa}
+                  <span style={{ color: '#1A1A18' }}>
+                    {' '}{Number(g.min_antes)} → {Number(g.min_depois)} min
+                    {g.horas_acumuladas ? ` · ${Number(g.horas_acumuladas).toFixed(1)} h` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: '#A2600F', marginBottom: 8 }}>
+          Este passo ainda não está ligado a nenhuma automação.
+        </div>
+      )}
+
+      {!modo && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button style={btn(false)} onClick={() => setModo('vincular')}>
+            {no.projeto_id ? 'Trocar automação' : 'Vincular automação'}
+          </button>
+          <button style={btn(false)} onClick={() => setModo('novoProjeto')}>+ Nova automação</button>
+          {no.projeto_id && (
+            <button style={btn(true)} onClick={() => setModo('novaTarefa')}>+ Tarefa e tempo</button>
+          )}
+        </div>
+      )}
+
+      {modo === 'vincular' && (
+        <div style={{ marginTop: 10 }}>
+          <label style={rot}>Automação</label>
+          <select style={campo} value={sel} onChange={(e) => setSel(e.target.value)}>
+            <option value="">— sem automação —</option>
+            {(projetos || []).map((p) => (
+              <option key={p.id} value={p.id}>{p.nome_projeto}{p.setor ? ` · ${p.setor}` : ''}</option>
+            ))}
+          </select>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button style={btn(true)} disabled={ocupado} onClick={async () => {
+              setOcupado(true)
+              try { await onVincular(no.chave, sel); aviso('Vinculado.') }
+              catch (e) { aviso(String(e.message ?? e)) }
+              setOcupado(false); setModo(null)
+            }}>{ocupado ? 'Salvando…' : 'Salvar'}</button>
+            <button style={btn(false)} onClick={() => setModo(null)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {modo === 'novoProjeto' && (
+        <div style={{ marginTop: 10 }}>
+          <label style={rot}>Nome da automação</label>
+          <input style={campo} value={nome} onChange={(e) => setNome(e.target.value)} autoFocus />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button style={btn(true)} disabled={ocupado || !nome.trim()} onClick={async () => {
+              setOcupado(true)
+              try {
+                const id = await onCriarProjeto(nome.trim(), no.area)
+                if (id) { await onVincular(no.chave, id); aviso('Automação criada e vinculada.') }
+              } catch (e) { aviso(String(e.message ?? e)) }
+              setOcupado(false); setModo(null)
+            }}>{ocupado ? 'Criando…' : 'Criar e vincular'}</button>
+            <button style={btn(false)} onClick={() => setModo(null)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {modo === 'novaTarefa' && (
+        <div style={{ marginTop: 10 }}>
+          <label style={rot}>O que a pessoa fazia à mão</label>
+          <input style={campo} value={t.tarefa} autoFocus
+                 placeholder="Ex: conferir nota por nota antes de lançar"
+                 onChange={(e) => setT({ ...t, tarefa: e.target.value })} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <label style={rot}>Min antes</label>
+              <input style={campo} type="number" step="0.5" value={t.min_antes}
+                     onChange={(e) => setT({ ...t, min_antes: e.target.value })} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={rot}>Min hoje</label>
+              <input style={campo} type="number" step="0.5" value={t.min_depois}
+                     onChange={(e) => setT({ ...t, min_depois: e.target.value })} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={rot}>Vezes/mês</label>
+              <input style={campo} type="number" value={t.ocorrencias}
+                     onChange={(e) => setT({ ...t, ocorrencias: e.target.value })} />
+            </div>
+          </div>
+          <label style={rot}>Quem executava</label>
+          <input style={campo} value={t.quem} onChange={(e) => setT({ ...t, quem: e.target.value })} />
+          {t.min_antes && t.ocorrencias && (
+            <div style={{ fontSize: 11.5, color: '#12805C', marginBottom: 8 }}>
+              Economia estimada:{' '}
+              {(((Number(t.min_antes) - Number(t.min_depois || 0)) * Number(t.ocorrencias)) / 60).toFixed(1)} h/mês
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button style={btn(true)} disabled={ocupado || !t.tarefa.trim()} onClick={async () => {
+              setOcupado(true)
+              try {
+                await onCriarTarefa(no.projeto_id, t)
+                setT({ tarefa: '', min_antes: '', min_depois: '0', ocorrencias: '', quem: '', setor: no.area || '' })
+                await onRecarregar()
+                aviso('Tarefa registrada.')
+              } catch (e) { aviso(String(e.message ?? e)) }
+              setOcupado(false); setModo(null)
+            }}>{ocupado ? 'Salvando…' : 'Registrar tarefa'}</button>
+            <button style={btn(false)} onClick={() => setModo(null)}>Cancelar</button>
+          </div>
+          <div style={{ fontSize: 11, color: '#6E6A64', marginTop: 8, lineHeight: 1.5 }}>
+            O volume informado aqui é declarado. Para virar contagem automática, a tarefa precisa de
+            uma fonte de medição ligada em Controle de Automações.
+          </div>
+        </div>
+      )}
+
+      {msg && <div style={{ fontSize: 11.5, color: '#1F60A8', marginTop: 8 }}>{msg}</div>}
     </div>
   )
 }
