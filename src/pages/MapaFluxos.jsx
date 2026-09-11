@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow, Background, Controls, MiniMap, Handle, Position,
   useNodesState, useEdgesState, MarkerType, addEdge,
+  getBezierPath, useInternalNode, EdgeLabelRenderer, BaseEdge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import dagre from '@dagrejs/dagre'
@@ -69,9 +70,9 @@ function NoFluxo({ data, selected }) {
       {[Position.Left, Position.Right, Position.Top, Position.Bottom].map((pos) => (
         <React.Fragment key={pos}>
           <Handle type="target" position={pos} id={`t-${pos}`}
-                  style={{ background: s.cor, width: 7, height: 7, border: 'none' }} />
+                  style={{ background: s.cor, width: 6, height: 6, border: 'none', opacity: .55 }} />
           <Handle type="source" position={pos} id={`s-${pos}`}
-                  style={{ background: s.cor, width: 7, height: 7, border: 'none' }} />
+                  style={{ background: s.cor, width: 6, height: 6, border: 'none', opacity: .55 }} />
         </React.Fragment>
       ))}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
@@ -125,6 +126,67 @@ function organizar(nos, linhas, espacamento = 'normal') {
     return p ? { ...n, position: { x: p.x - L / 2, y: p.y - A / 2 } } : n
   })
 }
+
+// Onde a reta entre dois centros cruza a borda do nó de origem.
+// Sem isso a linha atravessa o nó e o rótulo cai em cima do título.
+function pontoNaBorda(no, alvo) {
+  const { width: l = 180, height: a = 70 } = no.measured ?? {}
+  const cx = no.internals.positionAbsolute.x + l / 2
+  const cy = no.internals.positionAbsolute.y + a / 2
+  const dx = alvo.x - cx
+  const dy = alvo.y - cy
+  if (dx === 0 && dy === 0) return { x: cx, y: cy, pos: Position.Right }
+  const escalaX = dx !== 0 ? (l / 2) / Math.abs(dx) : Infinity
+  const escalaY = dy !== 0 ? (a / 2) / Math.abs(dy) : Infinity
+  const k = Math.min(escalaX, escalaY)
+  const x = cx + dx * k
+  const y = cy + dy * k
+  const pos = escalaX < escalaY
+    ? (dx > 0 ? Position.Right : Position.Left)
+    : (dy > 0 ? Position.Bottom : Position.Top)
+  return { x, y, pos }
+}
+
+function centro(no) {
+  const { width: l = 180, height: a = 70 } = no.measured ?? {}
+  return {
+    x: no.internals.positionAbsolute.x + l / 2,
+    y: no.internals.positionAbsolute.y + a / 2,
+  }
+}
+
+function ArestaFlutuante({ id, source, target, label, style, markerEnd, data }) {
+  const noDe = useInternalNode(source)
+  const noPara = useInternalNode(target)
+  if (!noDe || !noPara) return null
+
+  const de = pontoNaBorda(noDe, centro(noPara))
+  const para = pontoNaBorda(noPara, centro(noDe))
+
+  const [caminho, rotX, rotY] = getBezierPath({
+    sourceX: de.x, sourceY: de.y, sourcePosition: de.pos,
+    targetX: para.x, targetY: para.y, targetPosition: para.pos,
+  })
+
+  return (
+    <>
+      <BaseEdge id={id} path={caminho} style={style} markerEnd={markerEnd} />
+      {label && (
+        <EdgeLabelRenderer>
+          <div style={{
+            position: 'absolute',
+            transform: `translate(-50%,-50%) translate(${rotX}px,${rotY}px)`,
+            background: '#FBFAF8', padding: '1px 5px', borderRadius: 3,
+            fontSize: 10.5, color: '#4A4741', pointerEvents: 'all',
+            border: '1px solid #EDEAE5', whiteSpace: 'nowrap',
+          }}>{label}</div>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  )
+}
+
+const tiposAresta = { flutuante: ArestaFlutuante }
 
 const CORLINHA = { dados: '#8B8781', gatilho: '#1F60A8', notificacao: '#B45309', condicional: '#6D28D9' }
 
@@ -183,14 +245,13 @@ export default function MapaFluxos({ embutido = false }) {
       })
       setLinhas((c || []).map((e) => ({
         id: e.id, source: e.de, target: e.para, label: e.rotulo || undefined,
+        type: 'flutuante',
         animated: e.tipo === 'gatilho',
         style: {
           stroke: CORLINHA[e.tipo] || CORLINHA.dados,
           strokeWidth: 1.6,
           strokeDasharray: e.tipo === 'condicional' ? '5 4' : undefined,
         },
-        labelStyle: { fontSize: 10.5, fill: '#6E6A64', fontFamily: 'inherit' },
-        labelBgStyle: { fill: '#FBFAF8' },
         markerEnd: { type: MarkerType.ArrowClosed, color: CORLINHA[e.tipo] || CORLINHA.dados, width: 16, height: 16 },
       })))
       setFase('pronto')
@@ -601,6 +662,7 @@ export default function MapaFluxos({ embutido = false }) {
             nodes={nosFiltrados}
             edges={linhasFiltradas}
             nodeTypes={tiposNo}
+            edgeTypes={tiposAresta}
             onNodesChange={(ch) => {
               aoMudarNos(ch)
               if (ch.some((c) => c.type === 'position' && c.dragging === false)) setSujo(true)
