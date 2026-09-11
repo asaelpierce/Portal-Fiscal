@@ -116,6 +116,8 @@ export default function MapaFluxos({ embutido = false }) {
   const [projetos, setProjetos] = useState([])
   const [ganhos, setGanhos] = useState([])
   const [listaAreas, setListaAreas] = useState([])
+  const [selLigacao, setSelLigacao] = useState(null)
+  const [conexBruto, setConexBruto] = useState([])
 
   const carregar = useCallback(async () => {
     setErro('')
@@ -130,6 +132,7 @@ export default function MapaFluxos({ embutido = false }) {
         sbFetch('area?select=id,nome,cor&order=ordem.asc'),
       ])
       setBruto(m || [])
+      setConexBruto(c || [])
       setOrfaos(o || [])
       setAreas(ar || [])
       setProjetos(pj || [])
@@ -208,16 +211,30 @@ export default function MapaFluxos({ embutido = false }) {
   // ligar dois nós arrastando de um para o outro
   const aoConectar = async (c) => {
     if (!c.source || !c.target || c.source === c.target) return
-    const rotulo = window.prompt('Rótulo da ligação (opcional):', '') ?? ''
     try {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/fluxo_conexao`, {
         method: 'POST', headers: cab(),
-        body: JSON.stringify({ de: c.source, para: c.target, rotulo: rotulo || null, tipo: 'dados' }),
+        body: JSON.stringify({ de: c.source, para: c.target, rotulo: null, tipo: 'dados' }),
+      })
+      if (!r.ok) throw new Error(await r.text())
+      const criada = await r.json().catch(() => null)
+      if (sujo) { await gravarPosicoes(); setSujo(false) }
+      await carregar()
+      // abre o painel já na ligação nova, para nomear na hora
+      if (criada?.[0]?.id) setSelLigacao(criada[0].id)
+    } catch (e) { setErro(`Não consegui criar a ligação: ${e.message}`) }
+  }
+
+  const salvarConexao = async (id, campos) => {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/fluxo_conexao?id=eq.${id}`, {
+        method: 'PATCH', headers: cab('minimal'),
+        body: JSON.stringify(campos),
       })
       if (!r.ok) throw new Error(await r.text())
       if (sujo) { await gravarPosicoes(); setSujo(false) }
       await carregar()
-    } catch (e) { setErro(`Não consegui criar a ligação: ${e.message}`) }
+    } catch (e) { setErro(`Não consegui salvar a ligação: ${e.message}`) }
   }
 
   const removerConexao = async (id) => {
@@ -395,6 +412,7 @@ export default function MapaFluxos({ embutido = false }) {
   }
 
   const selNo = sel ? bruto.find((n) => n.chave === sel) : null
+  const ligacaoSel = selLigacao ? conexBruto.find((c) => c.id === selLigacao) : null
 
   return (
     <div style={
@@ -540,11 +558,9 @@ export default function MapaFluxos({ embutido = false }) {
             }}
             onEdgesChange={aoMudarLinhas}
             onConnect={aoConectar}
-            onEdgeClick={(_, e) => {
-              if (window.confirm(`Remover a ligação${e.label ? ` "${e.label}"` : ''}?`)) removerConexao(e.id)
-            }}
-            onNodeClick={(_, n) => setSel(n.id)}
-            onPaneClick={() => setSel(null)}
+            onEdgeClick={(_, e) => { setSelLigacao(e.id); setSel(null); setCriando(false) }}
+            onNodeClick={(_, n) => { setSel(n.id); setSelLigacao(null) }}
+            onPaneClick={() => { setSel(null); setSelLigacao(null) }}
             fitView
             minZoom={0.2}
             proOptions={{ hideAttribution: true }}
@@ -559,12 +575,20 @@ export default function MapaFluxos({ embutido = false }) {
           </ReactFlow>
         </div>
 
-        {(criando || selNo || orfaos.length > 0) && (
+        {(criando || selNo || ligacaoSel || orfaos.length > 0) && (
           <aside style={{
             width: 316, borderLeft: '1px solid #E4E1DC', background: '#fff',
             overflowY: 'auto', padding: '18px 20px',
           }}>
-            {criando ? (
+            {ligacaoSel ? (
+              <DetalheLigacao
+                ligacao={ligacaoSel}
+                deNome={bruto.find((n) => n.chave === ligacaoSel.de)?.rotulo || ligacaoSel.de}
+                paraNome={bruto.find((n) => n.chave === ligacaoSel.para)?.rotulo || ligacaoSel.para}
+                onSalvar={salvarConexao}
+                onRemover={removerConexao}
+                onFechar={() => setSelLigacao(null)} />
+            ) : criando ? (
               <NovoNo onCriar={criarNo} onFechar={() => setCriando(false)} />
             ) : selNo ? (
               <DetalheNo no={selNo} onSalvar={salvarNo} onExcluir={excluirNo}
@@ -934,6 +958,86 @@ function BlocoAutomacao({ no, projetos, ganhos, onVincular, onCriarProjeto, onCr
       )}
 
       {msg && <div style={{ fontSize: 11.5, color: '#1F60A8', marginTop: 8 }}>{msg}</div>}
+    </div>
+  )
+}
+
+
+// Painel da ligação. O rótulo é o que dá sentido à seta: duas saídas de uma
+// decisão precisam dizer "sim" e "não", não "é PO" nas duas.
+function DetalheLigacao({ ligacao, deNome, paraNome, onSalvar, onRemover, onFechar }) {
+  const [f, setF] = useState({ rotulo: ligacao.rotulo || '', tipo: ligacao.tipo || 'dados', observacao: ligacao.observacao || '' })
+  const [salvando, setSalvando] = useState(false)
+  useEffect(() => {
+    setF({ rotulo: ligacao.rotulo || '', tipo: ligacao.tipo || 'dados', observacao: ligacao.observacao || '' })
+  }, [ligacao.id])
+
+  const campo = {
+    width: '100%', fontFamily: 'inherit', fontSize: 12.5, padding: '6px 8px',
+    border: '1px solid #E4E1DC', borderRadius: 3, marginBottom: 9, background: '#fff',
+  }
+  const rot = { fontSize: 11, color: '#6E6A64', marginBottom: 3, display: 'block' }
+
+  const TIPOS = [
+    ['dados', 'Dados', 'Algo passa adiante: arquivo, registro, informação'],
+    ['gatilho', 'Gatilho', 'Um dispara o outro, sem carregar conteúdo'],
+    ['condicional', 'Condicional', 'Só segue se uma condição for verdadeira'],
+    ['notificacao', 'Notificação', 'Aviso a alguém, não continuidade do fluxo'],
+  ]
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#1A1A18' }}>Ligação</h3>
+        <button onClick={onFechar} style={{
+          border: 'none', background: 'transparent', cursor: 'pointer',
+          color: '#9A958E', fontSize: 16, lineHeight: 1, padding: 0,
+        }}>×</button>
+      </div>
+
+      <div style={{ fontSize: 12, color: '#4A4741', margin: '10px 0 14px', lineHeight: 1.5 }}>
+        <strong>{deNome}</strong>
+        <span style={{ color: '#9A958E' }}> → </span>
+        <strong>{paraNome}</strong>
+      </div>
+
+      <label style={rot}>Rótulo</label>
+      <input style={campo} value={f.rotulo} autoFocus
+             placeholder="Ex: sim, não, anexo PDF, aprovado"
+             onChange={(e) => setF({ ...f, rotulo: e.target.value })} />
+
+      <label style={rot}>Tipo</label>
+      <select style={campo} value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>
+        {TIPOS.map(([k, r]) => <option key={k} value={k}>{r}</option>)}
+      </select>
+      <div style={{ fontSize: 11, color: '#6E6A64', marginTop: -4, marginBottom: 10, lineHeight: 1.45 }}>
+        {TIPOS.find(([k]) => k === f.tipo)?.[2]}
+      </div>
+
+      <label style={rot}>Observação</label>
+      <textarea style={{ ...campo, minHeight: 54, resize: 'vertical' }}
+                value={f.observacao}
+                onChange={(e) => setF({ ...f, observacao: e.target.value })} />
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button disabled={salvando} onClick={async () => {
+          setSalvando(true)
+          await onSalvar(ligacao.id, {
+            rotulo: f.rotulo.trim() || null, tipo: f.tipo,
+            observacao: f.observacao.trim() || null,
+          })
+          setSalvando(false)
+        }} style={{
+          fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', color: '#fff',
+          border: 'none', background: '#1A1A18', borderRadius: 3, padding: '7px 14px',
+        }}>{salvando ? 'Salvando…' : 'Salvar'}</button>
+        <button onClick={() => {
+          if (window.confirm('Remover esta ligação?')) { onRemover(ligacao.id); onFechar() }
+        }} style={{
+          fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', color: '#B42318',
+          border: '1px solid #F3C6C0', background: '#fff', borderRadius: 3, padding: '7px 12px',
+        }}>Remover</button>
+      </div>
     </div>
   )
 }
