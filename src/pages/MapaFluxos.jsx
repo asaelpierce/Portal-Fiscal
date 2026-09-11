@@ -23,6 +23,14 @@ const SISTEMA = {
 }
 const info = (s) => SISTEMA[s] || SISTEMA['Externo']
 
+// Quem executa o passo. A cor diz de quem é (área), isto diz quem faz.
+const EXEC = {
+  automatico: { rot: 'ROBÔ',      icone: '⚙', cor: '#12805C', desc: 'Roda sozinho, sem ninguém acompanhar' },
+  assistido:  { rot: 'ASSISTIDO', icone: '◐', cor: '#1F60A8', desc: 'Pessoa age, mas o sistema conduz e registra' },
+  manual:     { rot: 'PESSOA',    icone: '👤', cor: '#A2600F', desc: 'Alguém faz à mão, do começo ao fim' },
+  sistema:    { rot: 'SISTEMA',   icone: '▦', cor: '#6E6A64', desc: 'Base ou plataforma onde o dado vive' },
+}
+
 const FORMA = {
   gatilho:       { borda: '18px',  traco: 'dashed' },
   armazenamento: { borda: '3px',   traco: 'solid'  },
@@ -44,6 +52,7 @@ function NoFluxo({ data, selected }) {
         sigla: (data.area || 'Sem área').slice(0, 12) }
     : base
   const f = FORMA[data.tipo] || FORMA.passo
+  const e = EXEC[data.execucao] || EXEC.manual
   return (
     <div style={{
       background: s.fundo,
@@ -51,14 +60,39 @@ function NoFluxo({ data, selected }) {
       borderRadius: f.borda,
       padding: '10px 13px', minWidth: 168, maxWidth: 230,
       boxShadow: selected ? `0 0 0 3px ${s.cor}22` : 'none',
+      borderLeft: data.execucao === 'automatico'
+        ? `4px solid ${EXEC.automatico.cor}`
+        : `${selected ? 2 : 1.5}px ${f.traco} ${s.cor}`,
+      position: 'relative',
     }}>
-      <Handle type="target" position={Position.Left}  style={{ background: s.cor, width: 7, height: 7, border: 'none' }} />
-      <div style={{
-        fontSize: 9, fontWeight: 700, color: s.cor, letterSpacing: '.06em', marginBottom: 3,
-      }}>{s.sigla}</div>
+      {/* quatro lados: o fluxo nem sempre vai da esquerda para a direita */}
+      {[Position.Left, Position.Right, Position.Top, Position.Bottom].map((pos) => (
+        <React.Fragment key={pos}>
+          <Handle type="target" position={pos} id={`t-${pos}`}
+                  style={{ background: s.cor, width: 7, height: 7, border: 'none' }} />
+          <Handle type="source" position={pos} id={`s-${pos}`}
+                  style={{ background: s.cor, width: 7, height: 7, border: 'none' }} />
+        </React.Fragment>
+      ))}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+        <span style={{ fontSize: 9, fontWeight: 700, color: s.cor, letterSpacing: '.06em' }}>
+          {s.sigla}
+        </span>
+        <span style={{ flex: 1 }} />
+        {e && (
+          <span title={`${e.rot} — ${e.desc}${data.sistema ? ` · ${data.sistema}` : ''}`}
+            style={{
+              fontSize: 9, fontWeight: 700, color: e.cor, background: e.cor + '1A',
+              padding: '1px 5px', borderRadius: 2, letterSpacing: '.04em', whiteSpace: 'nowrap',
+            }}>{e.icone} {e.rot}</span>
+        )}
+      </div>
       <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1A1A18', lineHeight: 1.3 }}>
         {data.rotulo}
       </div>
+      {data.sistema && data.sistema !== 'Externo' && (
+        <div style={{ fontSize: 9.5, color: '#6E6A64', marginTop: 4 }}>{data.sistema}</div>
+      )}
       {data.volume_medido != null && (
         <div style={{
           fontSize: 10.5, color: s.cor, marginTop: 5, fontVariantNumeric: 'tabular-nums',
@@ -66,7 +100,6 @@ function NoFluxo({ data, selected }) {
           {ni(data.volume_medido)} medidos · +{ni(Math.round(data.volume_mes))}/mês
         </div>
       )}
-      <Handle type="source" position={Position.Right} style={{ background: s.cor, width: 7, height: 7, border: 'none' }} />
     </div>
   )
 }
@@ -546,6 +579,22 @@ export default function MapaFluxos({ embutido = false }) {
                 marginTop: 7, fontSize: 11, color: '#1F60A8', background: 'transparent',
                 border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit',
               }}>+ nova área</button>
+
+              <div style={{ marginTop: 11, paddingTop: 9, borderTop: '1px solid #F1EFEB' }}>
+                <div style={{ fontSize: 10, color: '#6E6A64', textTransform: 'uppercase',
+                              letterSpacing: '.05em', marginBottom: 6 }}>Quem executa</div>
+                {Object.entries(EXEC).map(([k, v]) => (
+                  <div key={k} title={v.desc}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: v.cor, background: v.cor + '1A',
+                                   padding: '1px 4px', borderRadius: 2, minWidth: 62, textAlign: 'center' }}>
+                      {v.icone} {v.rot}</span>
+                    <span style={{ fontSize: 10.5, color: '#6E6A64', fontVariantNumeric: 'tabular-nums' }}>
+                      {nos.filter((n) => (n.data.execucao || 'manual') === k).length}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           <ReactFlow
@@ -557,6 +606,7 @@ export default function MapaFluxos({ embutido = false }) {
               if (ch.some((c) => c.type === 'position' && c.dragging === false)) setSujo(true)
             }}
             onEdgesChange={aoMudarLinhas}
+            connectionMode="loose"
             onConnect={aoConectar}
             onEdgeClick={(_, e) => { setSelLigacao(e.id); setSel(null); setCriando(false) }}
             onNodeClick={(_, n) => { setSel(n.id); setSelLigacao(null) }}
@@ -699,6 +749,29 @@ function DetalheNo({ no, onSalvar, onExcluir, onFechar, projetos, ganhos, areas,
             <div style={{ fontSize: 11, color: '#6E6A64', marginTop: 5, lineHeight: 1.45 }}>
               Vale para qualquer passo, mesmo os que não são automação — o e-mail que chega
               na caixa do Comercial é do Comercial.
+            </div>
+
+            <label style={{ fontSize: 11, color: '#6E6A64', margin: '12px 0 4px', display: 'block' }}>
+              Quem executa
+            </label>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {Object.entries(EXEC).map(([k, v]) => {
+                const ativo = (no.execucao || 'manual') === k
+                return (
+                  <button key={k} onClick={() => !ativo && onSalvar(no.chave, { execucao: k })}
+                    title={v.desc}
+                    style={{
+                      fontFamily: 'inherit', fontSize: 10.5, cursor: ativo ? 'default' : 'pointer',
+                      padding: '4px 8px', borderRadius: 3,
+                      border: `1px solid ${ativo ? v.cor : '#E4E1DC'}`,
+                      background: ativo ? v.cor + '1A' : '#fff',
+                      color: ativo ? v.cor : '#6E6A64', fontWeight: ativo ? 700 : 400,
+                    }}>{v.icone} {v.rot}</button>
+                )
+              })}
+            </div>
+            <div style={{ fontSize: 11, color: '#6E6A64', marginTop: 5, lineHeight: 1.45 }}>
+              {EXEC[no.execucao || 'manual']?.desc}
             </div>
           </div>
 
