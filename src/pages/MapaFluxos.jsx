@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ReactFlow, Background, Controls, MiniMap, Handle, Position,
-  useNodesState, useEdgesState, MarkerType,
+  useNodesState, useEdgesState, MarkerType, addEdge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { SUPABASE_URL, SUPABASE_ANON_KEY, sbFetch } from '../config.js'
@@ -79,6 +79,7 @@ export default function MapaFluxos({ embutido = false }) {
   const [sujo, setSujo] = useState(false)
   const [filtro, setFiltro] = useState('todos')
   const [expandido, setExpandido] = useState(false)
+  const [criando, setCriando] = useState(false)
 
   const carregar = useCallback(async () => {
     setErro('')
@@ -143,6 +144,66 @@ export default function MapaFluxos({ embutido = false }) {
         })))
       setSujo(false)
     } catch (e) { setErro(e.message) } finally { setSalvando(false) }
+  }
+
+  const cab = () => ({
+    'Content-Type': 'application/json',
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    Prefer: 'return=representation',
+  })
+
+  // ligar dois nós arrastando de um para o outro
+  const aoConectar = async (c) => {
+    if (!c.source || !c.target || c.source === c.target) return
+    const rotulo = window.prompt('Rótulo da ligação (opcional):', '') ?? ''
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/fluxo_conexao`, {
+        method: 'POST', headers: cab(),
+        body: JSON.stringify({ de: c.source, para: c.target, rotulo: rotulo || null, tipo: 'dados' }),
+      })
+      if (!r.ok) throw new Error(await r.text())
+      await carregar()
+    } catch (e) { setErro(`Não consegui criar a ligação: ${e.message}`) }
+  }
+
+  const removerConexao = async (id) => {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/fluxo_conexao?id=eq.${id}`, {
+        method: 'DELETE', headers: cab(),
+      })
+      await carregar()
+    } catch (e) { setErro(e.message) }
+  }
+
+  const criarNo = async (dados) => {
+    const chave = dados.rotulo.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40)
+      || `no_${Date.now()}`
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/fluxo_no`, {
+        method: 'POST', headers: cab(),
+        body: JSON.stringify({ ...dados, chave, origem: 'manual', x: 40, y: 40 }),
+      })
+      if (!r.ok) {
+        const t = await r.text()
+        throw new Error(t.includes('duplicate') ? 'Já existe um nó com esse nome.' : t)
+      }
+      setCriando(false)
+      await carregar()
+      setSel(chave)
+    } catch (e) { setErro(`Não consegui criar o nó: ${e.message}`) }
+  }
+
+  const excluirNo = async (chave) => {
+    if (!window.confirm('Excluir este nó? As ligações dele também somem.')) return
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/fluxo_no?chave=eq.${encodeURIComponent(chave)}`, {
+        method: 'DELETE', headers: cab(),
+      })
+      setSel(null)
+      await carregar()
+    } catch (e) { setErro(e.message) }
   }
 
   const salvarNo = async (chave, campos) => {
@@ -214,6 +275,11 @@ export default function MapaFluxos({ embutido = false }) {
             {salvando ? 'Salvando…' : 'Salvar posições'}
           </Btn>
         )}
+        <button onClick={() => { setCriando(true); setSel(null) }}
+          style={{
+            fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', padding: '5px 11px',
+            border: '1px solid #E4E1DC', background: '#fff', color: '#1A1A18', borderRadius: 3,
+          }}>+  Novo nó</button>
         <button onClick={() => setExpandido((v) => !v)}
           title={expandido ? 'Sair da tela cheia (Esc)' : 'Expandir para trabalhar no mapa'}
           style={{
@@ -244,6 +310,10 @@ export default function MapaFluxos({ embutido = false }) {
               if (ch.some((c) => c.type === 'position' && c.dragging === false)) setSujo(true)
             }}
             onEdgesChange={aoMudarLinhas}
+            onConnect={aoConectar}
+            onEdgeClick={(_, e) => {
+              if (window.confirm(`Remover a ligação${e.label ? ` "${e.label}"` : ''}?`)) removerConexao(e.id)
+            }}
             onNodeClick={(_, n) => setSel(n.id)}
             onPaneClick={() => setSel(null)}
             fitView
@@ -260,13 +330,15 @@ export default function MapaFluxos({ embutido = false }) {
           </ReactFlow>
         </div>
 
-        {(selNo || orfaos.length > 0) && (
+        {(criando || selNo || orfaos.length > 0) && (
           <aside style={{
             width: 316, borderLeft: '1px solid #E4E1DC', background: '#fff',
             overflowY: 'auto', padding: '18px 20px',
           }}>
-            {selNo ? (
-              <DetalheNo no={selNo} onSalvar={salvarNo} onFechar={() => setSel(null)} />
+            {criando ? (
+              <NovoNo onCriar={criarNo} onFechar={() => setCriando(false)} />
+            ) : selNo ? (
+              <DetalheNo no={selNo} onSalvar={salvarNo} onExcluir={excluirNo} onFechar={() => setSel(null)} />
             ) : (
               <div>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: '#B45309', marginBottom: 6 }}>
@@ -293,7 +365,7 @@ export default function MapaFluxos({ embutido = false }) {
   )
 }
 
-function DetalheNo({ no, onSalvar, onFechar }) {
+function DetalheNo({ no, onSalvar, onExcluir, onFechar }) {
   const [edicao, setEdicao] = useState(false)
   const [f, setF] = useState({ rotulo: no.rotulo, descricao: no.descricao || '', sistema: no.sistema, tipo: no.tipo })
   const [salvando, setSalvando] = useState(false)
@@ -354,10 +426,18 @@ function DetalheNo({ no, onSalvar, onFechar }) {
               </div>
             ))}
           </dl>
-          <button onClick={() => setEdicao(true)} style={{
-            marginTop: 16, fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer',
-            border: '1px solid #E4E1DC', background: '#fff', borderRadius: 3, padding: '6px 12px',
-          }}>Editar</button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <button onClick={() => setEdicao(true)} style={{
+              fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer',
+              border: '1px solid #E4E1DC', background: '#fff', borderRadius: 3, padding: '6px 12px',
+            }}>Editar</button>
+            {onExcluir && (
+              <button onClick={() => onExcluir(no.chave)} style={{
+                fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', color: '#B42318',
+                border: '1px solid #F3C6C0', background: '#fff', borderRadius: 3, padding: '6px 12px',
+              }}>Excluir</button>
+            )}
+          </div>
         </>
       ) : (
         <div style={{ marginTop: 12 }}>
@@ -386,6 +466,55 @@ function DetalheNo({ no, onSalvar, onFechar }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+
+function NovoNo({ onCriar, onFechar }) {
+  const [f, setF] = useState({ rotulo: '', sistema: 'Supabase', tipo: 'passo', descricao: '' })
+  const [salvando, setSalvando] = useState(false)
+  const campo = {
+    width: '100%', fontFamily: 'inherit', fontSize: 12.5, padding: '6px 8px',
+    border: '1px solid #E4E1DC', borderRadius: 3, marginBottom: 9, background: '#fff',
+  }
+  const rot = { fontSize: 11, color: '#6E6A64', marginBottom: 3, display: 'block' }
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#1A1A18' }}>Novo nó</h3>
+        <button onClick={onFechar} style={{
+          border: 'none', background: 'transparent', cursor: 'pointer',
+          color: '#9A958E', fontSize: 16, lineHeight: 1, padding: 0,
+        }}>×</button>
+      </div>
+      <p style={{ fontSize: 11.5, color: '#6E6A64', lineHeight: 1.5, margin: '8px 0 14px' }}>
+        O nó aparece no canto superior esquerdo. Arraste para posicionar e puxe de uma bolinha
+        até outro nó para ligar.
+      </p>
+      <label style={rot}>Nome</label>
+      <input style={campo} value={f.rotulo} autoFocus
+             onChange={(e) => setF({ ...f, rotulo: e.target.value })}
+             placeholder="Ex: Aprovação do gestor" />
+      <label style={rot}>Sistema</label>
+      <select style={campo} value={f.sistema} onChange={(e) => setF({ ...f, sistema: e.target.value })}>
+        {Object.keys(SISTEMA).map((k) => <option key={k} value={k}>{k}</option>)}
+      </select>
+      <label style={rot}>Tipo</label>
+      <select style={campo} value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>
+        {Object.keys(FORMA).map((k) => <option key={k} value={k}>{k}</option>)}
+      </select>
+      <label style={rot}>Descrição</label>
+      <textarea style={{ ...campo, minHeight: 64, resize: 'vertical' }}
+                value={f.descricao} onChange={(e) => setF({ ...f, descricao: e.target.value })} />
+      <button
+        disabled={!f.rotulo.trim() || salvando}
+        onClick={async () => { setSalvando(true); await onCriar(f); setSalvando(false) }}
+        style={{
+          fontFamily: 'inherit', fontSize: 12.5, cursor: f.rotulo.trim() ? 'pointer' : 'not-allowed',
+          color: '#fff', border: 'none', background: f.rotulo.trim() ? '#1A1A18' : '#C9C5BE',
+          borderRadius: 3, padding: '7px 14px',
+        }}>{salvando ? 'Criando…' : 'Criar nó'}</button>
     </div>
   )
 }
