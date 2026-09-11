@@ -78,6 +78,7 @@ export default function MapaFluxos({ embutido = false }) {
   const [salvando, setSalvando] = useState(false)
   const [sujo, setSujo] = useState(false)
   const [filtro, setFiltro] = useState('todos')
+  const [expandido, setExpandido] = useState(false)
 
   const carregar = useCallback(async () => {
     setErro('')
@@ -110,6 +111,18 @@ export default function MapaFluxos({ embutido = false }) {
   }, [setNos, setLinhas])
 
   useEffect(() => { carregar() }, [carregar])
+
+  useEffect(() => {
+    if (!expandido) return
+    const sair = (e) => { if (e.key === 'Escape') setExpandido(false) }
+    window.addEventListener('keydown', sair)
+    const antes = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', sair)
+      document.body.style.overflow = antes
+    }
+  }, [expandido])
 
   const salvarPosicoes = async () => {
     setSalvando(true)
@@ -167,9 +180,16 @@ export default function MapaFluxos({ embutido = false }) {
   const selNo = sel ? bruto.find((n) => n.chave === sel) : null
 
   return (
-    <div style={ embutido
-      ? { height: 'calc(100vh - 250px)', minHeight: 460, display: 'flex', flexDirection: 'column' }
-      : { margin: '-22px -26px -60px', height: 'calc(100vh - 62px)', display: 'flex', flexDirection: 'column' } }>
+    <div style={
+      expandido
+        ? {
+            position: 'fixed', inset: 0, zIndex: 1000, background: '#fff',
+            display: 'flex', flexDirection: 'column',
+          }
+        : embutido
+          ? { height: 'calc(100vh - 250px)', minHeight: 460, display: 'flex', flexDirection: 'column' }
+          : { margin: '-22px -26px -60px', height: 'calc(100vh - 62px)', display: 'flex', flexDirection: 'column' }
+    }>
       <div style={{
         padding: '12px 26px', borderBottom: '1px solid #E4E1DC', background: '#fff',
         display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
@@ -194,6 +214,15 @@ export default function MapaFluxos({ embutido = false }) {
             {salvando ? 'Salvando…' : 'Salvar posições'}
           </Btn>
         )}
+        <button onClick={() => setExpandido((v) => !v)}
+          title={expandido ? 'Sair da tela cheia (Esc)' : 'Expandir para trabalhar no mapa'}
+          style={{
+            fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', padding: '5px 11px',
+            border: '1px solid #E4E1DC', background: expandido ? '#1A1A18' : '#fff',
+            color: expandido ? '#fff' : '#1A1A18', borderRadius: 3, whiteSpace: 'nowrap',
+          }}>
+          {expandido ? '✕  Sair da tela cheia' : '⤢  Expandir'}
+        </button>
         {orfaos.length > 0 && (
           <div style={{
             fontSize: 12, color: '#B45309', background: '#FDF3E7',
