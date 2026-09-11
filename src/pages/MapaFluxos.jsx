@@ -71,6 +71,7 @@ export default function MapaFluxos({ embutido = false }) {
   const [nos, setNos, aoMudarNos] = useNodesState([])
   const [linhas, setLinhas, aoMudarLinhas] = useEdgesState([])
   const [bruto, setBruto] = useState([])
+  const [areas, setAreas] = useState([])
   const [orfaos, setOrfaos] = useState([])
   const [sel, setSel] = useState(null)
   const [fase, setFase] = useState('carregando')
@@ -80,17 +81,20 @@ export default function MapaFluxos({ embutido = false }) {
   const [filtro, setFiltro] = useState('todos')
   const [expandido, setExpandido] = useState(false)
   const [criando, setCriando] = useState(false)
+  const [area, setArea] = useState('todas')
 
   const carregar = useCallback(async () => {
     setErro('')
     try {
-      const [m, c, o] = await Promise.all([
+      const [m, c, o, ar] = await Promise.all([
         sbFetch('fluxo_mapa?select=*&ativo=eq.true'),
         sbFetch('fluxo_conexao?select=*'),
         sbFetch('fluxo_orfaos?select=*'),
+        sbFetch('fluxo_area_resumo?select=*'),
       ])
       setBruto(m || [])
       setOrfaos(o || [])
+      setAreas(ar || [])
       setNos((m || []).map((n) => ({
         id: n.chave, type: 'fluxo', position: { x: n.x, y: n.y }, data: { ...n },
       })))
@@ -224,12 +228,21 @@ export default function MapaFluxos({ embutido = false }) {
     () => ['todos', ...Array.from(new Set(bruto.map((n) => n.sistema)))],
     [bruto],
   )
-  const nosFiltrados = useMemo(
-    () => filtro === 'todos' ? nos : nos.map((n) => ({
-      ...n, style: { opacity: n.data.sistema === filtro ? 1 : .22 },
-    })),
-    [nos, filtro],
-  )
+  // área recorta o mapa; sistema só destaca dentro do recorte
+  const nosFiltrados = useMemo(() => {
+    const visiveis = area === 'todas'
+      ? nos
+      : nos.filter((n) => (n.data.area || 'Sem área') === area)
+    return filtro === 'todos'
+      ? visiveis
+      : visiveis.map((n) => ({ ...n, style: { opacity: n.data.sistema === filtro ? 1 : .22 } }))
+  }, [nos, filtro, area])
+
+  const chavesVisiveis = useMemo(
+    () => new Set(nosFiltrados.map((n) => n.id)), [nosFiltrados])
+  const linhasFiltradas = useMemo(
+    () => linhas.filter((l) => chavesVisiveis.has(l.source) && chavesVisiveis.has(l.target)),
+    [linhas, chavesVisiveis])
 
   if (fase === 'carregando') return <Spinner />
   if (fase === 'erro') {
@@ -257,8 +270,22 @@ export default function MapaFluxos({ embutido = false }) {
       }}>
         <div style={{ fontSize: 15, fontWeight: 600, color: '#1A1A18' }}>Mapa dos processos</div>
         <div style={{ fontSize: 12, color: '#6E6A64' }}>
-          {bruto.length} nós · {linhas.length} ligações
+          {area === 'todas'
+            ? `${bruto.length} nós · ${linhas.length} ligações`
+            : `${nosFiltrados.length} de ${bruto.length} nós · ${linhasFiltradas.length} ligações`}
         </div>
+
+        <select value={area} onChange={(e) => setArea(e.target.value)}
+          style={{
+            fontFamily: 'inherit', fontSize: 12.5, padding: '5px 9px',
+            border: `1px solid ${area === 'todas' ? '#E4E1DC' : '#1A1A18'}`, borderRadius: 3,
+            background: '#fff', color: '#1A1A18', fontWeight: area === 'todas' ? 400 : 600,
+          }}>
+          <option value="todas">Todas as áreas · {bruto.length} nós</option>
+          {areas.map((a) => (
+            <option key={a.area} value={a.area}>{a.area} · {a.nos} nós</option>
+          ))}
+        </select>
 
         <select value={filtro} onChange={(e) => setFiltro(e.target.value)}
           style={{
@@ -303,7 +330,7 @@ export default function MapaFluxos({ embutido = false }) {
         <div style={{ flex: 1, background: '#FBFAF8' }}>
           <ReactFlow
             nodes={nosFiltrados}
-            edges={linhas}
+            edges={linhasFiltradas}
             nodeTypes={tiposNo}
             onNodesChange={(ch) => {
               aoMudarNos(ch)
