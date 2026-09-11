@@ -229,20 +229,40 @@ export default function MapaFluxos({ embutido = false }) {
     [bruto],
   )
   // área recorta o mapa; sistema só destaca dentro do recorte
-  const nosFiltrados = useMemo(() => {
-    const visiveis = area === 'todas'
-      ? nos
-      : nos.filter((n) => (n.data.area || 'Sem área') === area)
-    return filtro === 'todos'
-      ? visiveis
-      : visiveis.map((n) => ({ ...n, style: { opacity: n.data.sistema === filtro ? 1 : .22 } }))
-  }, [nos, filtro, area])
+  // Recorte por área. Os nós de fora que conversam com a área entram
+  // apagados: é na fronteira que estão os acordos entre setores, e sem
+  // eles o mapa da área parece um sistema fechado, que não é.
+  const { nosFiltrados, linhasFiltradas } = useMemo(() => {
+    if (area === 'todas') {
+      const base = filtro === 'todos' ? nos
+        : nos.map((n) => ({ ...n, style: { opacity: n.data.sistema === filtro ? 1 : .22 } }))
+      return { nosFiltrados: base, linhasFiltradas: linhas }
+    }
+    const dentro = new Set(
+      nos.filter((n) => (n.data.area || 'Sem área') === area).map((n) => n.id))
+    const vizinhos = new Set()
+    for (const l of linhas) {
+      if (dentro.has(l.source) && !dentro.has(l.target)) vizinhos.add(l.target)
+      if (dentro.has(l.target) && !dentro.has(l.source)) vizinhos.add(l.source)
+    }
+    const visiveis = nos
+      .filter((n) => dentro.has(n.id) || vizinhos.has(n.id))
+      .map((n) => {
+        const fora = !dentro.has(n.id)
+        const apagadoPorSistema = filtro !== 'todos' && n.data.sistema !== filtro
+        return { ...n, style: { opacity: fora ? 0.3 : (apagadoPorSistema ? 0.22 : 1) } }
+      })
+    const chaves = new Set(visiveis.map((n) => n.id))
+    return {
+      nosFiltrados: visiveis,
+      linhasFiltradas: linhas.filter((l) => chaves.has(l.source) && chaves.has(l.target)),
+    }
+  }, [nos, linhas, filtro, area])
 
-  const chavesVisiveis = useMemo(
-    () => new Set(nosFiltrados.map((n) => n.id)), [nosFiltrados])
-  const linhasFiltradas = useMemo(
-    () => linhas.filter((l) => chavesVisiveis.has(l.source) && chavesVisiveis.has(l.target)),
-    [linhas, chavesVisiveis])
+  const dentroDaArea = useMemo(
+    () => area === 'todas' ? nosFiltrados.length
+      : nosFiltrados.filter((n) => (n.data.area || 'Sem área') === area).length,
+    [nosFiltrados, area])
 
   if (fase === 'carregando') return <Spinner />
   if (fase === 'erro') {
@@ -272,7 +292,7 @@ export default function MapaFluxos({ embutido = false }) {
         <div style={{ fontSize: 12, color: '#6E6A64' }}>
           {area === 'todas'
             ? `${bruto.length} nós · ${linhas.length} ligações`
-            : `${nosFiltrados.length} de ${bruto.length} nós · ${linhasFiltradas.length} ligações`}
+            : `${dentroDaArea} na área · ${nosFiltrados.length - dentroDaArea} na fronteira`}
         </div>
 
         <select value={area} onChange={(e) => setArea(e.target.value)}
