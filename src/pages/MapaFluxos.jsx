@@ -40,6 +40,7 @@ const FORMA = {
   saida:         { borda: '3px',   traco: 'solid'  },
   pessoa:        { borda: '22px',  traco: 'solid'  },
   passo:         { borda: '6px',   traco: 'solid'  },
+  entrada:       { borda: '16px',  traco: 'dashed' },
 }
 
 const ni = (v) => Number(v ?? 0).toLocaleString('pt-BR')
@@ -54,12 +55,14 @@ function NoFluxo({ data, selected }) {
     : base
   const f = FORMA[data.tipo] || FORMA.passo
   const e = EXEC[data.execucao] || EXEC.manual
+  const compacto = data.tipo === 'entrada'
   return (
     <div style={{
       background: s.fundo,
       border: `${selected ? 2 : 1.5}px ${f.traco} ${s.cor}`,
       borderRadius: f.borda,
-      padding: '10px 13px', minWidth: 168, maxWidth: 230,
+      padding: compacto ? '6px 11px' : '10px 13px',
+      minWidth: compacto ? 120 : 168, maxWidth: compacto ? 190 : 230,
       boxShadow: selected ? `0 0 0 3px ${s.cor}22`
         : data.__irmao ? '0 0 0 2px #6D28D9, 0 0 0 5px #6D28D91A' : 'none',
       borderLeft: data.execucao === 'automatico'
@@ -76,9 +79,9 @@ function NoFluxo({ data, selected }) {
                   style={{ background: s.cor, width: 6, height: 6, border: 'none', opacity: .55 }} />
         </React.Fragment>
       ))}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: compacto ? 1 : 3 }}>
         <span style={{ fontSize: 9, fontWeight: 700, color: s.cor, letterSpacing: '.06em' }}>
-          {s.sigla}
+          {compacto ? '✍ ENTRADA' : s.sigla}
         </span>
         <span style={{ flex: 1 }} />
         {e && (
@@ -89,10 +92,10 @@ function NoFluxo({ data, selected }) {
             }}>{e.icone} {e.rot}</span>
         )}
       </div>
-      <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1A1A18', lineHeight: 1.3 }}>
-        {data.rotulo}
-      </div>
-      {(data.artefato_nome || (data.sistema && data.sistema !== 'Externo')) && (
+      <div style={{
+        fontSize: compacto ? 11.5 : 12.5, fontWeight: 600, color: '#1A1A18', lineHeight: 1.3,
+      }}>{data.rotulo}</div>
+      {!compacto && (data.artefato_nome || (data.sistema && data.sistema !== 'Externo')) && (
         <div style={{ fontSize: 9.5, color: '#6E6A64', marginTop: 4, lineHeight: 1.3 }}>
           {data.artefato_nome
             ? <span title={data.artefato_nome}>
@@ -195,7 +198,7 @@ function ArestaFlutuante({ id, source, target, label, style, markerEnd, data }) 
 
 const tiposAresta = { flutuante: ArestaFlutuante }
 
-const CORLINHA = { dados: '#8B8781', gatilho: '#1F60A8', notificacao: '#B45309', condicional: '#6D28D9' }
+const CORLINHA = { dados: '#8B8781', gatilho: '#1F60A8', notificacao: '#B45309', condicional: '#6D28D9', interacao: '#A2600F' }
 
 export default function MapaFluxos({ embutido = false }) {
   const [nos, setNos, aoMudarNos] = useNodesState([])
@@ -260,7 +263,7 @@ export default function MapaFluxos({ embutido = false }) {
         style: {
           stroke: CORLINHA[e.tipo] || CORLINHA.dados,
           strokeWidth: 1.6,
-          strokeDasharray: e.tipo === 'condicional' ? '5 4' : undefined,
+          strokeDasharray: e.tipo === 'condicional' ? '5 4' : e.tipo === 'interacao' ? '2 3' : undefined,
         },
         markerEnd: { type: MarkerType.ArrowClosed, color: CORLINHA[e.tipo] || CORLINHA.dados, width: 16, height: 16 },
       })))
@@ -951,6 +954,12 @@ function NovoNo({ onCriar, onFechar }) {
       <select style={campo} value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>
         {Object.keys(FORMA).map((k) => <option key={k} value={k}>{k}</option>)}
       </select>
+      {f.tipo === 'entrada' && (
+        <div style={{ fontSize: 11, color: '#6E6A64', marginTop: -4, marginBottom: 9, lineHeight: 1.45 }}>
+          Pedido curto de informação dentro de um fluxo automático. Fica compacto no mapa, mas conta
+          como passo manual — é onde o fluxo espera.
+        </div>
+      )}
       <label style={rot}>Descrição</label>
       <textarea style={{ ...campo, minHeight: 64, resize: 'vertical' }}
                 value={f.descricao} onChange={(e) => setF({ ...f, descricao: e.target.value })} />
@@ -1150,6 +1159,7 @@ function DetalheLigacao({ ligacao, deNome, paraNome, onSalvar, onRemover, onFech
     ['gatilho', 'Gatilho', 'Um dispara o outro, sem carregar conteúdo'],
     ['condicional', 'Condicional', 'Só segue se uma condição for verdadeira'],
     ['notificacao', 'Notificação', 'Aviso a alguém, não continuidade do fluxo'],
+    ['interacao', 'Interação', 'Troca rápida com pessoa, sem espera relevante nem risco de erro. Se o fluxo ficar parado esperando, use um nó do tipo Entrada'],
   ]
 
   return (
