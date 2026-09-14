@@ -235,7 +235,7 @@ function DashRazao({ importacoes, onSincronizado }) {
       }
     })
     return { entradaValor, saidaValor, entradaQtd, saidaQtd,
-             saldoNeto: entradaValor+saidaValor, qtdMovimentos: dados.length,
+             qtdMovimentos: dados.length,
              difTotal, difEnt, difSai, comDif, semPar }
   }, [dados])
 
@@ -278,7 +278,7 @@ function DashRazao({ importacoes, onSincronizado }) {
       {fase==='pronto' && faseSync!=='sincronizando' &&(
         <>
           {/* KPIs gerais do período (não mudam com o filtro) */}
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1px 1fr 1px 1fr 1px 1fr',background:'#fff',border:'1px solid #E5E7EB',borderRadius:8,padding:'14px 20px'}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1px 1fr 1px 1fr',background:'#fff',border:'1px solid #E5E7EB',borderRadius:8,padding:'14px 20px'}}>
             <div onClick={()=>setFTipo(fTipo==='ENTRADA'?'todos':'ENTRADA')}
                  title="Clique para ver só as entradas"
                  style={{cursor:'pointer', background: fTipo==='ENTRADA' ? '#F0FDF4' : undefined,
@@ -297,26 +297,13 @@ function DashRazao({ importacoes, onSincronizado }) {
               <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums',color:'#B42318'}}>R$ {brl(kpi.saidaValor)}</div>
               <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>{int(kpi.saidaQtd)} movimentos</div>
             </div>
-            <div style={{background:'#E5E7EB'}}/>
-            <div onClick={()=>setAbrirDif(v=>!v)}
-                 title="Clique para ver a diferença separada por entrada e saída"
-                 style={{paddingLeft:20,cursor:'pointer',
-                         background: abrirDif ? '#F9FAFB' : undefined,
-                         borderRadius:6, margin:'-6px 0', padding:'6px 0 6px 20px'}}>
-              <div style={KPI_LABEL}>Saldo líquido (período todo)</div>
-              <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>
-                {kpi.saldoNeto>0?'+':''}R$ {brl(kpi.saldoNeto)}
-              </div>
-              <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>
-                entradas + saídas · {abrirDif ? 'ocultar' : 'ver diferença'}
-              </div>
-            </div>
+
             <div style={{background:'#E5E7EB'}}/>
             <div
-              onClick={()=>{ setFDif(fDif==='com'?'todas':'com'); setFTipo('todos') }}
-              title="Clique para ver só os movimentos com diferença"
+              onClick={()=>setAbrirDif(v=>!v)}
+              title="Clique para abrir a divergência por entrada e saída"
               style={{paddingLeft:20,cursor:'pointer',
-                background: fDif==='com' ? '#FEF2F2' : undefined,
+                background: abrirDif ? '#FEF2F2' : undefined,
                 borderRadius: 6, margin:'-6px 0 -6px 0', padding:'6px 0 6px 20px'}}>
               <div style={KPI_LABEL}>Divergência Dash × Razão</div>
               <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums',
@@ -325,6 +312,7 @@ function DashRazao({ importacoes, onSincronizado }) {
               </div>
               <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>
                 {int(kpi.comDif)} movimento(s){kpi.semPar>0 && ` · ${int(kpi.semPar)} sem par`}
+                {' · '}{abrirDif ? 'ocultar' : 'abrir'}
               </div>
             </div>
           </div>
