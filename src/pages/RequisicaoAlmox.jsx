@@ -13,6 +13,43 @@ async function chamar(payload) {
 }
 const dtBR = iso => iso ? new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'
 
+// O erro vem do Sankhya cru: com tag HTML e, quando e trigger do Oracle,
+// com a pilha inteira. A causa fica na primeira parte; o resto e ruido.
+function lerErro(bruto) {
+  const txt = String(bruto || '').replace(/<[^>]+>/g, '').replace(/\\n/g, '\n').trim()
+  if (!txt) return { causa: 'Erro sem detalhe registrado', tipo: 'outro', tecnico: null }
+
+  const ora = txt.match(/ORA-(\d+):\s*([\s\S]*?)(?=\s*ORA-06512|$)/)
+  if (ora) {
+    return {
+      causa: ora[2].trim(),
+      tipo: ora[1] === '20101' ? 'quantidade' : 'oracle',
+      codigo: `ORA-${ora[1]}`,
+      tecnico: txt,
+    }
+  }
+  if (/sem saldo|nada a entregar/i.test(txt))
+    return { causa: txt.split('\n')[0], tipo: 'sem_saldo', tecnico: null }
+  if (/estoque insuficiente/i.test(txt))
+    return { causa: txt.replace(/\s+/g, ' ').trim(), tipo: 'estoque', tecnico: null }
+  if (/teste/i.test(txt))
+    return { causa: txt, tipo: 'teste', tecnico: null }
+  return { causa: txt.split('\n')[0], tipo: 'outro', tecnico: txt.includes('\n') ? txt : null }
+}
+
+const TIPO_ERRO = {
+  sem_saldo:  { rot: 'Sem saldo', cor: '#B45309', bg: '#FEF3C7',
+                dica: 'Nenhum item tinha saldo no local. O pedido volta a lista quando o estoque entrar.' },
+  estoque:    { rot: 'Estoque parcial', cor: '#B45309', bg: '#FEF3C7',
+                dica: 'Um item especifico ficou sem saldo e nao foi efetivado. Os demais seguiram.' },
+  quantidade: { rot: 'Quantidade divergente', cor: '#B42318', bg: '#FEE2E2',
+                dica: 'A quantidade a entregar ficou maior que a negociada no pedido. Conferir o pedido no Sankhya.' },
+  oracle:     { rot: 'Erro do Sankhya', cor: '#B42318', bg: '#FEE2E2',
+                dica: 'Regra do proprio ERP barrou a gravacao.' },
+  teste:      { rot: 'Teste', cor: '#6B7280', bg: '#F3F4F6', dica: 'Registro de teste da validacao.' },
+  outro:      { rot: 'Erro', cor: '#B42318', bg: '#FEE2E2', dica: null },
+}
+
 export default function RequisicaoAlmox({ sessao }) {
   const [dados, setDados] = useState(null)
   const [fase, setFase] = useState('carregando')
