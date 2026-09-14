@@ -38,6 +38,18 @@ const COLUNAS_MOV = [
   { id:'nota', label:'Nota', essencial:true, texto:r=>String(r.numnota??''),
     render:r=><span style={{fontWeight:600,fontVariantNumeric:'tabular-nums'}}>{r.numnota}</span> },
 
+  // TOP: no fiscal é o código que identifica a operação. Ficava só na
+  // descrição, escondida nas colunas extras.
+  { id:'top', label:'TOP', essencial:true,
+    texto:r=>`${r.codtipoper||''} ${r.descroper||''}`,
+    render:r=>(
+      <span title={r.descroper}>
+        <span style={{fontWeight:600,fontVariantNumeric:'tabular-nums'}}>{r.codtipoper}</span>
+        <span style={{display:'block',color:'#9CA3AF',fontSize:10.5,maxWidth:150,
+                      overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.descroper}</span>
+      </span>
+    ) },
+
   { id:'tipo', label:'Tipo', essencial:true, texto:r=>r.tipo||'',
     render:r=>{
       const ent = r.tipo==='ENTRADA'
@@ -86,10 +98,6 @@ const COLUNAS_MOV = [
   { id:'local', label:'Local', texto:r=>`${r.codlocal||''} ${r.descrlocal||''}`,
     render:r=><span style={{fontSize:11}}>{r.codlocal}<br/>
       <span style={{color:'#9CA3AF'}}>{r.descrlocal}</span></span> },
-
-  { id:'operacao', label:'Operação', texto:r=>r.descroper||'',
-    render:r=><span style={{maxWidth:150,display:'inline-block',overflow:'hidden',
-      textOverflow:'ellipsis',whiteSpace:'nowrap',color:'#6B7280'}} title={r.descroper}>{r.descroper}</span> },
 
   { id:'parceiro', label:'Parceiro', texto:r=>r.nomeparc||'',
     render:r=><span style={{maxWidth:130,display:'inline-block',overflow:'hidden',
@@ -212,7 +220,7 @@ function DashRazao({ importacoes, onSincronizado }) {
 
   const exportar = () => {
     // sem as colunas de quantidade, igual à tela: a conciliação é sobre valor
-    const cols = ['codprod','descrprod','codlocal','descrlocal','numnota','data_mov','tipo','descroper',
+    const cols = ['codprod','descrprod','codlocal','descrlocal','numnota','data_mov','tipo','codtipoper','descroper',
       'nomeparc','custo_unitario','custototal',
       'saldo_dash','saldo_contabil','dash_contabil_diferenca','classe_divergencia',
       'saldo_antes_vlr','saldo_apos_vlr',
