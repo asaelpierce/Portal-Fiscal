@@ -274,6 +274,43 @@ export default function RateioCompras() {
     setLinhas(atuais => atuais.map((l, i) => (i === indice ? { ...l, codcencus: valor } : l)))
   }
 
+  // O PDF às vezes traz o valor errado ou o usuário precisa remanejar entre
+  // setores. Aceita vírgula ou ponto; guarda número, não texto.
+  function editarValor(indice, texto) {
+    // Valor financeiro digitado à mão chega em formatos diferentes:
+    //   1.234,56  vírgula decimal, ponto de milhar
+    //   1234.56   ponto decimal (copiado de sistema)
+    //   1.000     ponto de milhar, sem decimal
+    // Tratar ponto sempre como milhar transformaria 1234.56 em 123456;
+    // tratá-lo sempre como decimal transformaria 1.000 em 1.
+    let limpo = String(texto).replace(/[^\d,.-]/g, '')
+    if (limpo.includes(',')) {
+      limpo = limpo.replace(/\./g, '').replace(',', '.')          // padrão pt-BR
+    } else if (/^-?\d{1,3}(\.\d{3})+$/.test(limpo)) {
+      limpo = limpo.replace(/\./g, '')                            // só milhar
+    }
+    const n = parseFloat(limpo)
+    setLinhas(atuais => atuais.map((l, i) =>
+      i === indice ? { ...l, valor: isNaN(n) ? 0 : n, valorManual: true, valorTexto: texto } : l
+    ))
+  }
+
+  // Joga a diferença que falta na linha escolhida, para fechar com a nota
+  // sem o usuário ter que calcular de cabeça.
+  function ajustarNaLinha(indice) {
+    const alvo = Number(detalhePedido?.cab?.vlrnota)
+    if (!alvo) return
+    setLinhas(atuais => {
+      const soma = atuais.reduce((a, l) => a + (Number(l.valor) || 0), 0)
+      const dif = Math.round((alvo - soma) * 100) / 100
+      return atuais.map((l, i) =>
+        i === indice
+          ? { ...l, valor: Math.round(((Number(l.valor) || 0) + dif) * 100) / 100,
+              valorManual: true, valorTexto: undefined }
+          : l)
+    })
+  }
+
   function editarNatureza(indice, valor) {
     setLinhas(atuais => atuais.map((l, i) =>
       i === indice ? { ...l, codnat: valor, naturezaManual: true } : l
@@ -555,8 +592,21 @@ export default function RateioCompras() {
                 {linhas.map((l, i) => (
                   <tr key={i} style={{ background: l.codcencus ? '#fff' : '#FEF2F2', borderTop:'1px solid #F3F4F6' }}>
                     <td style={{ padding:'8px 14px' }}>{l.setor}</td>
-                    <td style={{ padding:'8px 14px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>
-                      {brl(l.valor)}
+                    <td style={{ padding:'6px 14px', textAlign:'right' }}>
+                      <input
+                        type="text"
+                        value={l.valorTexto !== undefined ? l.valorTexto : brl(l.valor)}
+                        onChange={e => editarValor(i, e.target.value)}
+                        onBlur={() => setLinhas(atuais => atuais.map((x, j) =>
+                          j === i ? { ...x, valorTexto: undefined } : x))}
+                        title="Valor rateado para este setor"
+                        style={{
+                          ...inputStyle, width:112, textAlign:'right', padding:'6px 8px',
+                          fontVariantNumeric:'tabular-nums',
+                          borderColor: l.valorManual ? '#1F60A8' : undefined,
+                        }}
+                      />
+                      {l.valorManual && <span style={{ fontSize:11, color:'#9CA3AF', marginLeft:4 }}>✎</span>}
                     </td>
                     <td style={{ padding:'6px 14px', textAlign:'center' }}>
                       <input
@@ -590,13 +640,59 @@ export default function RateioCompras() {
                 ))}
               </tbody>
               <tfoot>
-                <tr style={{ background:'#F9FAFB', fontWeight:700 }}>
-                  <td style={{ padding:'9px 14px', borderTop:'2px solid #E5E7EB' }}>Total</td>
-                  <td style={{ padding:'9px 14px', borderTop:'2px solid #E5E7EB', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>
-                    R$ {brl(total)}
-                  </td>
-                  <td colSpan={3} style={{ borderTop:'2px solid #E5E7EB' }} />
-                </tr>
+                {(() => {
+                  const alvoNota = Number(detalhePedido?.cab?.vlrnota) || 0
+                  const dif = alvoNota ? Math.round((total - alvoNota) * 100) / 100 : 0
+                  const bate = !alvoNota || Math.abs(dif) <= 0.01
+                  return (
+                    <>
+                      <tr style={{ background:'#F9FAFB', fontWeight:700 }}>
+                        <td style={{ padding:'9px 14px', borderTop:'2px solid #E5E7EB' }}>Total</td>
+                        <td style={{
+                          padding:'9px 14px', borderTop:'2px solid #E5E7EB', textAlign:'right',
+                          fontVariantNumeric:'tabular-nums', color: bate ? '#1A1A18' : '#B42318',
+                        }}>R$ {brl(total)}</td>
+                        <td colSpan={3} style={{ borderTop:'2px solid #E5E7EB' }} />
+                      </tr>
+                      {alvoNota > 0 && (
+                        <tr style={{ background: bate ? '#F0FDF4' : '#FEF2F2' }}>
+                          <td style={{ padding:'8px 14px', fontSize:12, color:'#6B7280' }}>
+                            Valor da nota
+                          </td>
+                          <td style={{ padding:'8px 14px', textAlign:'right', fontSize:12,
+                                       fontVariantNumeric:'tabular-nums', color:'#6B7280' }}>
+                            R$ {brl(alvoNota)}
+                          </td>
+                          <td colSpan={3} style={{ padding:'8px 14px', fontSize:12 }}>
+                            {bate ? (
+                              <span style={{ color:'#12805C', fontWeight:600 }}>✓ A soma bate com a nota</span>
+                            ) : (
+                              <span style={{ color:'#B42318' }}>
+                                <strong>
+                                  {dif > 0 ? 'Sobra' : 'Falta'} R$ {brl(Math.abs(dif))}
+                                </strong>
+                                <span style={{ color:'#6B7280', marginLeft:8 }}>
+                                  O Sankhya recusa o rateio se não fechar exato.
+                                </span>
+                                {linhas.length > 0 && (
+                                  <button
+                                    onClick={() => ajustarNaLinha(linhas.length - 1)}
+                                    title="Soma a diferença na última linha"
+                                    style={{
+                                      marginLeft:10, fontFamily:'inherit', fontSize:11.5,
+                                      cursor:'pointer', padding:'3px 9px', borderRadius:4,
+                                      border:'1px solid #FCA5A5', background:'#fff', color:'#B42318',
+                                    }}
+                                  >Ajustar na última linha</button>
+                                )}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  )
+                })()}
               </tfoot>
             </table>
           </div>
