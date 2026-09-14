@@ -53,10 +53,31 @@ const COLUNAS_MOV = [
         {Number(r.custototal)>0?'+':''}R$ {brl(r.custototal)}</span>
     } },
 
-  { id:'saldoapsvlr', label:'Saldo após R$', essencial:true, num:true,
-    texto:r=>String(r.saldo_apos_vlr??''),
-    render:r=><span style={{fontWeight:700,color:Number(r.saldo_apos_vlr)<0?'#B42318':'#101828'}}>
-      R$ {brl(r.saldo_apos_vlr)}</span> },
+  // O confronto que dá nome à tela. Vem da conciliação, casado por
+  // nota + conta contábil. Quando não há par, mostra um traço em vez de
+  // zero — zero diria que bate, e não é isso que aconteceu.
+  { id:'dash', label:'Dash', essencial:true, num:true,
+    texto:r=>String(r.saldo_dash??''),
+    render:r=>r.sem_conciliacao
+      ? <span style={{color:'#D1D5DB'}}>—</span>
+      : <span style={{fontVariantNumeric:'tabular-nums'}}>R$ {brl(r.saldo_dash)}</span> },
+
+  { id:'razao', label:'Razão', essencial:true, num:true,
+    texto:r=>String(r.saldo_contabil??''),
+    render:r=>r.sem_conciliacao
+      ? <span style={{color:'#D1D5DB'}}>—</span>
+      : <span style={{fontVariantNumeric:'tabular-nums'}}>R$ {brl(r.saldo_contabil)}</span> },
+
+  { id:'difdash', label:'Diferença', essencial:true, num:true,
+    texto:r=>String(r.dash_contabil_diferenca??''),
+    render:r=>{
+      if (r.sem_conciliacao) return <span style={{color:'#D1D5DB'}}>sem par</span>
+      const d = Number(r.dash_contabil_diferenca) || 0
+      const zero = Math.abs(d) <= 0.01
+      return <span style={{fontWeight:zero?400:700, color: zero?'#12805C':'#B42318',
+                           fontVariantNumeric:'tabular-nums'}}>
+        {zero ? '✓' : `${d > 0 ? '+' : ''}R$ ${brl(d)}`}</span>
+    } },
 
   { id:'contactb', label:'Conta CTB', essencial:true, texto:r=>r.conta_contabil||'',
     render:r=><span style={{fontSize:11.5}}>{r.conta_contabil}</span> },
@@ -79,6 +100,9 @@ const COLUNAS_MOV = [
 
   { id:'saldoantvlr', label:'Saldo ant. R$', num:true, texto:r=>String(r.saldo_antes_vlr??''),
     render:r=><span style={{color:'#6B7280'}}>R$ {brl(r.saldo_antes_vlr)}</span> },
+
+  { id:'saldoapsvlr', label:'Saldo após R$', num:true, texto:r=>String(r.saldo_apos_vlr??''),
+    render:r=><span style={{color:'#6B7280'}}>R$ {brl(r.saldo_apos_vlr)}</span> },
 
   { id:'lote', label:'Lote', texto:r=>r.lote||'',
     render:r=><span style={{color:'#9CA3AF',fontSize:11}}>{r.lote}</span> },
@@ -151,7 +175,7 @@ function DashRazao({ importacoes, onSincronizado }) {
   useEffect(() => {
     if (!impId) return
     setFase('carregando'); setDados([])
-    sbFetch(`razao_analitico?importacao_id=eq.${impId}&select=*&order=data_mov.asc,nunota.asc,sequencia.asc`)
+    sbFetch(`razao_analitico_dash?importacao_id=eq.${impId}&select=*&order=data_mov.asc,nunota.asc,sequencia.asc`)
       .then(r => { setDados(r||[]); setFase('pronto') })
       .catch(() => setFase('erro'))
   }, [impId])
@@ -190,6 +214,7 @@ function DashRazao({ importacoes, onSincronizado }) {
     // sem as colunas de quantidade, igual à tela: a conciliação é sobre valor
     const cols = ['codprod','descrprod','codlocal','descrlocal','numnota','data_mov','tipo','descroper',
       'nomeparc','custo_unitario','custototal',
+      'saldo_dash','saldo_contabil','dash_contabil_diferenca','classe_divergencia',
       'saldo_antes_vlr','saldo_apos_vlr',
       'conta_contabil','lote','lancamento']
     const csv = [cols.join(';'), ...filtrados.map(r=>cols.map(c=>String(r[c]??'').replace(/;/g,',')).join(';'))].join('\n')
