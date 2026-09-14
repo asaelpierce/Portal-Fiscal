@@ -145,8 +145,13 @@ function DashRazao({ importacoes, onSincronizado }) {
   // exemplo, e a tabela só mostra o que bate nos dois.
   const [colFiltros, setColFiltros] = useState({})
   const [verTudo, setVerTudo] = useState(false)
+  // Filtros que a caixinha de texto por coluna não resolve: "diferente de
+  // zero" e "entrada ou saída" não se digitam.
+  const [fTipo, setFTipo] = useState('todos')        // todos | ENTRADA | SAIDA
+  const [fDif, setFDif] = useState('todas')          // todas | com | sem | sempar
+  const [abrirDif, setAbrirDif] = useState(false)
   const setFiltroCol = (id, v) => setColFiltros(prev => ({ ...prev, [id]: v }))
-  const limparFiltros = () => setColFiltros({})
+  const limparFiltros = () => { setColFiltros({}); setFTipo('todos'); setFDif('todas') }
 
   // Semeia o calendário com o período mais recente só na primeira vez.
   useEffect(() => {
@@ -190,13 +195,22 @@ function DashRazao({ importacoes, onSincronizado }) {
 
   const filtrados = useMemo(() => {
     const entradas = Object.entries(colFiltros).filter(([,v]) => v && v.trim())
-    if (!entradas.length) return dados
-    return dados.filter(r => entradas.every(([colId, v]) => {
-      const col = COLUNAS_MOV.find(c => c.id === colId)
-      if (!col) return true
-      return col.texto(r).toLowerCase().includes(v.trim().toLowerCase())
-    }))
-  }, [dados, colFiltros])
+    return dados.filter(r => {
+      if (fTipo !== 'todos' && r.tipo !== fTipo) return false
+      if (fDif !== 'todas') {
+        const semPar = !!r.sem_conciliacao
+        const dif = Math.abs(Number(r.dash_contabil_diferenca) || 0)
+        if (fDif === 'sempar' && !semPar) return false
+        if (fDif === 'com' && (semPar || dif <= 0.01)) return false
+        if (fDif === 'sem' && (semPar || dif > 0.01)) return false
+      }
+      return entradas.every(([colId, v]) => {
+        const col = COLUNAS_MOV.find(c => c.id === colId)
+        if (!col) return true
+        return col.texto(r).toLowerCase().includes(v.trim().toLowerCase())
+      })
+    })
+  }, [dados, colFiltros, fTipo, fDif])
 
   // KPIs gerais (entrada/saída/saldo líquido) — sempre sobre TODO o período,
   // não mudam com o filtro. Cada lado mantém seu próprio sinal (custototal de
@@ -208,7 +222,21 @@ function DashRazao({ importacoes, onSincronizado }) {
       if (r.tipo === 'ENTRADA') { entradaValor += v; entradaQtd++ }
       else { saidaValor += v; saidaQtd++ }
     })
-    return { entradaValor, saidaValor, entradaQtd, saidaQtd, saldoNeto: entradaValor+saidaValor, qtdMovimentos: dados.length }
+    // Divergência Dash x Razão: soma com sinal, e separada por entrada e
+    // saída porque uma pode estar compensando a outra no total.
+    let difTotal = 0, difEnt = 0, difSai = 0, comDif = 0, semPar = 0
+    dados.forEach(r => {
+      if (r.sem_conciliacao) { semPar++; return }
+      const d = Number(r.dash_contabil_diferenca) || 0
+      if (Math.abs(d) > 0.01) {
+        comDif++
+        difTotal += d
+        if (r.tipo === 'ENTRADA') difEnt += d; else difSai += d
+      }
+    })
+    return { entradaValor, saidaValor, entradaQtd, saidaQtd,
+             saldoNeto: entradaValor+saidaValor, qtdMovimentos: dados.length,
+             difTotal, difEnt, difSai, comDif, semPar }
   }, [dados])
 
   // Subtotal do rodapé — igual Excel: soma só o que está sendo mostrado na
@@ -235,7 +263,7 @@ function DashRazao({ importacoes, onSincronizado }) {
     () => verTudo ? COLUNAS_MOV : COLUNAS_MOV.filter(c => c.essencial),
     [verTudo])
 
-  const temFiltro = Object.values(colFiltros).some(v => v && v.trim())
+  const temFiltro = Object.values(colFiltros).some(v => v && v.trim()) || fTipo!=='todos' || fDif!=='todas'
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:16}}>
@@ -251,34 +279,94 @@ function DashRazao({ importacoes, onSincronizado }) {
         <>
           {/* KPIs gerais do período (não mudam com o filtro) */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1px 1fr 1px 1fr 1px 1fr',background:'#fff',border:'1px solid #E5E7EB',borderRadius:8,padding:'14px 20px'}}>
-            <div>
+            <div onClick={()=>setFTipo(fTipo==='ENTRADA'?'todos':'ENTRADA')}
+                 title="Clique para ver só as entradas"
+                 style={{cursor:'pointer', background: fTipo==='ENTRADA' ? '#F0FDF4' : undefined,
+                         borderRadius:6, margin:'-6px 0', padding:'6px 0'}}>
               <div style={KPI_LABEL}>Entradas (período todo)</div>
               <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums',color:'#12805C'}}>+R$ {brl(kpi.entradaValor)}</div>
               <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>{int(kpi.entradaQtd)} movimentos</div>
             </div>
             <div style={{background:'#E5E7EB'}}/>
-            <div style={{paddingLeft:20}}>
+            <div onClick={()=>setFTipo(fTipo==='SAIDA'?'todos':'SAIDA')}
+                 title="Clique para ver só as saídas"
+                 style={{paddingLeft:20,cursor:'pointer',
+                         background: fTipo==='SAIDA' ? '#FEF2F2' : undefined,
+                         borderRadius:6, margin:'-6px 0', padding:'6px 0 6px 20px'}}>
               <div style={KPI_LABEL}>Saídas (período todo)</div>
               <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums',color:'#B42318'}}>R$ {brl(kpi.saidaValor)}</div>
               <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>{int(kpi.saidaQtd)} movimentos</div>
             </div>
             <div style={{background:'#E5E7EB'}}/>
-            <div style={{paddingLeft:20}}>
+            <div onClick={()=>setAbrirDif(v=>!v)}
+                 title="Clique para ver a diferença separada por entrada e saída"
+                 style={{paddingLeft:20,cursor:'pointer',
+                         background: abrirDif ? '#F9FAFB' : undefined,
+                         borderRadius:6, margin:'-6px 0', padding:'6px 0 6px 20px'}}>
               <div style={KPI_LABEL}>Saldo líquido (período todo)</div>
               <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>
                 {kpi.saldoNeto>0?'+':''}R$ {brl(kpi.saldoNeto)}
               </div>
-              <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>entradas + saídas</div>
+              <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>
+                entradas + saídas · {abrirDif ? 'ocultar' : 'ver diferença'}
+              </div>
             </div>
             <div style={{background:'#E5E7EB'}}/>
-            <div style={{paddingLeft:20}}>
-              <div style={KPI_LABEL}>Quantidade (período todo)</div>
-              <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{int(kpi.qtdMovimentos)}</div>
+            <div
+              onClick={()=>{ setFDif(fDif==='com'?'todas':'com'); setFTipo('todos') }}
+              title="Clique para ver só os movimentos com diferença"
+              style={{paddingLeft:20,cursor:'pointer',
+                background: fDif==='com' ? '#FEF2F2' : undefined,
+                borderRadius: 6, margin:'-6px 0 -6px 0', padding:'6px 0 6px 20px'}}>
+              <div style={KPI_LABEL}>Divergência Dash × Razão</div>
+              <div style={{fontSize:20,fontWeight:700,fontVariantNumeric:'tabular-nums',
+                color: Math.abs(kpi.difTotal)>0.01 ? '#B42318' : '#12805C'}}>
+                {Math.abs(kpi.difTotal)<=0.01 ? '✓ fecha' : `${kpi.difTotal>0?'+':''}R$ ${brl(kpi.difTotal)}`}
+              </div>
               <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>
-                {[...new Set(dados.map(r=>r.codprod))].length} produtos · {[...new Set(dados.map(r=>r.codlocal))].length} locais
+                {int(kpi.comDif)} movimento(s){kpi.semPar>0 && ` · ${int(kpi.semPar)} sem par`}
               </div>
             </div>
           </div>
+
+          {abrirDif && (
+            <div style={{background:'#fff',border:'1px solid #E5E7EB',borderRadius:8,padding:'14px 20px'}}>
+              <div style={{fontSize:12,color:'#6B7280',marginBottom:10,lineHeight:1.5}}>
+                A divergência entre Dash e Razão separada por natureza do movimento. Olhar só o total
+                engana quando uma ponta compensa a outra.
+              </div>
+              <div style={{display:'flex',gap:32,flexWrap:'wrap'}}>
+                {[
+                  ['Nas entradas', kpi.difEnt, 'ENTRADA'],
+                  ['Nas saídas',   kpi.difSai, 'SAIDA'],
+                  ['Total',        kpi.difTotal, null],
+                ].map(([rot, val, tipo])=>{
+                  const zero = Math.abs(val)<=0.01
+                  return (
+                    <div key={rot}
+                      onClick={()=>{ if(tipo){ setFTipo(tipo); setFDif('com') } }}
+                      style={{cursor:tipo?'pointer':'default'}}
+                      title={tipo?'Clique para filtrar a tabela':undefined}>
+                      <div style={KPI_LABEL}>{rot}</div>
+                      <div style={{fontSize:18,fontWeight:700,fontVariantNumeric:'tabular-nums',
+                                   color: zero?'#12805C':'#B42318'}}>
+                        {zero ? '✓ fecha' : `${val>0?'+':''}R$ ${brl(val)}`}
+                      </div>
+                    </div>
+                  )
+                })}
+                {kpi.semPar>0 && (
+                  <div onClick={()=>{ setFDif('sempar'); setFTipo('todos') }}
+                       style={{cursor:'pointer'}} title="Clique para ver os movimentos sem lançamento correspondente">
+                    <div style={KPI_LABEL}>Sem par na conciliação</div>
+                    <div style={{fontSize:18,fontWeight:700,color:'#B45309',fontVariantNumeric:'tabular-nums'}}>
+                      {int(kpi.semPar)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <Panel
             title={`${int(filtrados.length)} de ${int(dados.length)} movimentos`}
@@ -292,6 +380,33 @@ function DashRazao({ importacoes, onSincronizado }) {
               </div>
             }
           >
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10,alignItems:'center'}}>
+              <span style={{fontSize:11,color:'#9CA3AF',marginRight:2}}>Movimento:</span>
+              {[['todos','Todos'],['ENTRADA','Entradas'],['SAIDA','Saídas']].map(([k,r])=>(
+                <button key={k} onClick={()=>setFTipo(k)} style={{
+                  fontFamily:'inherit',fontSize:11.5,cursor:'pointer',padding:'4px 10px',borderRadius:4,
+                  border:`1px solid ${fTipo===k?'#101828':'#E5E7EB'}`,
+                  background:fTipo===k?'#101828':'#fff', color:fTipo===k?'#fff':'#6B7280',
+                  fontWeight:fTipo===k?600:400,
+                }}>{r}</button>
+              ))}
+              <span style={{fontSize:11,color:'#9CA3AF',margin:'0 2px 0 12px'}}>Dash × Razão:</span>
+              {[['todas','Todas'],['com','Só com diferença'],['sem','Só as que fecham'],['sempar','Sem par']].map(([k,r])=>(
+                <button key={k} onClick={()=>setFDif(k)} style={{
+                  fontFamily:'inherit',fontSize:11.5,cursor:'pointer',padding:'4px 10px',borderRadius:4,
+                  border:`1px solid ${fDif===k?'#B42318':'#E5E7EB'}`,
+                  background:fDif===k?'#FEF2F2':'#fff', color:fDif===k?'#B42318':'#6B7280',
+                  fontWeight:fDif===k?600:400,
+                }}>{r}</button>
+              ))}
+              {(fTipo!=='todos'||fDif!=='todas') && (
+                <button onClick={()=>{setFTipo('todos');setFDif('todas')}} style={{
+                  fontFamily:'inherit',fontSize:11.5,cursor:'pointer',padding:'4px 10px',
+                  border:'none',background:'none',color:'#1F60A8',
+                }}>limpar</button>
+              )}
+            </div>
+
             <div style={{fontSize:11.5,color:'#9CA3AF',marginBottom:10}}>
               Digite em qualquer coluna abaixo pra filtrar — funciona igual filtro de planilha, e pode combinar várias colunas ao mesmo tempo.
               {(() => {
