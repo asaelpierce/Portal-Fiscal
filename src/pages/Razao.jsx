@@ -17,24 +17,73 @@ const KPI_LABEL = { fontSize:10.5, color:'#9CA3AF', textTransform:'uppercase', l
 // Definição das colunas da tabela de movimentos: cada uma sabe extrair seu
 // próprio texto (pro filtro por coluna) e, se for numérica, tem uma chave de
 // soma pro subtotal do rodapé.
+// Quantidade saiu: a conciliação Dash x Razão é sobre VALOR, e as três
+// colunas de quantidade só disputavam espaço com o que importa.
+// "essencial" define o que aparece por padrão; o resto fica atrás do
+// botão de mais colunas, porque 13 colunas de uma vez ninguém lê.
 const COLUNAS_MOV = [
-  { id:'data', label:'Data', num:false, texto:r=>dBR(r.data_mov) },
-  { id:'produto', label:'Produto', num:false, texto:r=>`${r.codprod||''} ${r.descrprod||''}` },
-  { id:'local', label:'Local', num:false, texto:r=>`${r.codlocal||''} ${r.descrlocal||''}` },
-  { id:'nota', label:'Nota', num:false, texto:r=>String(r.numnota??'') },
-  { id:'tipo', label:'Tipo', num:false, texto:r=>r.tipo||'' },
-  { id:'operacao', label:'Operação', num:false, texto:r=>r.descroper||'' },
-  { id:'parceiro', label:'Parceiro', num:false, texto:r=>r.nomeparc||'' },
-  { id:'qtdmov', label:'Qtd mov.', num:true, texto:r=>String(r.qtdneg??''), soma:'qtdneg' },
-  { id:'custounit', label:'Custo unit.', num:true, texto:r=>String(r.custo_unitario??'') },
-  { id:'valormov', label:'Valor mov.', num:true, texto:r=>String(r.custototal??''), soma:'custototal' },
-  { id:'saldoantqtd', label:'Saldo ant. Qtd', num:true, texto:r=>String(r.saldo_antes_qtd??'') },
-  { id:'saldoantvlr', label:'Saldo ant. R$', num:true, texto:r=>String(r.saldo_antes_vlr??'') },
-  { id:'saldoapsqtd', label:'Saldo aps. Qtd', num:true, texto:r=>String(r.saldo_apos_qtd??'') },
-  { id:'saldoapsvlr', label:'Saldo aps. R$', num:true, texto:r=>String(r.saldo_apos_vlr??'') },
-  { id:'contactb', label:'Conta CTB', num:false, texto:r=>r.conta_contabil||'' },
-  { id:'lote', label:'Lote', num:false, texto:r=>r.lote||'' },
+  { id:'data', label:'Data', essencial:true, texto:r=>dBR(r.data_mov),
+    render:r=>dBR(r.data_mov) },
+
+  { id:'produto', label:'Produto', essencial:true,
+    texto:r=>`${r.codprod||''} ${r.descrprod||''}`,
+    render:r=>(
+      <>
+        <div style={{fontWeight:600,fontSize:11.5}}>{r.codprod}</div>
+        <div style={{color:'#9CA3AF',fontSize:10.5,maxWidth:170,overflow:'hidden',
+                     textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={r.descrprod}>{r.descrprod}</div>
+      </>
+    ) },
+
+  { id:'nota', label:'Nota', essencial:true, texto:r=>String(r.numnota??''),
+    render:r=><span style={{fontWeight:600,fontVariantNumeric:'tabular-nums'}}>{r.numnota}</span> },
+
+  { id:'tipo', label:'Tipo', essencial:true, texto:r=>r.tipo||'',
+    render:r=>{
+      const ent = r.tipo==='ENTRADA'
+      return <span style={{fontSize:10.5,fontWeight:700,padding:'2px 7px',borderRadius:4,
+        background:ent?'#D1FAE5':'#FEE2E2',color:ent?'#065F46':'#991B1B'}}>{r.tipo}</span>
+    } },
+
+  { id:'valormov', label:'Valor mov.', essencial:true, num:true, soma:'custototal',
+    texto:r=>String(r.custototal??''),
+    render:r=>{
+      const ent = r.tipo==='ENTRADA'
+      return <span style={{fontWeight:600,color:ent?'#12805C':'#B42318'}}>
+        {Number(r.custototal)>0?'+':''}R$ {brl(r.custototal)}</span>
+    } },
+
+  { id:'saldoapsvlr', label:'Saldo após R$', essencial:true, num:true,
+    texto:r=>String(r.saldo_apos_vlr??''),
+    render:r=><span style={{fontWeight:700,color:Number(r.saldo_apos_vlr)<0?'#B42318':'#101828'}}>
+      R$ {brl(r.saldo_apos_vlr)}</span> },
+
+  { id:'contactb', label:'Conta CTB', essencial:true, texto:r=>r.conta_contabil||'',
+    render:r=><span style={{fontSize:11.5}}>{r.conta_contabil}</span> },
+
+  // ── as de baixo aparecem só com "mais colunas" ──
+  { id:'local', label:'Local', texto:r=>`${r.codlocal||''} ${r.descrlocal||''}`,
+    render:r=><span style={{fontSize:11}}>{r.codlocal}<br/>
+      <span style={{color:'#9CA3AF'}}>{r.descrlocal}</span></span> },
+
+  { id:'operacao', label:'Operação', texto:r=>r.descroper||'',
+    render:r=><span style={{maxWidth:150,display:'inline-block',overflow:'hidden',
+      textOverflow:'ellipsis',whiteSpace:'nowrap',color:'#6B7280'}} title={r.descroper}>{r.descroper}</span> },
+
+  { id:'parceiro', label:'Parceiro', texto:r=>r.nomeparc||'',
+    render:r=><span style={{maxWidth:130,display:'inline-block',overflow:'hidden',
+      textOverflow:'ellipsis',whiteSpace:'nowrap',color:'#6B7280'}}>{r.nomeparc}</span> },
+
+  { id:'custounit', label:'Custo unit.', num:true, texto:r=>String(r.custo_unitario??''),
+    render:r=>brl(r.custo_unitario) },
+
+  { id:'saldoantvlr', label:'Saldo ant. R$', num:true, texto:r=>String(r.saldo_antes_vlr??''),
+    render:r=><span style={{color:'#6B7280'}}>R$ {brl(r.saldo_antes_vlr)}</span> },
+
+  { id:'lote', label:'Lote', texto:r=>r.lote||'',
+    render:r=><span style={{color:'#9CA3AF',fontSize:11}}>{r.lote}</span> },
 ]
+
 
 function InputFiltroColuna({ value, onChange, numeric }) {
   return (
@@ -63,6 +112,7 @@ function DashRazao({ importacoes, onSincronizado }) {
   // em conjunto (AND) — digita em "Produto" e em "Tipo" ao mesmo tempo, por
   // exemplo, e a tabela só mostra o que bate nos dois.
   const [colFiltros, setColFiltros] = useState({})
+  const [verTudo, setVerTudo] = useState(false)
   const setFiltroCol = (id, v) => setColFiltros(prev => ({ ...prev, [id]: v }))
   const limparFiltros = () => setColFiltros({})
 
@@ -132,21 +182,25 @@ function DashRazao({ importacoes, onSincronizado }) {
   // Subtotal do rodapé — igual Excel: soma só o que está sendo mostrado na
   // tela agora (respeitando os filtros de coluna), não o total do período.
   const subtotal = useMemo(() => ({
-    qtd: filtrados.reduce((s,r)=>s+(Number(r.qtdneg)||0),0),
     valor: filtrados.reduce((s,r)=>s+(Number(r.custototal)||0),0),
     linhas: filtrados.length,
   }), [filtrados])
 
   const exportar = () => {
+    // sem as colunas de quantidade, igual à tela: a conciliação é sobre valor
     const cols = ['codprod','descrprod','codlocal','descrlocal','numnota','data_mov','tipo','descroper',
-      'nomeparc','qtdneg','custo_unitario','custototal',
-      'saldo_antes_qtd','saldo_antes_vlr','saldo_apos_qtd','saldo_apos_vlr',
+      'nomeparc','custo_unitario','custototal',
+      'saldo_antes_vlr','saldo_apos_vlr',
       'conta_contabil','lote','lancamento']
     const csv = [cols.join(';'), ...filtrados.map(r=>cols.map(c=>String(r[c]??'').replace(/;/g,',')).join(';'))].join('\n')
     const url = URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}))
     const a=document.createElement('a'); a.href=url; a.download=`dash-razao-${impId}.csv`; a.click()
     URL.revokeObjectURL(url)
   }
+
+  const colunasVisiveis = useMemo(
+    () => verTudo ? COLUNAS_MOV : COLUNAS_MOV.filter(c => c.essencial),
+    [verTudo])
 
   const temFiltro = Object.values(colFiltros).some(v => v && v.trim())
 
@@ -197,6 +251,9 @@ function DashRazao({ importacoes, onSincronizado }) {
             title={`${int(filtrados.length)} de ${int(dados.length)} movimentos`}
             action={
               <div style={{display:'flex',gap:8}}>
+                <Btn small onClick={()=>setVerTudo(v=>!v)}>
+                  {verTudo ? '− Menos colunas' : `+ Mais colunas (${COLUNAS_MOV.length - colunasVisiveis.length})`}
+                </Btn>
                 {temFiltro && <Btn small onClick={limparFiltros}>✕ Limpar filtros</Btn>}
                 <Btn small onClick={exportar}>↓ CSV</Btn>
               </div>
@@ -204,13 +261,22 @@ function DashRazao({ importacoes, onSincronizado }) {
           >
             <div style={{fontSize:11.5,color:'#9CA3AF',marginBottom:10}}>
               Digite em qualquer coluna abaixo pra filtrar — funciona igual filtro de planilha, e pode combinar várias colunas ao mesmo tempo.
+              {(() => {
+                const escondidos = Object.entries(colFiltros)
+                  .filter(([k,v]) => v && !colunasVisiveis.some(c=>c.id===k))
+                return escondidos.length ? (
+                  <span style={{color:'#B45309',marginLeft:6}}>
+                    · {escondidos.length} filtro(s) ativo(s) em coluna escondida — clique em Mais colunas para ver.
+                  </span>
+                ) : null
+              })()}
             </div>
 
             <div style={{maxHeight:600,overflowX:'auto',overflowY:'auto',margin:'0 -18px -16px',borderTop:'1px solid #F3F4F6'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                 <thead>
                   <tr>
-                    {COLUNAS_MOV.map(c=>(
+                    {colunasVisiveis.map(c=>(
                       <th key={c.id} style={{
                         position:'sticky',top:0,background:'#F9FAFB',zIndex:2,
                         padding:'8px 11px 4px',textAlign:c.num?'right':'left',
@@ -220,7 +286,7 @@ function DashRazao({ importacoes, onSincronizado }) {
                     ))}
                   </tr>
                   <tr>
-                    {COLUNAS_MOV.map(c=>(
+                    {colunasVisiveis.map(c=>(
                       <th key={c.id} style={{
                         position:'sticky',top:24,background:'#F9FAFB',zIndex:2,
                         padding:'0 6px 8px',borderBottom:'1px solid #E5E7EB',
@@ -235,72 +301,42 @@ function DashRazao({ importacoes, onSincronizado }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtrados.slice(0,1000).map((r,i)=>{
-                    const ent=r.tipo==='ENTRADA'
-                    const saldoNeg=Number(r.saldo_apos_qtd)<0
-                    return(
-                      <tr key={r.id||i} style={{background:i%2===0?'#fff':'#FAFAFA'}}>
-                        <td style={TD}>{dBR(r.data_mov)}</td>
-                        <td style={TD}>
-                          <div style={{fontWeight:600,fontSize:11.5}}>{r.codprod}</div>
-                          <div style={{color:'#9CA3AF',fontSize:10.5,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={r.descrprod}>{r.descrprod}</div>
+                  {filtrados.slice(0,1000).map((r,i)=>(
+                    <tr key={r.id||i} style={{background:i%2===0?'#fff':'#FAFAFA'}}>
+                      {colunasVisiveis.map(c=>(
+                        <td key={c.id} style={{...TD, textAlign:c.num?'right':'left',
+                          fontVariantNumeric:c.num?'tabular-nums':undefined}}>
+                          {c.render ? c.render(r) : c.texto(r)}
                         </td>
-                        <td style={TD}><span style={{fontSize:11}}>{r.codlocal}<br/><span style={{color:'#9CA3AF'}}>{r.descrlocal}</span></span></td>
-                        <td style={{...TD,fontWeight:600,fontVariantNumeric:'tabular-nums'}}>{r.numnota}</td>
-                        <td style={TD}>
-                          <span style={{fontSize:10.5,fontWeight:700,padding:'2px 7px',borderRadius:4,
-                            background:ent?'#D1FAE5':'#FEE2E2',color:ent?'#065F46':'#991B1B'}}>
-                            {r.tipo}
-                          </span>
-                        </td>
-                        <td style={{...TD,maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'#6B7280'}} title={r.descroper}>{r.descroper}</td>
-                        <td style={{...TD,maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'#6B7280'}}>{r.nomeparc}</td>
-                        <td style={{...TD,textAlign:'right',color:ent?'#12805C':'#B42318',fontWeight:600,fontVariantNumeric:'tabular-nums'}}>
-                          {Number(r.qtdneg)>0?'+':''}{Number(r.qtdneg).toLocaleString('pt-BR',{minimumFractionDigits:2})}
-                        </td>
-                        <td style={{...TD,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>{brl(r.custo_unitario)}</td>
-                        <td style={{...TD,textAlign:'right',fontWeight:600,fontVariantNumeric:'tabular-nums',color:ent?'#12805C':'#B42318'}}>
-                          {Number(r.custototal)>0?'+':''}R$ {brl(r.custototal)}
-                        </td>
-                        <td style={{...TD,textAlign:'right',color:'#6B7280',fontVariantNumeric:'tabular-nums'}}>
-                          {Number(r.saldo_antes_qtd).toLocaleString('pt-BR',{minimumFractionDigits:2})}
-                        </td>
-                        <td style={{...TD,textAlign:'right',color:'#6B7280',fontVariantNumeric:'tabular-nums'}}>R$ {brl(r.saldo_antes_vlr)}</td>
-                        <td style={{...TD,textAlign:'right',fontWeight:700,fontVariantNumeric:'tabular-nums',color:saldoNeg?'#B42318':'#101828'}}>
-                          {Number(r.saldo_apos_qtd).toLocaleString('pt-BR',{minimumFractionDigits:2})}
-                        </td>
-                        <td style={{...TD,textAlign:'right',fontWeight:700,fontVariantNumeric:'tabular-nums',color:Number(r.saldo_apos_vlr)<0?'#B42318':'#101828'}}>R$ {brl(r.saldo_apos_vlr)}</td>
-                        <td style={{...TD,fontSize:11.5}}>{r.conta_contabil}</td>
-                        <td style={{...TD,color:'#9CA3AF',fontSize:11}}>{r.lote}</td>
-                      </tr>
-                    )
-                  })}
+                      ))}
+                    </tr>
+                  ))}
                   {filtrados.length>1000&&(
-                    <tr><td colSpan={16} style={{textAlign:'center',padding:'12px',color:'#9CA3AF',fontSize:12}}>
+                    <tr><td colSpan={colunasVisiveis.length} style={{textAlign:'center',padding:'12px',color:'#9CA3AF',fontSize:12}}>
                       Mostrando 1.000 de {int(filtrados.length)} — refine os filtros ou exporte o CSV.
                     </td></tr>
                   )}
                   {!filtrados.length&&(
-                    <tr><td colSpan={16} style={{textAlign:'center',padding:'28px',color:'#9CA3AF'}}>Nenhum registro com esses filtros.</td></tr>
+                    <tr><td colSpan={colunasVisiveis.length} style={{textAlign:'center',padding:'28px',color:'#9CA3AF'}}>Nenhum registro com esses filtros.</td></tr>
                   )}
                 </tbody>
-                {/* Subtotal — igual Excel: soma só o que está filtrado/visível agora */}
                 {filtrados.length > 0 && (
                   <tfoot>
                     <tr style={{background:'#F9FAFB',fontWeight:700,borderTop:'2px solid #E5E7EB'}}>
-                      <td colSpan={7} style={{padding:'9px 11px',fontSize:12}}>
-                        Subtotal ({int(subtotal.linhas)} {subtotal.linhas===1?'linha':'linhas'}{temFiltro?' filtradas':''})
-                      </td>
-                      <td style={{padding:'9px 11px',textAlign:'right',fontVariantNumeric:'tabular-nums',
-                        color:subtotal.qtd>0?'#12805C':subtotal.qtd<0?'#B42318':'#101828'}}>
-                        {subtotal.qtd>0?'+':''}{subtotal.qtd.toLocaleString('pt-BR',{minimumFractionDigits:2})}
-                      </td>
-                      <td/>
-                      <td style={{padding:'9px 11px',textAlign:'right',fontVariantNumeric:'tabular-nums',
-                        color:subtotal.valor>0?'#12805C':subtotal.valor<0?'#B42318':'#101828'}}>
-                        {subtotal.valor>0?'+':''}R$ {brl(subtotal.valor)}
-                      </td>
-                      <td colSpan={6}/>
+                      {colunasVisiveis.map((c,idx)=>{
+                        if (idx===0) return (
+                          <td key={c.id} style={{padding:'9px 11px',fontSize:12}}>
+                            Subtotal ({int(subtotal.linhas)} {subtotal.linhas===1?'linha':'linhas'}{temFiltro?' filtradas':''})
+                          </td>
+                        )
+                        if (c.soma==='custototal') return (
+                          <td key={c.id} style={{padding:'9px 11px',textAlign:'right',fontVariantNumeric:'tabular-nums',
+                            color:subtotal.valor>0?'#12805C':subtotal.valor<0?'#B42318':'#101828'}}>
+                            {subtotal.valor>0?'+':''}R$ {brl(subtotal.valor)}
+                          </td>
+                        )
+                        return <td key={c.id}/>
+                      })}
                     </tr>
                   </tfoot>
                 )}
