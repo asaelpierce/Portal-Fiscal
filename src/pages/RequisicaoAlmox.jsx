@@ -17,6 +17,7 @@ export default function RequisicaoAlmox({ sessao }) {
   const [dados, setDados] = useState(null)
   const [fase, setFase] = useState('carregando')
   const [erro, setErro] = useState('')
+  const [erroAberto, setErroAberto] = useState(null)
   const [sel, setSel] = useState(new Set())
   const [busca, setBusca] = useState('')
   const [confirmando, setConfirmando] = useState(false)
@@ -314,27 +315,96 @@ export default function RequisicaoAlmox({ sessao }) {
 
       {historico.length > 0 && (
         <Panel title="Histórico">
+          {(() => {
+            const falhas = historico.filter(h => h.status !== 'ok')
+            if (!falhas.length) return null
+            const porTipo = {}
+            falhas.forEach(h => {
+              const t = lerErro(h.erro).tipo
+              porTipo[t] = (porTipo[t] || 0) + 1
+            })
+            return (
+              <div style={{ display:'flex', gap:14, flexWrap:'wrap', marginBottom:12, fontSize:12 }}>
+                <span style={{ color:'#6B7280' }}>
+                  {falhas.length} de {historico.length} não confirmaram:
+                </span>
+                {Object.entries(porTipo).sort((a,b) => b[1]-a[1]).map(([t, n]) => {
+                  const et = TIPO_ERRO[t] || TIPO_ERRO.outro
+                  return (
+                    <span key={t} style={{ color: et.cor }}>
+                      {n} {et.rot.toLowerCase()}
+                    </span>
+                  )
+                })}
+                <span style={{ color:'#9CA3AF' }}>· clique na linha para ver o motivo</span>
+              </div>
+            )
+          })()}
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
             <thead><tr>
               <th style={th()}>Data/Hora</th><th style={th()}>Pedido</th><th style={th()}>Gerada</th>
               <th style={th('right')}>Valor</th><th style={th()}>Status</th><th style={th()}>Por</th>
             </tr></thead>
             <tbody>
-              {historico.map(h => (
-                <tr key={h.id} style={{ borderTop:'1px solid #F9FAFB' }}>
-                  <td style={{ ...cel, color:'#6B7280' }}>{dtBR(h.executado_em)}</td>
-                  <td style={cel}>{h.numnota_pedido}</td>
-                  <td style={cel}>{h.numnota_gerada || '—'}</td>
-                  <td style={{ ...cel, textAlign:'right' }}>{h.valor ? `R$ ${brl(h.valor)}` : '—'}</td>
-                  <td style={cel}>
-                    <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:5,
-                      background: h.status==='ok' ? '#D1FAE5' : '#FEE2E2', color: h.status==='ok' ? '#12805C' : '#B42318' }}>
-                      {h.status==='ok' ? 'Confirmada' : 'Erro'}
-                    </span>
-                  </td>
-                  <td style={{ ...cel, color:'#9CA3AF', fontSize:11.5 }}>{h.executado_por}</td>
-                </tr>
-              ))}
+              {historico.map(h => {
+                const falhou = h.status !== 'ok'
+                const info = falhou ? lerErro(h.erro) : null
+                const et = falhou ? (TIPO_ERRO[info.tipo] || TIPO_ERRO.outro) : null
+                const aberto = erroAberto === h.id
+                return (
+                  <React.Fragment key={h.id}>
+                  <tr style={{ borderTop:'1px solid #F9FAFB', cursor: falhou ? 'pointer' : 'default' }}
+                      onClick={() => falhou && setErroAberto(aberto ? null : h.id)}>
+                    <td style={{ ...cel, color:'#6B7280' }}>{dtBR(h.executado_em)}</td>
+                    <td style={cel}>{h.numnota_pedido}</td>
+                    <td style={cel}>{h.numnota_gerada || '—'}</td>
+                    <td style={{ ...cel, textAlign:'right' }}>{h.valor ? `R$ ${brl(h.valor)}` : '—'}</td>
+                    <td style={cel}>
+                      <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:5,
+                        background: falhou ? et.bg : '#D1FAE5', color: falhou ? et.cor : '#12805C' }}>
+                        {falhou ? et.rot : 'Confirmada'}
+                      </span>
+                      {falhou && (
+                        <span style={{ fontSize:10.5, color:'#9CA3AF', marginLeft:6 }}>
+                          {aberto ? 'ocultar' : 'ver motivo'}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ ...cel, color:'#9CA3AF', fontSize:11.5 }}>{h.executado_por}</td>
+                  </tr>
+                  {falhou && aberto && (
+                    <tr style={{ background:'#FFFBFA' }}>
+                      <td colSpan={6} style={{ padding:'10px 12px', borderTop:'1px solid #FEE2E2' }}>
+                        <div style={{ fontSize:12.5, color:'#1A1A18', lineHeight:1.55 }}>
+                          {info.causa}
+                        </div>
+                        {et.dica && (
+                          <div style={{ fontSize:11.5, color:'#6B7280', marginTop:6, lineHeight:1.5 }}>
+                            {et.dica}
+                          </div>
+                        )}
+                        {info.codigo && (
+                          <div style={{ fontSize:11, color:'#9CA3AF', marginTop:6 }}>
+                            Código do ERP: {info.codigo}
+                          </div>
+                        )}
+                        {info.tecnico && (
+                          <details style={{ marginTop:8 }}>
+                            <summary style={{ fontSize:11, color:'#6B7280', cursor:'pointer' }}>
+                              Mensagem técnica completa
+                            </summary>
+                            <pre style={{
+                              fontSize:10.5, color:'#6B7280', background:'#F9FAFB', padding:'8px 10px',
+                              borderRadius:4, marginTop:6, whiteSpace:'pre-wrap', wordBreak:'break-word',
+                            }}>{info.tecnico}</pre>
+                          </details>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                )
+              })}
             </tbody>
           </table>
         </Panel>
