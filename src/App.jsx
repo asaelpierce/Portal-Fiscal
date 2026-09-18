@@ -24,6 +24,7 @@ import Processos from './pages/Processos.jsx'
 import Modulos from './pages/Modulos.jsx'
 import Demandas from './pages/Demandas.jsx'
 import Entregas from './pages/Entregas.jsx'
+import SolicitarPublico from './pages/SolicitarPublico.jsx'
 import TrocarSenha from './components/TrocarSenha.jsx'
 import Automacoes from './pages/Automacoes.jsx'
 import BaixaGas from './pages/BaixaGas.jsx'
@@ -68,6 +69,11 @@ function carregarSessaoSalva() {
 
 export default function App() {
   const [sessao, setSessao] = useState(carregarSessaoSalva)
+
+  // Rota pública: quem abre o link de solicitação não tem conta no portal,
+  // então a verificação da URL vem ANTES da exigência de login.
+  const tokenPublico = new URLSearchParams(window.location.search).get('solicitar')
+  if (tokenPublico) return <SolicitarPublico token={tokenPublico} />
 
   if (!sessao) {
     return <Login onLogin={(s) => { registrarAuditoria(s?.email, 'login', null, null); setSessao(s) }} />
