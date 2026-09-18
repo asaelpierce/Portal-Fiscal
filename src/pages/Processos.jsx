@@ -14,7 +14,7 @@ const nf = (v, d = 1) =>
 const ni = (v) => Number(v ?? 0).toLocaleString('pt-BR')
 const num = { fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum"' }
 
-export default function Processos() {
+export default function Processos({ sessao }) {
   const [vista, setVista] = useState('mapa')
   const [totais, setTotais] = useState(null)
   const [resumo, setResumo] = useState([])
@@ -152,7 +152,7 @@ export default function Processos() {
       )}
 
       <div style={{ padding: vista === 'numeros' ? '22px 26px 60px' : 0 }}>
-        {vista === 'mapa' ? <MapaFluxos embutido /> : <Economia embutido />}
+        {vista === 'mapa' ? <MapaFluxos embutido sessao={sessao} /> : <Economia embutido />}
       </div>
     </div>
   )

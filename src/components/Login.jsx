@@ -22,11 +22,13 @@ export default function Login({ onLogin }) {
 
       // 2. Busca as páginas liberadas para esse e-mail (RLS: só authenticated)
       const resPerm = await fetch(
-        `${SUPABASE_URL}/rest/v1/permissoes_usuario?email=eq.${encodeURIComponent(email.trim())}&select=paginas`,
+        `${SUPABASE_URL}/rest/v1/permissoes_usuario?email=eq.${encodeURIComponent(email.trim())}&select=paginas,nivel,nome`,
         { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${auth.access_token}` } }
       )
       const permData = await resPerm.json()
       const paginas = permData?.[0]?.paginas || []
+      const nivel = permData?.[0]?.nivel || 'leitor'
+      const nome = permData?.[0]?.nome || null
 
       if (!paginas.length) {
         throw new Error('Seu usuário não tem nenhuma página liberada. Fale com o administrador.')
@@ -38,6 +40,8 @@ export default function Login({ onLogin }) {
         refresh_token: auth.refresh_token,
         expira_em: Date.now() + (auth.expires_in || 3600) * 1000,
         paginas,
+        nivel,
+        nome,
       }
       localStorage.setItem('kb_sessao', JSON.stringify(sessao))
       onLogin(sessao)

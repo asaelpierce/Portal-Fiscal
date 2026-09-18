@@ -200,7 +200,10 @@ const tiposAresta = { flutuante: ArestaFlutuante }
 
 const CORLINHA = { dados: '#8B8781', gatilho: '#1F60A8', notificacao: '#B45309', condicional: '#6D28D9', interacao: '#A2600F' }
 
-export default function MapaFluxos({ embutido = false }) {
+export default function MapaFluxos({ embutido = false, sessao }) {
+  // Só editor altera o mapa. Quem visualiza não arrasta, não cria e não
+  // exclui — e os controles somem, em vez de darem erro ao clicar.
+  const podeEditar = sessao?.nivel === 'editor'
   const [nos, setNos, aoMudarNos] = useNodesState([])
   const [linhas, setLinhas, aoMudarLinhas] = useEdgesState([])
   const [bruto, setBruto] = useState([])
@@ -607,22 +610,22 @@ export default function MapaFluxos({ embutido = false }) {
 
         <div style={{ flex: 1 }} />
 
-        {sujo && (
+        {sujo && podeEditar && (
           <Btn small primary onClick={salvarPosicoes} disabled={salvando}>
             {salvando ? 'Salvando…' : 'Salvar posições'}
           </Btn>
         )}
-        <button onClick={() => { setNos(organizar(nosFiltrados, linhasFiltradas)); setSujo(true) }}
+        {podeEditar && <button onClick={() => { setNos(organizar(nosFiltrados, linhasFiltradas)); setSujo(true) }}
           title="Reposiciona os nós em camadas, da esquerda para a direita"
           style={{
             fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', padding: '5px 11px',
             border: '1px solid #E4E1DC', background: '#fff', color: '#1A1A18', borderRadius: 3,
-          }}>⇄  Organizar</button>
-        <button onClick={() => { setCriando(true); setSel(null) }}
+          }}>⇄  Organizar</button>}
+        {podeEditar && <button onClick={() => { setCriando(true); setSel(null) }}
           style={{
             fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', padding: '5px 11px',
             border: '1px solid #E4E1DC', background: '#fff', color: '#1A1A18', borderRadius: 3,
-          }}>+  Novo nó</button>
+          }}>+  Novo nó</button>}
         <button onClick={() => setExpandido((v) => !v)}
           title={expandido ? 'Sair da tela cheia (Esc)' : 'Expandir para trabalhar no mapa'}
           style={{
@@ -694,13 +697,15 @@ export default function MapaFluxos({ embutido = false }) {
             edges={linhasFiltradas}
             nodeTypes={tiposNo}
             edgeTypes={tiposAresta}
+            nodesDraggable={podeEditar}
+            nodesConnectable={podeEditar}
             onNodesChange={(ch) => {
               aoMudarNos(ch)
-              if (ch.some((c) => c.type === 'position' && c.dragging === false)) setSujo(true)
+              if (podeEditar && ch.some((c) => c.type === 'position' && c.dragging === false)) setSujo(true)
             }}
             onEdgesChange={aoMudarLinhas}
             connectionMode="loose"
-            onConnect={aoConectar}
+            onConnect={podeEditar ? aoConectar : undefined}
             onEdgeClick={(_, e) => { setSelLigacao(e.id); setSel(null); setCriando(false) }}
             onNodeClick={(_, n) => { setSel(n.id); setSelLigacao(null) }}
             onPaneClick={() => { setSel(null); setSelLigacao(null) }}
@@ -734,7 +739,7 @@ export default function MapaFluxos({ embutido = false }) {
             ) : criando ? (
               <NovoNo onCriar={criarNo} onFechar={() => setCriando(false)} />
             ) : selNo ? (
-              <DetalheNo no={selNo} onSalvar={salvarNo} onExcluir={excluirNo}
+              <DetalheNo no={selNo} podeEditar={podeEditar} onSalvar={salvarNo} onExcluir={excluirNo}
                          onFechar={() => setSel(null)}
                          projetos={projetos} ganhos={ganhos} areas={listaAreas}
                          artefatos={artefatos} onCriarArtefato={criarArtefato}
@@ -766,7 +771,7 @@ export default function MapaFluxos({ embutido = false }) {
   )
 }
 
-function DetalheNo({ no, onSalvar, onExcluir, onFechar, projetos, ganhos, areas, artefatos, onCriarArtefato, onVincular, onCriarProjeto, onCriarTarefa, onRecarregar }) {
+function DetalheNo({ no, podeEditar = true, onSalvar, onExcluir, onFechar, projetos, ganhos, areas, artefatos, onCriarArtefato, onVincular, onCriarProjeto, onCriarTarefa, onRecarregar }) {
   const [edicao, setEdicao] = useState(false)
   const [f, setF] = useState({ rotulo: no.rotulo, descricao: no.descricao || '', sistema: no.sistema, tipo: no.tipo })
   const [salvando, setSalvando] = useState(false)
@@ -876,7 +881,7 @@ function DetalheNo({ no, onSalvar, onExcluir, onFechar, projetos, ganhos, areas,
             onVincular={onVincular} onCriarProjeto={onCriarProjeto}
             onCriarTarefa={onCriarTarefa} onRecarregar={onRecarregar} />
 
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          {podeEditar && <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <button onClick={() => setEdicao(true)} style={{
               fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer',
               border: '1px solid #E4E1DC', background: '#fff', borderRadius: 3, padding: '6px 12px',
@@ -887,7 +892,7 @@ function DetalheNo({ no, onSalvar, onExcluir, onFechar, projetos, ganhos, areas,
                 border: '1px solid #F3C6C0', background: '#fff', borderRadius: 3, padding: '6px 12px',
               }}>Excluir</button>
             )}
-          </div>
+          </div>}
         </>
       ) : (
         <div style={{ marginTop: 12 }}>
