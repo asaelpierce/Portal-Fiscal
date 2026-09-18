@@ -21,6 +21,26 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, sbFetch } from '../config.js'
 const PAPEL = '#FBFAF8', TINTA = '#1A1A18', TRACO = '#E4E1DC', SUAVE = '#6E6A64'
 const TERRA = '#B5502A', VERDE = '#12805C'
 
+const campo = {
+  width: '100%', fontFamily: 'inherit', fontSize: 14, padding: '9px 11px',
+  border: `1px solid ${TRACO}`, borderRadius: 4, background: '#fff', color: TINTA,
+  boxSizing: 'border-box',
+}
+const rot = { fontSize: 12, color: SUAVE, marginBottom: 5, display: 'block', fontWeight: 600 }
+const bloco = { marginBottom: 16 }
+
+// Definido FORA do componente de propósito. Dentro, ele seria recriado a cada
+// tecla digitada, e o React desmontaria e remontaria toda a árvore abaixo —
+// fazendo o campo perder o foco a cada letra.
+function Moldura({ children }) {
+  return (
+    <div style={{ minHeight: '100vh', background: PAPEL, padding: '40px 20px',
+                  fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <div style={{ maxWidth: 680, margin: '0 auto' }}>{children}</div>
+    </div>
+  )
+}
+
 export default function SolicitarPublico({ token }) {
   const [fase, setFase] = useState('verificando')   // verificando | formulario | enviando | pronto | invalido
   const [erro, setErro] = useState('')
@@ -99,21 +119,6 @@ export default function SolicitarPublico({ token }) {
       setErro(`Não consegui registrar: ${e.message}`); setFase('formulario')
     }
   }
-
-  const campo = {
-    width: '100%', fontFamily: 'inherit', fontSize: 14, padding: '9px 11px',
-    border: `1px solid ${TRACO}`, borderRadius: 4, background: '#fff', color: TINTA,
-    boxSizing: 'border-box',
-  }
-  const rot = { fontSize: 12, color: SUAVE, marginBottom: 5, display: 'block', fontWeight: 600 }
-  const bloco = { marginBottom: 16 }
-
-  const Moldura = ({ children }) => (
-    <div style={{ minHeight: '100vh', background: PAPEL, padding: '40px 20px',
-                  fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <div style={{ maxWidth: 680, margin: '0 auto' }}>{children}</div>
-    </div>
-  )
 
   if (fase === 'verificando') {
     return <Moldura><div style={{ color: SUAVE, fontSize: 14 }}>Abrindo o formulário…</div></Moldura>
