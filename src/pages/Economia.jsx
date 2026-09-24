@@ -179,7 +179,7 @@ export default function Economia({ embutido = false }) {
   return (
     <div style={ embutido
       ? { background: 'transparent' }
-      : { background: PAPEL, margin: '-22px -26px -60px', padding: '30px 26px 56px', minHeight: '100%' } }>
+      : { background: PAPEL, margin: 'calc(var(--pad-y) * -1) calc(var(--pad-x) * -1) calc(var(--pad-b) * -1)', padding: 'calc(var(--pad-y) + 8px) var(--pad-x) calc(var(--pad-b) - 4px)', minHeight: '100%' } }>
       <style>{`
         @keyframes ec-crescer { from { transform: scaleX(0) } to { transform: scaleX(1) } }
         .ec-barra { transform-origin: left center; animation: ec-crescer .5s cubic-bezier(.2,.7,.3,1) both }

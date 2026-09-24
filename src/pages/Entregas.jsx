@@ -27,6 +27,15 @@ const ni = (v) => Number(v ?? 0).toLocaleString('pt-BR')
 const dtBR = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
 
 export default function Entregas() {
+  // A grade de colunas fixas não cabe num celular: abaixo de 640px a linha
+  // passa a empilhar, e a barra colorida ocupa a largura disponível.
+  const [estreito, setEstreito] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < 640 : false)
+  useEffect(() => {
+    const f = () => setEstreito(window.innerWidth < 640)
+    window.addEventListener('resize', f)
+    return () => window.removeEventListener('resize', f)
+  }, [])
   const [linhas, setLinhas] = useState([])
   const [fase, setFase] = useState('carregando')
   const [erro, setErro] = useState('')
@@ -96,8 +105,8 @@ export default function Entregas() {
   const Barra = ({ itens }) => {
     const t = itens.length || 1
     return (
-      <span style={{ display: 'inline-flex', height: 7, width: 130, borderRadius: 4,
-                     overflow: 'hidden', background: '#EFECE7', verticalAlign: 'middle' }}>
+      <span style={{ display: 'flex', height: 7, width: '100%', maxWidth: 160, borderRadius: 4,
+                     overflow: 'hidden', background: '#EFECE7' }}>
         {['funcionalidade', 'melhoria', 'correcao'].map(k => {
           const n = conta(itens, k)
           return n > 0 ? <span key={k} title={`${n} ${COR_TIPO[k].rot.toLowerCase()}`}
@@ -119,7 +128,8 @@ export default function Entregas() {
               {area.toUpperCase()} · {its.length}
             </div>
             {its.map(i => (
-              <div key={i.id} style={{ display: 'flex', gap: 9, alignItems: 'baseline', padding: '3px 0' }}>
+              <div key={i.id} style={{ display: 'flex', gap: 9, alignItems: 'baseline',
+                                       padding: '4px 0', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 10, fontWeight: 700, minWidth: 64, textAlign: 'center',
                                color: COR_TIPO[i.tipo]?.cor, background: COR_TIPO[i.tipo]?.bg,
                                padding: '2px 5px', borderRadius: 3 }}>
@@ -136,14 +146,16 @@ export default function Entregas() {
   }
 
   return (
-    <div style={{ background: PAPEL, margin: '-22px -26px -60px', padding: '30px 26px 56px', minHeight: '100%' }}>
+    <div style={{ background: PAPEL, margin: 'calc(var(--pad-y) * -1) calc(var(--pad-x) * -1) calc(var(--pad-b) * -1)', padding: 'calc(var(--pad-y) + 8px) var(--pad-x) calc(var(--pad-b) - 4px)', minHeight: '100%' }}>
       <h2 style={{ margin: 0, fontSize: 19, fontWeight: 600, color: TINTA }}>Entregas</h2>
       <p style={{ margin: '6px 0 20px', fontSize: 12.5, color: SUAVE, maxWidth: 700, lineHeight: 1.55 }}>
         O que foi entregue nos portais, semana a semana. O registro vem do histórico de
         desenvolvimento, com data real de cada alteração.
       </p>
 
-      <div style={{ display: 'flex', gap: 30, flexWrap: 'wrap', marginBottom: 22 }}>
+      <div style={{ display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
+                    gap: estreito ? 14 : 24, marginBottom: 22 }}>
         {[
           ['Entregas no período', ni(totais.total)],
           ['Novidades', ni(totais.novidades)],
@@ -178,8 +190,9 @@ export default function Entregas() {
               <div key={s.chave} style={{ background: '#fff', border: `1px solid ${TRACO}` }}>
                 <button onClick={() => setAbertoSem(ab ? null : s.chave)} aria-expanded={ab}
                   style={{ width: '100%', display: 'grid',
-                           gridTemplateColumns: '16px 150px 70px 140px 1fr',
-                           gap: 14, alignItems: 'center', padding: '12px 16px',
+                           gridTemplateColumns: estreito ? '14px 1fr 46px' : '16px 150px 70px 140px 1fr',
+                           gap: estreito ? 10 : 14, alignItems: 'center',
+                           padding: estreito ? '11px 12px' : '12px 16px',
                            background: 'transparent', border: 'none', cursor: 'pointer',
                            fontFamily: 'inherit', textAlign: 'left' }}>
                   <span style={{ fontSize: 10, color: SUAVE,
@@ -188,14 +201,17 @@ export default function Entregas() {
                     <span style={{ fontSize: 13, fontWeight: 600, color: TINTA }}>{periodo(s.inicio)}</span>
                     {idx === 0 && <span style={{ fontSize: 10, color: '#12805C', marginLeft: 7 }}>atual</span>}
                   </span>
-                  <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 17, color: TINTA }}>
+                  <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 17,
+                                 color: TINTA, textAlign: estreito ? 'right' : 'left' }}>
                     {s.itens.length}
                   </span>
-                  <Barra itens={s.itens} />
-                  <span style={{ fontSize: 11.5, color: SUAVE, overflow: 'hidden',
-                                 textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {areas(s.itens).join(' · ')}
-                  </span>
+                  {!estreito && <Barra itens={s.itens} />}
+                  {!estreito && (
+                    <span style={{ fontSize: 11.5, color: SUAVE, overflow: 'hidden',
+                                   textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {areas(s.itens).join(' · ')}
+                    </span>
+                  )}
                 </button>
                 {ab && <Detalhe itens={s.itens} />}
               </div>
@@ -210,8 +226,9 @@ export default function Entregas() {
               <div key={m.chave} style={{ background: '#fff', border: `1px solid ${TRACO}` }}>
                 <button onClick={() => setAbertoMes(ab ? null : m.chave)} aria-expanded={ab}
                   style={{ width: '100%', display: 'grid',
-                           gridTemplateColumns: '16px 170px 70px 140px 1fr',
-                           gap: 14, alignItems: 'center', padding: '13px 16px',
+                           gridTemplateColumns: estreito ? '14px 1fr 46px' : '16px 170px 70px 140px 1fr',
+                           gap: estreito ? 10 : 14, alignItems: 'center',
+                           padding: estreito ? '12px' : '13px 16px',
                            background: 'transparent', border: 'none', cursor: 'pointer',
                            fontFamily: 'inherit', textAlign: 'left' }}>
                   <span style={{ fontSize: 10, color: SUAVE,
@@ -219,13 +236,16 @@ export default function Entregas() {
                   <span style={{ fontSize: 13.5, fontWeight: 600, color: TINTA, textTransform: 'capitalize' }}>
                     {nomeMes(m.chave)}
                   </span>
-                  <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 18, color: TINTA }}>
+                  <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 18,
+                                 color: TINTA, textAlign: estreito ? 'right' : 'left' }}>
                     {m.itens.length}
                   </span>
-                  <Barra itens={m.itens} />
-                  <span style={{ fontSize: 11.5, color: SUAVE }}>
-                    {conta(m.itens, 'funcionalidade')} novidades · {areas(m.itens).length} áreas
-                  </span>
+                  {!estreito && <Barra itens={m.itens} />}
+                  {!estreito && (
+                    <span style={{ fontSize: 11.5, color: SUAVE }}>
+                      {conta(m.itens, 'funcionalidade')} novidades · {areas(m.itens).length} áreas
+                    </span>
+                  )}
                 </button>
                 {ab && <Detalhe itens={m.itens} />}
               </div>

@@ -88,7 +88,7 @@ export default function Demandas() {
   }
 
   return (
-    <div style={{ background: PAPEL, margin: '-22px -26px -60px', padding: '30px 26px 56px', minHeight: '100%' }}>
+    <div style={{ background: PAPEL, margin: 'calc(var(--pad-y) * -1) calc(var(--pad-x) * -1) calc(var(--pad-b) * -1)', padding: 'calc(var(--pad-y) + 8px) var(--pad-x) calc(var(--pad-b) - 4px)', minHeight: '100%' }}>
       <h2 style={{ margin: 0, fontSize: 19, fontWeight: 600, color: TINTA }}>Demandas</h2>
       <p style={{ margin: '6px 0 20px', fontSize: 12.5, color: SUAVE, maxWidth: 680, lineHeight: 1.55 }}>
         Pedidos que chegam pelo link. Quem solicita já informa quanto tempo gasta hoje — esse número

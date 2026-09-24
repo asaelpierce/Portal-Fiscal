@@ -97,7 +97,7 @@ export default function Modulos() {
   }
 
   return (
-    <div style={{ background: PAPEL, margin: '-22px -26px -60px', padding: '30px 26px 56px', minHeight: '100%' }}>
+    <div style={{ background: PAPEL, margin: 'calc(var(--pad-y) * -1) calc(var(--pad-x) * -1) calc(var(--pad-b) * -1)', padding: 'calc(var(--pad-y) + 8px) var(--pad-x) calc(var(--pad-b) - 4px)', minHeight: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 26, flexWrap: 'wrap', marginBottom: 22 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 19, fontWeight: 600, color: TINTA }}>Módulos e telas</h2>

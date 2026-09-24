@@ -85,7 +85,26 @@ export default function App() {
   }} />
 }
 
+// Detecta tela estreita. No celular a barra lateral fixa de 230px comia
+// metade do espaço e o conteúdo ficava numa coluna de poucos centímetros.
+function usarTelaEstreita(limite = 900) {
+  const [estreita, setEstreita] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < limite : false)
+  useEffect(() => {
+    const aoMudar = () => setEstreita(window.innerWidth < limite)
+    window.addEventListener('resize', aoMudar)
+    window.addEventListener('orientationchange', aoMudar)
+    return () => {
+      window.removeEventListener('resize', aoMudar)
+      window.removeEventListener('orientationchange', aoMudar)
+    }
+  }, [limite])
+  return estreita
+}
+
 function AppAutenticado({ sessao, onLogout }) {
+  const estreita = usarTelaEstreita()
+  const [menuAberto, setMenuAberto] = useState(false)
   // Menu filtrado só com as páginas liberadas para esse usuário
   const MENU = MENU_COMPLETO.filter(m => sessao.paginas.includes(m.id))
 
@@ -190,12 +209,22 @@ function AppAutenticado({ sessao, onLogout }) {
   const badgeCount = lancamentos.filter(r => r.classe_divergencia === 'INVESTIGAR').length
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#F4F6F8' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#F4F6F8', position: 'relative' }}>
 
       {/* ── Sidebar ── */}
+      {estreita && menuAberto && (
+        <div onClick={() => setMenuAberto(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 40 }} />
+      )}
+
       <aside style={{
         width: 230, flexShrink: 0, background: '#fff', borderRight: '1px solid #E5E7EB',
-        display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh', overflowY: 'auto',
+        display: estreita && !menuAberto ? 'none' : 'flex',
+        flexDirection: 'column', overflowY: 'auto',
+        ...(estreita
+          ? { position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50,
+              boxShadow: '2px 0 16px rgba(0,0,0,.18)' }
+          : { position: 'sticky', top: 0, height: '100vh' }),
       }}>
         <div style={{ padding: '18px 16px', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 34, height: 34, borderRadius: 8, background: '#101828', color: '#fff',
@@ -281,11 +310,19 @@ function AppAutenticado({ sessao, onLogout }) {
       <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <header style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16,
-          padding: '16px 26px', background: '#fff', borderBottom: '1px solid #E5E7EB',
+          padding: estreita ? '11px 14px' : '16px 26px', background: '#fff', borderBottom: '1px solid #E5E7EB',
           position: 'sticky', top: 0, zIndex: 10,
         }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            {estreita && (
+              <button onClick={() => setMenuAberto(true)} aria-label="Abrir menu"
+                style={{ border: '1px solid #E5E7EB', background: '#fff', borderRadius: 6,
+                         width: 38, height: 38, fontSize: 17, cursor: 'pointer', flexShrink: 0,
+                         display: 'grid', placeItems: 'center', lineHeight: 1 }}>☰</button>
+            )}
+            <div style={{ minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontSize: estreita ? 15 : 18, fontWeight: 700,
+                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {MENU.find(m => m.id === pagina)?.label}
             </h1>
             {dtIniISO && dtFimISO && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin', 'reqalmox', 'automacoes', 'processos', 'modulos', 'demandas', 'entregas'].includes(pagina) && (
@@ -293,8 +330,9 @@ function AppAutenticado({ sessao, onLogout }) {
                 Período {dBR(dtIniISO)} a {dBR(dtFimISO)}
               </p>
             )}
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             {!['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin', 'reqalmox', 'automacoes', 'processos', 'modulos', 'demandas', 'entregas'].includes(pagina) && (
               <SeletorPeriodo
                 dtIni={dtIniISO} dtFim={dtFimISO}
@@ -310,7 +348,15 @@ function AppAutenticado({ sessao, onLogout }) {
           </div>
         </header>
 
-        <div style={{ flex: 1, padding: '22px 26px 60px', overflowY: 'auto' }}>
+        <div style={{
+          flex: 1, overflowY: 'auto',
+          // as telas usam estas variáveis para casar a própria margem
+          // negativa com o padding do container, em qualquer largura
+          '--pad-x': estreita ? '12px' : '26px',
+          '--pad-y': estreita ? '14px' : '22px',
+          '--pad-b': estreita ? '48px' : '60px',
+          padding: 'var(--pad-y) var(--pad-x) var(--pad-b)',
+        }}>
           {/* Rateio de Compras não depende de nenhuma sincronização de período
               — funciona direto com upload de PDF + chamada de API, então fica
               disponível mesmo antes da primeira sincronização (fase !== 'pronto'). */}
