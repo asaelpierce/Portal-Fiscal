@@ -175,6 +175,13 @@ export default function Auditoria() {
   const [fTipmov, setFTipmov] = useState('')
   const [fSoDoc, setFSoDoc] = useState(false)
   const [buscaExc, setBuscaExc] = useState('')
+  const [fExcIni, setFExcIni] = useState('')
+  const [fExcFim, setFExcFim] = useState('')
+  const [fJanela, setFJanela] = useState('')      // mesmo dia, 1 semana...
+  const [fValorMin, setFValorMin] = useState('')
+  const [fTop, setFTop] = useState('')
+  const [fVendedor, setFVendedor] = useState('')
+  const [ordExc, setOrdExc] = useState('dh_exclusao')
 
   const carregarExclusoes = async () => {
     if (exclusoes.length || carregandoExc) return
@@ -197,16 +204,50 @@ export default function Auditoria() {
 
   useEffect(() => { if (subAba === 'exclusoes') carregarExclusoes() }, [subAba])
 
-  const excFiltradas = useMemo(() => exclusoes.filter(e => {
-    if (fUsuario && e.usuario !== fUsuario) return false
-    if (fTipmov && e.tipmov !== fTipmov) return false
-    if (fSoDoc && e.tipo_exclusao !== 'PEDIDO EXCLUIDO') return false
-    if (buscaExc) {
-      const t = `${e.nunota} ${e.cliente || ''} ${e.produto || ''} ${e.br || ''} ${e.cod_produto || ''}`
-      if (!t.toLowerCase().includes(buscaExc.toLowerCase())) return false
-    }
-    return true
-  }), [exclusoes, fUsuario, fTipmov, fSoDoc, buscaExc])
+  const excFiltradas = useMemo(() => {
+    const lista = exclusoes.filter(e => {
+      if (fUsuario && e.usuario !== fUsuario) return false
+      if (fTipmov && e.tipmov !== fTipmov) return false
+      if (fTop && String(e.cod_tipoper) !== fTop) return false
+      if (fVendedor && e.vendedor !== fVendedor) return false
+      if (fSoDoc && e.tipo_exclusao !== 'PEDIDO EXCLUIDO') return false
+      if (fExcIni && e.dh_exclusao < fExcIni) return false
+      if (fExcFim && e.dh_exclusao > fExcFim + 'T23:59:59') return false
+      if (fValorMin && (Number(e.valor_item) || 0) < Number(fValorMin)) return false
+      if (fJanela) {
+        const h = e.horas_ate_exclusao
+        if (h == null) return false
+        if (fJanela === 'dia'    && !(h < 24)) return false
+        if (fJanela === 'semana' && !(h >= 24 && h < 168)) return false
+        if (fJanela === 'mes'    && !(h >= 168 && h < 720)) return false
+        if (fJanela === 'velho'  && !(h >= 720)) return false
+      }
+      if (buscaExc) {
+        const t = `${e.nunota} ${e.nunota_original || ''} ${e.cliente || ''} ${e.produto || ''} `
+                + `${e.br || ''} ${e.cod_produto || ''} ${e.usuario || ''} ${e.observacao || ''} `
+                + `${e.top_nome || ''} ${e.vendedor || ''} ${e.local_nome || ''}`
+        if (!t.toLowerCase().includes(buscaExc.toLowerCase())) return false
+      }
+      return true
+    })
+    const dir = ordExc === 'valor_item' || ordExc === 'horas_ate_exclusao' ? -1 : -1
+    return lista.sort((a, b) => {
+      const x = a[ordExc], y = b[ordExc]
+      if (x == null) return 1
+      if (y == null) return -1
+      return (x > y ? 1 : x < y ? -1 : 0) * dir
+    })
+  }, [exclusoes, fUsuario, fTipmov, fTop, fVendedor, fSoDoc, fExcIni, fExcFim,
+      fValorMin, fJanela, buscaExc, ordExc])
+
+  const topsExc = useMemo(() => {
+    const m = {}
+    exclusoes.forEach(e => { if (e.cod_tipoper) m[e.cod_tipoper] = e.top_nome || e.cod_tipoper })
+    return Object.entries(m).sort((a,b) => String(a[1]).localeCompare(String(b[1])))
+  }, [exclusoes])
+
+  const vendedoresExc = useMemo(
+    () => [...new Set(exclusoes.map(e => e.vendedor).filter(Boolean))].sort(), [exclusoes])
 
   const tiposMov = useMemo(() => {
     const m = {}
@@ -356,7 +397,14 @@ export default function Auditoria() {
           fUsuario={fUsuario} setFUsuario={setFUsuario}
           fTipmov={fTipmov} setFTipmov={setFTipmov}
           fSoDoc={fSoDoc} setFSoDoc={setFSoDoc}
-          busca={buscaExc} setBusca={setBuscaExc} />
+          busca={buscaExc} setBusca={setBuscaExc}
+          fExcIni={fExcIni} setFExcIni={setFExcIni}
+          fExcFim={fExcFim} setFExcFim={setFExcFim}
+          fJanela={fJanela} setFJanela={setFJanela}
+          fValorMin={fValorMin} setFValorMin={setFValorMin}
+          fTop={fTop} setFTop={setFTop} topsExc={topsExc}
+          fVendedor={fVendedor} setFVendedor={setFVendedor} vendedoresExc={vendedoresExc}
+          ordExc={ordExc} setOrdExc={setOrdExc} />
       </div>
     )
   }
@@ -571,14 +619,38 @@ function BarraSubAbas({ subAba, setSubAba, qtdExc }) {
 
 // Exclusão não é modificação: o registro some, e o Sankhya guarda numa
 // tabela espelho. Sem olhar ali, o que foi apagado é invisível.
+const selEst = { fontFamily:'inherit', fontSize:12.5, padding:'7px 10px',
+  border:'1px solid #E5E7EB', borderRadius:6, background:'#fff', color:'#101828', minWidth:0 }
+
 function PainelExclusoes({ exclusoes, filtradas, porUsuario, carregando, tiposMov,
                            fUsuario, setFUsuario, fTipmov, setFTipmov,
-                           fSoDoc, setFSoDoc, busca, setBusca }) {
+                           fSoDoc, setFSoDoc, busca, setBusca,
+                           fExcIni, setFExcIni, fExcFim, setFExcFim,
+                           fJanela, setFJanela, fValorMin, setFValorMin,
+                           fTop, setFTop, topsExc, fVendedor, setFVendedor, vendedoresExc,
+                           ordExc, setOrdExc }) {
   const [expandido, setExpandido] = useState(null)
   const moeda = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR',
     { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const dh = (v) => v ? new Date(v).toLocaleString('pt-BR',
-    { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'
+    { day:'2-digit', month:'2-digit', year:'numeric',
+      hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—'
+  const soData = (v) => v ? new Date(v).toLocaleDateString('pt-BR') : '—'
+  const soHora = (v) => v ? new Date(v).toLocaleTimeString('pt-BR',
+    { hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—'
+  // quanto tempo o registro viveu antes de sumir
+  const tempoVida = (h) => {
+    if (h == null) return { txt: '—', cor: '#9CA3AF' }
+    if (h < 1)   return { txt: `${Math.round(h*60)} min`, cor: '#12805C' }
+    if (h < 24)  return { txt: `${h.toFixed(1)} h`,       cor: '#12805C' }
+    if (h < 168) return { txt: `${(h/24).toFixed(1)} dias`, cor: '#B45309' }
+    if (h < 720) return { txt: `${Math.round(h/24)} dias`,  cor: '#B45309' }
+    return { txt: `${Math.round(h/720)} meses`, cor: '#B42318' }
+  }
+  const limpar = () => { setFUsuario(''); setFTipmov(''); setFTop(''); setFVendedor('')
+    setFSoDoc(false); setBusca(''); setFExcIni(''); setFExcFim(''); setFJanela(''); setFValorMin('') }
+  const temFiltro = fUsuario || fTipmov || fTop || fVendedor || fSoDoc || busca
+    || fExcIni || fExcFim || fJanela || fValorMin
 
   const tot = useMemo(() => ({
     itens: filtradas.length,
@@ -657,30 +729,64 @@ function PainelExclusoes({ exclusoes, filtradas, porUsuario, carregando, tiposMo
       )}
 
       <Panel title={`${filtradas.length.toLocaleString('pt-BR')} de ${exclusoes.length.toLocaleString('pt-BR')} exclusões`}>
-        <div style={{ display:'flex', gap:9, flexWrap:'wrap', marginBottom:12, alignItems:'center' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(168px,1fr))',
+                      gap:9, marginBottom:11 }}>
           <input value={busca} onChange={e => setBusca(e.target.value)}
-            placeholder="Nº único, cliente, produto ou BR…"
+            placeholder="Buscar em tudo…"
             style={{ fontFamily:'inherit', fontSize:13, padding:'7px 11px',
-                     border:'1px solid #E5E7EB', borderRadius:6, width:250 }} />
-          <select value={fTipmov} onChange={e => setFTipmov(e.target.value)}
-            style={{ fontFamily:'inherit', fontSize:13, padding:'7px 11px',
-                     border:'1px solid #E5E7EB', borderRadius:6 }}>
-            <option value="">Todos os tipos</option>
+                     border:'1px solid #E5E7EB', borderRadius:6, gridColumn:'span 2' }} />
+          <select value={fTipmov} onChange={e => setFTipmov(e.target.value)} style={selEst}>
+            <option value="">Todo tipo de movimento</option>
             {tiposMov.map(([k,r]) => <option key={k} value={k}>{r}</option>)}
           </select>
+          <select value={fTop} onChange={e => setFTop(e.target.value)} style={selEst}>
+            <option value="">Toda operação (TOP)</option>
+            {topsExc.map(([k,r]) => <option key={k} value={k}>{k} · {r}</option>)}
+          </select>
+          <select value={fVendedor} onChange={e => setFVendedor(e.target.value)} style={selEst}>
+            <option value="">Todo vendedor</option>
+            {vendedoresExc.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+          <select value={fJanela} onChange={e => setFJanela(e.target.value)} style={selEst}>
+            <option value="">Qualquer tempo de vida</option>
+            <option value="dia">Excluído no mesmo dia</option>
+            <option value="semana">Entre 1 dia e 1 semana</option>
+            <option value="mes">Entre 1 semana e 1 mês</option>
+            <option value="velho">Mais de 1 mês depois</option>
+          </select>
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            <span style={{ fontSize:11.5, color:'#9CA3AF', whiteSpace:'nowrap' }}>de</span>
+            <input type="date" value={fExcIni} onChange={e => setFExcIni(e.target.value)}
+              style={{ ...selEst, width:'100%' }} />
+          </div>
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            <span style={{ fontSize:11.5, color:'#9CA3AF', whiteSpace:'nowrap' }}>até</span>
+            <input type="date" value={fExcFim} onChange={e => setFExcFim(e.target.value)}
+              style={{ ...selEst, width:'100%' }} />
+          </div>
+          <input type="number" value={fValorMin} onChange={e => setFValorMin(e.target.value)}
+            placeholder="Valor mínimo R$" style={selEst} />
+          <select value={ordExc} onChange={e => setOrdExc(e.target.value)} style={selEst}>
+            <option value="dh_exclusao">Mais recentes primeiro</option>
+            <option value="valor_item">Maior valor primeiro</option>
+            <option value="horas_ate_exclusao">Viveu mais tempo primeiro</option>
+          </select>
+        </div>
+
+        <div style={{ display:'flex', gap:9, flexWrap:'wrap', marginBottom:12, alignItems:'center' }}>
           <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12.5,
                           color:'#6B7280', cursor:'pointer' }}>
             <input type="checkbox" checked={fSoDoc} onChange={e => setFSoDoc(e.target.checked)} />
             só documento inteiro
           </label>
-          {(fUsuario || fTipmov || fSoDoc || busca) && (
-            <button onClick={() => { setFUsuario(''); setFTipmov(''); setFSoDoc(false); setBusca('') }}
-              style={{ fontFamily:'inherit', fontSize:12.5, cursor:'pointer', padding:'6px 11px',
-                       border:'none', background:'none', color:'#1F60A8' }}>limpar</button>
-          )}
           {fUsuario && (
             <span style={{ fontSize:12, color:'#1F60A8', background:'#EEF2FF',
                            padding:'4px 10px', borderRadius:5 }}>usuário: {fUsuario}</span>
+          )}
+          {temFiltro && (
+            <button onClick={limpar}
+              style={{ fontFamily:'inherit', fontSize:12.5, cursor:'pointer', padding:'6px 11px',
+                       border:'none', background:'none', color:'#1F60A8' }}>limpar filtros</button>
           )}
         </div>
 
@@ -688,9 +794,10 @@ function PainelExclusoes({ exclusoes, filtradas, porUsuario, carregando, tiposMo
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5, minWidth:900 }}>
             <thead>
               <tr style={{ background:'#F9FAFB' }}>
-                {['Excluído em','Nº único','Tipo','Situação','Usuário','Cliente','Produto','Qtd','Valor'].map((h,i) => (
+                {['Data','Hora','Viveu','Nº único','Tipo','Situação','Usuário',
+                  'Cliente','Produto','Qtd','Valor'].map((h,i) => (
                   <th key={h} style={{ padding:'9px 11px', fontSize:11, fontWeight:600, color:'#6B7280',
-                    textAlign: i>=7 ? 'right' : 'left', borderBottom:'1px solid #E5E7EB',
+                    textAlign: i>=9 ? 'right' : 'left', borderBottom:'1px solid #E5E7EB',
                     position:'sticky', top:0, background:'#F9FAFB', zIndex:1, whiteSpace:'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -704,7 +811,14 @@ function PainelExclusoes({ exclusoes, filtradas, porUsuario, carregando, tiposMo
                     <tr onClick={() => setExpandido(ab ? null : e.id)}
                         style={{ borderBottom:'1px solid #F3F4F6', cursor:'pointer',
                                  background: inteiro ? '#FEF2F2' : undefined }}>
-                      <td style={{ padding:'8px 11px', color:'#6B7280', whiteSpace:'nowrap' }}>{dh(e.dh_exclusao)}</td>
+                      <td style={{ padding:'8px 11px', color:'#101828', whiteSpace:'nowrap',
+                                   fontVariantNumeric:'tabular-nums' }}>{soData(e.dh_exclusao)}</td>
+                      <td style={{ padding:'8px 11px', color:'#6B7280', whiteSpace:'nowrap',
+                                   fontVariantNumeric:'tabular-nums', fontWeight:600 }}>{soHora(e.dh_exclusao)}</td>
+                      <td style={{ padding:'8px 11px', whiteSpace:'nowrap', fontWeight:600,
+                                   color: tempoVida(e.horas_ate_exclusao).cor }}
+                          title="Tempo entre a data do documento e a exclusão">
+                        {tempoVida(e.horas_ate_exclusao).txt}</td>
                       <td style={{ padding:'8px 11px', fontWeight:600, color:'#101828',
                                    fontVariantNumeric:'tabular-nums' }}>
                         {e.nunota}<span style={{ color:'#9CA3AF', fontWeight:400 }}>-{e.sequencia}</span>
@@ -729,14 +843,30 @@ function PainelExclusoes({ exclusoes, filtradas, porUsuario, carregando, tiposMo
                     </tr>
                     {ab && (
                       <tr style={{ background:'#FAFAFA' }}>
-                        <td colSpan={9} style={{ padding:'11px 14px', borderBottom:'1px solid #F3F4F6' }}>
+                        <td colSpan={11} style={{ padding:'11px 14px', borderBottom:'1px solid #F3F4F6' }}>
                           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',
                                         gap:16, fontSize:12 }}>
-                            {[['Chave do item', `${e.nunota}-${e.sequencia}`],
-                              ['Código do produto', e.cod_produto],
-                              ['BR / projeto', e.br || 'sem projeto'],
+                            {[['Excluído em', dh(e.dh_exclusao)],
+                              ['Última alteração antes', e.dt_alteracao ? dh(e.dt_alteracao) : 'não registrada'],
                               ['Data do documento', e.data_doc ? new Date(e.data_doc+'T00:00:00').toLocaleDateString('pt-BR') : '—'],
+                              ['Tempo até a exclusão', tempoVida(e.horas_ate_exclusao).txt],
+                              ['Chave do item', `${e.nunota}-${e.sequencia}`],
+                              ['Nº da nota', e.nunota_original || '—'],
+                              ['Código do produto', e.cod_produto],
+                              ['Quantidade', Number(e.quantidade || 0).toLocaleString('pt-BR')],
+                              ['Valor unitário', moeda(e.vlr_unitario)],
+                              ['Desconto', moeda(e.vlr_desconto)],
+                              ['Valor total', moeda(e.valor_item)],
+                              ['BR / projeto', e.br || 'sem projeto'],
                               ['Tipo de movimento', `${e.tipmov_nome || ''} (${e.tipmov || '—'})`],
+                              ['Operação (TOP)', e.cod_tipoper ? `${e.cod_tipoper} · ${e.top_nome || ''}` : '—'],
+                              ['Vendedor', e.vendedor || '—'],
+                              ['Local de estoque', e.cod_local ? `${e.cod_local} · ${e.local_nome || ''}` : '—'],
+                              ['Cliente / parceiro', e.cod_parc ? `${e.cod_parc} · ${e.cliente || ''}` : (e.cliente || '—')],
+                              ['Usuário', `${e.usuario || '—'}${e.cod_usu ? ` (cód. ${e.cod_usu})` : ''}`],
+                              ['Data de movimento', e.dt_mov ? new Date(e.dt_mov+'T00:00:00').toLocaleDateString('pt-BR') : '—'],
+                              ['Entrada/saída', e.dt_entsai ? new Date(e.dt_entsai+'T00:00:00').toLocaleDateString('pt-BR') : '—'],
+                              ['Faturamento previsto', e.dt_fatur ? new Date(e.dt_fatur+'T00:00:00').toLocaleDateString('pt-BR') : '—'],
                             ].map(([k,v]) => (
                               <div key={k}>
                                 <div style={{ fontSize:10.5, color:'#9CA3AF', fontWeight:600, marginBottom:3 }}>
@@ -745,10 +875,26 @@ function PainelExclusoes({ exclusoes, filtradas, porUsuario, carregando, tiposMo
                               </div>
                             ))}
                           </div>
+                          {(e.observacao || e.obs_item) && (
+                            <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid #E5E7EB' }}>
+                              {e.observacao && (
+                                <div style={{ fontSize:12, color:'#4A4741', lineHeight:1.5, marginBottom:5 }}>
+                                  <strong style={{ color:'#6B7280' }}>Observação do documento: </strong>{e.observacao}
+                                </div>
+                              )}
+                              {e.obs_item && (
+                                <div style={{ fontSize:12, color:'#4A4741', lineHeight:1.5 }}>
+                                  <strong style={{ color:'#6B7280' }}>Observação do item: </strong>{e.obs_item}
+                                </div>
+                              )}
+                            </div>
+                          )}
                           <div style={{ fontSize:11.5, color:'#6B7280', marginTop:10, lineHeight:1.5 }}>
                             {inteiro
                               ? 'O documento inteiro deixou de existir: o número único não está mais na base ativa.'
                               : 'Só este item saiu; o documento continua existindo com os demais itens.'}
+                            {' '}A hora de inclusão não é guardada pelas tabelas de exclusão do Sankhya —
+                            o tempo até a exclusão usa a data do documento, então é aproximado em horas.
                           </div>
                         </td>
                       </tr>
