@@ -164,6 +164,56 @@ export default function Auditoria() {
   const [buscandoChave, setBuscandoChave] = useState(false)
   const [dicCamposChave, setDicCamposChave] = useState({})
 
+  // Sub-aba de exclusões: o que foi APAGADO no Sankhya. A auditoria de
+  // modificações mostra o que mudou; exclusão é o registro que some, e
+  // por isso mora em tabela espelho separada (TGFITE_EXC / TGFCAB_EXC).
+  const [subAba, setSubAba] = useState('modificacoes')
+  const [exclusoes, setExclusoes] = useState([])
+  const [excPorUsuario, setExcPorUsuario] = useState([])
+  const [carregandoExc, setCarregandoExc] = useState(false)
+  const [fUsuario, setFUsuario] = useState('')
+  const [fTipmov, setFTipmov] = useState('')
+  const [fSoDoc, setFSoDoc] = useState(false)
+  const [buscaExc, setBuscaExc] = useState('')
+
+  const carregarExclusoes = async () => {
+    if (exclusoes.length || carregandoExc) return
+    setCarregandoExc(true)
+    try {
+      const PASSO = 1000
+      let todas = []
+      for (let de = 0; ; de += PASSO) {
+        const d = await sbFetch(
+          `exclusao_sankhya?select=*&order=dh_exclusao.desc&offset=${de}&limit=${PASSO}`)
+        todas = todas.concat(d || [])
+        if (!d || d.length < PASSO) break
+        if (todas.length > 20000) break
+      }
+      setExclusoes(todas)
+      setExcPorUsuario(await sbFetch('exclusao_por_usuario?select=*') || [])
+    } catch (e) { setErro(e.message) }
+    setCarregandoExc(false)
+  }
+
+  useEffect(() => { if (subAba === 'exclusoes') carregarExclusoes() }, [subAba])
+
+  const excFiltradas = useMemo(() => exclusoes.filter(e => {
+    if (fUsuario && e.usuario !== fUsuario) return false
+    if (fTipmov && e.tipmov !== fTipmov) return false
+    if (fSoDoc && e.tipo_exclusao !== 'PEDIDO EXCLUIDO') return false
+    if (buscaExc) {
+      const t = `${e.nunota} ${e.cliente || ''} ${e.produto || ''} ${e.br || ''} ${e.cod_produto || ''}`
+      if (!t.toLowerCase().includes(buscaExc.toLowerCase())) return false
+    }
+    return true
+  }), [exclusoes, fUsuario, fTipmov, fSoDoc, buscaExc])
+
+  const tiposMov = useMemo(() => {
+    const m = {}
+    exclusoes.forEach(e => { if (e.tipmov) m[e.tipmov] = e.tipmov_nome || e.tipmov })
+    return Object.entries(m).sort((a, b) => String(a[1]).localeCompare(String(b[1])))
+  }, [exclusoes])
+
   const buscarPorChave = async () => {
     const valor = buscaChave.trim()
     if (!valor) return
@@ -296,8 +346,24 @@ export default function Auditoria() {
     { nome:'Exclusão', qtd:kpi.exclusoes, cor:'#B42318' },
   ].filter(x => x.qtd > 0), [kpi])
 
+  if (subAba === 'exclusoes') {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
+        <BarraSubAbas subAba={subAba} setSubAba={setSubAba} qtdExc={exclusoes.length} />
+        <PainelExclusoes
+          exclusoes={exclusoes} filtradas={excFiltradas} porUsuario={excPorUsuario}
+          carregando={carregandoExc} tiposMov={tiposMov}
+          fUsuario={fUsuario} setFUsuario={setFUsuario}
+          fTipmov={fTipmov} setFTipmov={setFTipmov}
+          fSoDoc={fSoDoc} setFSoDoc={setFSoDoc}
+          busca={buscaExc} setBusca={setBuscaExc} />
+      </div>
+    )
+  }
+
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
+      <BarraSubAbas subAba={subAba} setSubAba={setSubAba} qtdExc={exclusoes.length} />
       <Panel title="🔎 Buscar histórico de um registro específico">
         <p style={{ margin:'0 0 10px', fontSize:12.5, color:'#6B7280', lineHeight:1.6 }}>
           Digite o número/código do registro (ex: número único do pedido, código do produto, código do parceiro)
@@ -483,5 +549,221 @@ export default function Auditoria() {
         </>
       )}
     </div>
+  )
+}
+
+// ─── Sub-abas: modificações e exclusões ────────────────────────────────────
+function BarraSubAbas({ subAba, setSubAba, qtdExc }) {
+  return (
+    <div style={{ display:'flex', gap:3 }}>
+      {[['modificacoes','O que mudou'],
+        ['exclusoes', `O que foi excluído${qtdExc ? ` (${qtdExc.toLocaleString('pt-BR')})` : ''}`]].map(([k,r]) => (
+        <button key={k} onClick={() => setSubAba(k)} style={{
+          fontFamily:'inherit', fontSize:13, cursor:'pointer', padding:'8px 16px',
+          border:`1px solid ${subAba===k ? '#101828' : '#E5E7EB'}`, borderRadius:6,
+          background: subAba===k ? '#101828' : '#fff',
+          color: subAba===k ? '#fff' : '#6B7280', fontWeight: subAba===k ? 600 : 400,
+        }}>{r}</button>
+      ))}
+    </div>
+  )
+}
+
+// Exclusão não é modificação: o registro some, e o Sankhya guarda numa
+// tabela espelho. Sem olhar ali, o que foi apagado é invisível.
+function PainelExclusoes({ exclusoes, filtradas, porUsuario, carregando, tiposMov,
+                           fUsuario, setFUsuario, fTipmov, setFTipmov,
+                           fSoDoc, setFSoDoc, busca, setBusca }) {
+  const [expandido, setExpandido] = useState(null)
+  const moeda = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR',
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const dh = (v) => v ? new Date(v).toLocaleString('pt-BR',
+    { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'
+
+  const tot = useMemo(() => ({
+    itens: filtradas.length,
+    docs: new Set(filtradas.map(e => e.nunota)).size,
+    inteiros: filtradas.filter(e => e.tipo_exclusao === 'PEDIDO EXCLUIDO').length,
+    valor: filtradas.reduce((s, e) => s + (Number(e.valor_item) || 0), 0),
+    usuarios: new Set(filtradas.map(e => e.usuario)).size,
+  }), [filtradas])
+
+  if (carregando) return <Panel title="Exclusões"><div style={{ padding:20, color:'#6B7280', fontSize:13 }}>Carregando o histórico de exclusões…</div></Panel>
+  if (!exclusoes.length) return <Panel title="Exclusões"><div style={{ padding:20, color:'#6B7280', fontSize:13 }}>Nenhuma exclusão registrada no período sincronizado.</div></Panel>
+
+  return (
+    <>
+      <Panel title="O que foi excluído no Sankhya">
+        <p style={{ margin:'0 0 14px', fontSize:12.5, color:'#6B7280', lineHeight:1.6 }}>
+          Itens e documentos apagados, com quem apagou e quando. A aba de modificações
+          mostra o que mudou; aqui está o que deixou de existir — o Sankhya guarda numa tabela
+          espelho, e sem olhar nela a exclusão é invisível.
+        </p>
+
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:16 }}>
+          {[
+            ['Itens excluídos', tot.itens.toLocaleString('pt-BR')],
+            ['Documentos atingidos', tot.docs.toLocaleString('pt-BR')],
+            ['Documentos inteiros', tot.inteiros.toLocaleString('pt-BR')],
+            ['Valor dos itens', moeda(tot.valor)],
+            ['Pessoas', String(tot.usuarios)],
+          ].map(([r,v]) => (
+            <div key={r}>
+              <div style={{ fontSize:11.5, color:'#9CA3AF', marginBottom:4 }}>{r}</div>
+              <div style={{ fontSize:18, fontWeight:700, color:'#101828',
+                            fontVariantNumeric:'tabular-nums' }}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      {porUsuario.length > 0 && (
+        <Panel title="Por quem">
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5, minWidth:640 }}>
+              <thead>
+                <tr style={{ background:'#F9FAFB' }}>
+                  {['Usuário','Itens','Documentos','Doc. inteiros','Valor','Última exclusão'].map((h,i) => (
+                    <th key={h} style={{ padding:'9px 12px', fontSize:11, fontWeight:600, color:'#6B7280',
+                      textAlign: i>=1 && i<=4 ? 'right' : 'left', borderBottom:'1px solid #E5E7EB' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {porUsuario.slice(0,12).map(u => (
+                  <tr key={u.usuario} style={{ borderBottom:'1px solid #F3F4F6', cursor:'pointer',
+                        background: fUsuario===u.usuario ? '#EEF2FF' : undefined }}
+                      onClick={() => setFUsuario(fUsuario===u.usuario ? '' : u.usuario)}>
+                    <td style={{ padding:'8px 12px', fontWeight:600, color:'#101828' }}>{u.usuario || '—'}</td>
+                    <td style={{ padding:'8px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>
+                      {Number(u.exclusoes).toLocaleString('pt-BR')}</td>
+                    <td style={{ padding:'8px 12px', textAlign:'right', color:'#6B7280', fontVariantNumeric:'tabular-nums' }}>
+                      {Number(u.documentos).toLocaleString('pt-BR')}</td>
+                    <td style={{ padding:'8px 12px', textAlign:'right', color:'#B42318', fontVariantNumeric:'tabular-nums' }}>
+                      {Number(u.docs_inteiros).toLocaleString('pt-BR')}</td>
+                    <td style={{ padding:'8px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>
+                      {moeda(u.valor)}</td>
+                    <td style={{ padding:'8px 12px', color:'#9CA3AF', fontSize:11.5 }}>
+                      {u.ultima ? new Date(u.ultima).toLocaleDateString('pt-BR') : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize:11, color:'#9CA3AF', marginTop:8 }}>
+            Clique num usuário para filtrar a lista abaixo.
+          </div>
+        </Panel>
+      )}
+
+      <Panel title={`${filtradas.length.toLocaleString('pt-BR')} de ${exclusoes.length.toLocaleString('pt-BR')} exclusões`}>
+        <div style={{ display:'flex', gap:9, flexWrap:'wrap', marginBottom:12, alignItems:'center' }}>
+          <input value={busca} onChange={e => setBusca(e.target.value)}
+            placeholder="Nº único, cliente, produto ou BR…"
+            style={{ fontFamily:'inherit', fontSize:13, padding:'7px 11px',
+                     border:'1px solid #E5E7EB', borderRadius:6, width:250 }} />
+          <select value={fTipmov} onChange={e => setFTipmov(e.target.value)}
+            style={{ fontFamily:'inherit', fontSize:13, padding:'7px 11px',
+                     border:'1px solid #E5E7EB', borderRadius:6 }}>
+            <option value="">Todos os tipos</option>
+            {tiposMov.map(([k,r]) => <option key={k} value={k}>{r}</option>)}
+          </select>
+          <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12.5,
+                          color:'#6B7280', cursor:'pointer' }}>
+            <input type="checkbox" checked={fSoDoc} onChange={e => setFSoDoc(e.target.checked)} />
+            só documento inteiro
+          </label>
+          {(fUsuario || fTipmov || fSoDoc || busca) && (
+            <button onClick={() => { setFUsuario(''); setFTipmov(''); setFSoDoc(false); setBusca('') }}
+              style={{ fontFamily:'inherit', fontSize:12.5, cursor:'pointer', padding:'6px 11px',
+                       border:'none', background:'none', color:'#1F60A8' }}>limpar</button>
+          )}
+          {fUsuario && (
+            <span style={{ fontSize:12, color:'#1F60A8', background:'#EEF2FF',
+                           padding:'4px 10px', borderRadius:5 }}>usuário: {fUsuario}</span>
+          )}
+        </div>
+
+        <div style={{ overflowX:'auto', maxHeight:620 }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5, minWidth:900 }}>
+            <thead>
+              <tr style={{ background:'#F9FAFB' }}>
+                {['Excluído em','Nº único','Tipo','Situação','Usuário','Cliente','Produto','Qtd','Valor'].map((h,i) => (
+                  <th key={h} style={{ padding:'9px 11px', fontSize:11, fontWeight:600, color:'#6B7280',
+                    textAlign: i>=7 ? 'right' : 'left', borderBottom:'1px solid #E5E7EB',
+                    position:'sticky', top:0, background:'#F9FAFB', zIndex:1, whiteSpace:'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtradas.slice(0,400).map(e => {
+                const inteiro = e.tipo_exclusao === 'PEDIDO EXCLUIDO'
+                const ab = expandido === e.id
+                return (
+                  <React.Fragment key={e.id}>
+                    <tr onClick={() => setExpandido(ab ? null : e.id)}
+                        style={{ borderBottom:'1px solid #F3F4F6', cursor:'pointer',
+                                 background: inteiro ? '#FEF2F2' : undefined }}>
+                      <td style={{ padding:'8px 11px', color:'#6B7280', whiteSpace:'nowrap' }}>{dh(e.dh_exclusao)}</td>
+                      <td style={{ padding:'8px 11px', fontWeight:600, color:'#101828',
+                                   fontVariantNumeric:'tabular-nums' }}>
+                        {e.nunota}<span style={{ color:'#9CA3AF', fontWeight:400 }}>-{e.sequencia}</span>
+                      </td>
+                      <td style={{ padding:'8px 11px', color:'#6B7280' }}>{e.tipmov_nome || e.tipmov || '—'}</td>
+                      <td style={{ padding:'8px 11px' }}>
+                        <span style={{ fontSize:10.5, fontWeight:700, padding:'2px 7px', borderRadius:4,
+                          background: inteiro ? '#FEE2E2' : '#F3F4F6',
+                          color: inteiro ? '#B42318' : '#6B7280' }}>
+                          {inteiro ? 'Documento inteiro' : 'Só o item'}
+                        </span>
+                      </td>
+                      <td style={{ padding:'8px 11px', color:'#101828' }}>{e.usuario || '—'}</td>
+                      <td style={{ padding:'8px 11px', color:'#6B7280', maxWidth:180, overflow:'hidden',
+                                   textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{e.cliente}</td>
+                      <td style={{ padding:'8px 11px', color:'#6B7280', maxWidth:200, overflow:'hidden',
+                                   textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={e.produto}>{e.produto}</td>
+                      <td style={{ padding:'8px 11px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>
+                        {Number(e.quantidade || 0).toLocaleString('pt-BR')}</td>
+                      <td style={{ padding:'8px 11px', textAlign:'right', fontWeight:600,
+                                   fontVariantNumeric:'tabular-nums' }}>{moeda(e.valor_item)}</td>
+                    </tr>
+                    {ab && (
+                      <tr style={{ background:'#FAFAFA' }}>
+                        <td colSpan={9} style={{ padding:'11px 14px', borderBottom:'1px solid #F3F4F6' }}>
+                          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',
+                                        gap:16, fontSize:12 }}>
+                            {[['Chave do item', `${e.nunota}-${e.sequencia}`],
+                              ['Código do produto', e.cod_produto],
+                              ['BR / projeto', e.br || 'sem projeto'],
+                              ['Data do documento', e.data_doc ? new Date(e.data_doc+'T00:00:00').toLocaleDateString('pt-BR') : '—'],
+                              ['Tipo de movimento', `${e.tipmov_nome || ''} (${e.tipmov || '—'})`],
+                            ].map(([k,v]) => (
+                              <div key={k}>
+                                <div style={{ fontSize:10.5, color:'#9CA3AF', fontWeight:600, marginBottom:3 }}>
+                                  {k.toUpperCase()}</div>
+                                <div style={{ color:'#101828' }}>{v}</div>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ fontSize:11.5, color:'#6B7280', marginTop:10, lineHeight:1.5 }}>
+                            {inteiro
+                              ? 'O documento inteiro deixou de existir: o número único não está mais na base ativa.'
+                              : 'Só este item saiu; o documento continua existindo com os demais itens.'}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontSize:11, color:'#9CA3AF', marginTop:10, lineHeight:1.5 }}>
+          Linhas em vermelho são documentos que deixaram de existir por completo · clique para o detalhe
+          {filtradas.length > 400 && ` · mostrando 400 de ${filtradas.length.toLocaleString('pt-BR')}`}
+        </div>
+      </Panel>
+    </>
   )
 }
