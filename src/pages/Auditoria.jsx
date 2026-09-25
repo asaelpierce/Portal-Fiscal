@@ -171,6 +171,7 @@ export default function Auditoria() {
   const [exclusoes, setExclusoes] = useState([])
   const [excPorUsuario, setExcPorUsuario] = useState([])
   const [carregandoExc, setCarregandoExc] = useState(false)
+  const [erroExc, setErroExc] = useState('')
   const [fUsuario, setFUsuario] = useState('')
   const [fTipmov, setFTipmov] = useState('')
   const [fSoDoc, setFSoDoc] = useState(false)
@@ -185,24 +186,20 @@ export default function Auditoria() {
 
   const carregarExclusoes = async () => {
     if (exclusoes.length || carregandoExc) return
-    setCarregandoExc(true)
+    setCarregandoExc(true); setErroExc('')
     try {
-      const PASSO = 1000
-      let todas = []
-      for (let de = 0; ; de += PASSO) {
-        const d = await sbFetch(
-          `exclusao_sankhya?select=*&order=dh_exclusao.desc&offset=${de}&limit=${PASSO}`)
-        todas = todas.concat(d || [])
-        if (!d || d.length < PASSO) break
-        if (todas.length > 20000) break
-      }
-      setExclusoes(todas)
+      // sbFetch já pagina por dentro com cabeçalho Range; passar offset e
+      // limit na URL por cima faz as duas paginações brigarem e voltar vazio
+      setExclusoes(await sbFetch('exclusao_sankhya?select=*&order=dh_exclusao.desc') || [])
       setExcPorUsuario(await sbFetch('exclusao_por_usuario?select=*') || [])
-    } catch (e) { setErro(e.message) }
+    } catch (e) { setErroExc(String(e?.message ?? e)) }
     setCarregandoExc(false)
   }
 
-  useEffect(() => { if (subAba === 'exclusoes') carregarExclusoes() }, [subAba])
+  // recarrega ao entrar na aba e sempre que a lista for zerada pelo botão
+  useEffect(() => {
+    if (subAba === 'exclusoes' && !exclusoes.length && !carregandoExc) carregarExclusoes()
+  }, [subAba, exclusoes.length, carregandoExc])
 
   const excFiltradas = useMemo(() => {
     const lista = exclusoes.filter(e => {
@@ -393,7 +390,8 @@ export default function Auditoria() {
         <BarraSubAbas subAba={subAba} setSubAba={setSubAba} qtdExc={exclusoes.length} />
         <PainelExclusoes
           exclusoes={exclusoes} filtradas={excFiltradas} porUsuario={excPorUsuario}
-          carregando={carregandoExc} tiposMov={tiposMov}
+          carregando={carregandoExc} erro={erroExc} recarregar={() => { setExclusoes([]); setErroExc('') }}
+          tiposMov={tiposMov}
           fUsuario={fUsuario} setFUsuario={setFUsuario}
           fTipmov={fTipmov} setFTipmov={setFTipmov}
           fSoDoc={fSoDoc} setFSoDoc={setFSoDoc}
@@ -622,7 +620,7 @@ function BarraSubAbas({ subAba, setSubAba, qtdExc }) {
 const selEst = { fontFamily:'inherit', fontSize:12.5, padding:'7px 10px',
   border:'1px solid #E5E7EB', borderRadius:6, background:'#fff', color:'#101828', minWidth:0 }
 
-function PainelExclusoes({ exclusoes, filtradas, porUsuario, carregando, tiposMov,
+function PainelExclusoes({ exclusoes, filtradas, porUsuario, carregando, erro, recarregar, tiposMov,
                            fUsuario, setFUsuario, fTipmov, setFTipmov,
                            fSoDoc, setFSoDoc, busca, setBusca,
                            fExcIni, setFExcIni, fExcFim, setFExcFim,
@@ -660,8 +658,39 @@ function PainelExclusoes({ exclusoes, filtradas, porUsuario, carregando, tiposMo
     usuarios: new Set(filtradas.map(e => e.usuario)).size,
   }), [filtradas])
 
-  if (carregando) return <Panel title="Exclusões"><div style={{ padding:20, color:'#6B7280', fontSize:13 }}>Carregando o histórico de exclusões…</div></Panel>
-  if (!exclusoes.length) return <Panel title="Exclusões"><div style={{ padding:20, color:'#6B7280', fontSize:13 }}>Nenhuma exclusão registrada no período sincronizado.</div></Panel>
+  if (carregando) return (
+    <Panel title="Exclusões">
+      <div style={{ padding:20, color:'#6B7280', fontSize:13 }}>Carregando o histórico de exclusões…</div>
+    </Panel>
+  )
+  // erro e lista vazia são coisas diferentes: mostrar "nenhuma exclusão"
+  // quando a consulta falhou esconde o problema
+  if (erro) return (
+    <Panel title="Exclusões">
+      <div style={{ padding:18, fontSize:13, color:'#B42318', lineHeight:1.6 }}>
+        Não consegui carregar as exclusões.
+        <div style={{ fontSize:12, color:'#6B7280', marginTop:6, fontFamily:'monospace' }}>{erro}</div>
+        <button onClick={recarregar}
+          style={{ marginTop:12, fontFamily:'inherit', fontSize:13, cursor:'pointer',
+                   padding:'7px 14px', border:'1px solid #E5E7EB', background:'#fff',
+                   borderRadius:6, color:'#101828' }}>Tentar de novo</button>
+      </div>
+    </Panel>
+  )
+  if (!exclusoes.length) return (
+    <Panel title="Exclusões">
+      <div style={{ padding:18, fontSize:13, color:'#6B7280', lineHeight:1.6 }}>
+        Nenhuma exclusão retornou da consulta.
+        <div style={{ fontSize:12, marginTop:6 }}>
+          A base tem registros desde janeiro; se está vazio aqui, pode ser cache da API.
+        </div>
+        <button onClick={recarregar}
+          style={{ marginTop:12, fontFamily:'inherit', fontSize:13, cursor:'pointer',
+                   padding:'7px 14px', border:'1px solid #E5E7EB', background:'#fff',
+                   borderRadius:6, color:'#101828' }}>Tentar de novo</button>
+      </div>
+    </Panel>
+  )
 
   return (
     <>
