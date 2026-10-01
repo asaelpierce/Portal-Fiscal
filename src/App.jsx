@@ -24,6 +24,7 @@ import Processos from './pages/Processos.jsx'
 import Modulos from './pages/Modulos.jsx'
 import Demandas from './pages/Demandas.jsx'
 import Entregas from './pages/Entregas.jsx'
+import Frete from './pages/Frete.jsx'
 import SolicitarPublico from './pages/SolicitarPublico.jsx'
 import TrocarSenha from './components/TrocarSenha.jsx'
 import Automacoes from './pages/Automacoes.jsx'
@@ -50,6 +51,7 @@ const MENU_COMPLETO = [
   { id: 'processos', label: 'Processos & Economia', icon: '🕸' },
   { id: 'modulos', label: 'Módulos e Telas', icon: '🧩' },
   { id: 'entregas', label: 'Entregas', icon: '📦' },
+  { id: 'frete', label: 'Apropriação de Frete', icon: '🚚' },
   { id: 'demandas', label: 'Demandas', icon: '📥' },
   { id: 'admin', label: 'Administração', icon: '🔐' },
 ]
@@ -325,7 +327,7 @@ function AppAutenticado({ sessao, onLogout }) {
                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {MENU.find(m => m.id === pagina)?.label}
             </h1>
-            {dtIniISO && dtFimISO && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin', 'reqalmox', 'automacoes', 'processos', 'modulos', 'demandas', 'entregas'].includes(pagina) && (
+            {dtIniISO && dtFimISO && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin', 'reqalmox', 'automacoes', 'processos', 'modulos', 'demandas', 'entregas', 'frete'].includes(pagina) && (
               <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9CA3AF' }}>
                 Período {dBR(dtIniISO)} a {dBR(dtFimISO)}
               </p>
@@ -333,14 +335,14 @@ function AppAutenticado({ sessao, onLogout }) {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            {!['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin', 'reqalmox', 'automacoes', 'processos', 'modulos', 'demandas', 'entregas'].includes(pagina) && (
+            {!['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin', 'reqalmox', 'automacoes', 'processos', 'modulos', 'demandas', 'entregas', 'frete'].includes(pagina) && (
               <SeletorPeriodo
                 dtIni={dtIniISO} dtFim={dtFimISO}
                 onChange={selecionarPeriodo}
                 fase={faseSync}
               />
             )}
-            {pagina !== 'rateio' && pagina !== 'auditoria' && pagina !== 'baixagas' && pagina !== 'vinculofrete' && pagina !== 'admin' && pagina !== 'reqalmox' && pagina !== 'automacoes' && pagina !== 'processos' && pagina !== 'modulos' && pagina !== 'demandas' && pagina !== 'entregas' && (
+            {pagina !== 'rateio' && pagina !== 'auditoria' && pagina !== 'baixagas' && pagina !== 'vinculofrete' && pagina !== 'admin' && pagina !== 'reqalmox' && pagina !== 'automacoes' && pagina !== 'processos' && pagina !== 'modulos' && pagina !== 'demandas' && pagina !== 'entregas' && pagina !== 'frete' && (
               <Btn primary onClick={atualizar} disabled={atualizando || fase === 'carregando'}>
                 {atualizando ? '↻ Atualizando…' : '↻ Atualizar dados'}
               </Btn>
@@ -374,6 +376,8 @@ function AppAutenticado({ sessao, onLogout }) {
             <Processos sessao={sessao} />
           ) : pagina === 'modulos' ? (
             <Modulos sessao={sessao} />
+          ) : pagina === 'frete' ? (
+            <Frete />
           ) : pagina === 'entregas' ? (
             <Entregas />
           ) : pagina === 'demandas' ? (
