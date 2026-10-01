@@ -132,7 +132,10 @@ export default function Frete({ sessao }) {
   const doMes = useMemo(
     () => linhas.filter(l => l.competencia === competencia), [linhas, competencia])
 
-  const editavel = doMes[0]?.editavel ?? false
+  // Editável é decidido por NOTA, não pelo CT-e: um CT-e de setembro pode
+  // amarrar nota de agosto, e mês fechado não se altera.
+  const temEditavel = doMes.some(l => l.editavel)
+  const editavel = temEditavel
 
   const vistas = useMemo(() => doMes
     .filter(l => foco === 'todos' || (foco === 'corrigir' ? l.situacao !== 'ok' : l.situacao === 'ok'))
@@ -386,19 +389,33 @@ export default function Frete({ sessao }) {
                   </span>
                 </button>
 
-                {editavel && somaDif > 0.005 && (
-                  <div style={{ padding: '0 15px 11px', display: 'flex', gap: 9, alignItems: 'center' }}>
-                    <button onClick={(ev) => { ev.stopPropagation(); lancarTodos(g.notas) }}
-                      disabled={emLote || !!enviando}
-                      style={{ fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
-                               cursor: emLote ? 'default' : 'pointer', padding: '6px 14px',
-                               border: 'none', borderRadius: 5,
-                               background: emLote ? SUAVE : TINTA, color: PAPEL }}>
-                      {emLote ? 'Lançando…' : `Lançar as ${g.notas.filter(x => x.situacao !== 'ok').length} divergentes deste CT-e`}
-                    </button>
-                    <span style={{ fontSize: 11, color: SUAVE }}>uma nota por vez</span>
-                  </div>
-                )}
+                {(() => {
+                  const podem = g.notas.filter(x => x.situacao !== 'ok' && x.editavel)
+                  const travadas = g.notas.filter(x => x.situacao !== 'ok' && !x.editavel)
+                  if (!podem.length && !travadas.length) return null
+                  return (
+                    <div style={{ padding: '0 15px 11px', display: 'flex', gap: 10,
+                                  alignItems: 'center', flexWrap: 'wrap' }}>
+                      {podem.length > 0 && (
+                        <button onClick={(ev) => { ev.stopPropagation(); lancarTodos(podem) }}
+                          disabled={emLote || !!enviando}
+                          style={{ fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+                                   cursor: emLote ? 'default' : 'pointer', padding: '6px 14px',
+                                   border: 'none', borderRadius: 5,
+                                   background: emLote ? SUAVE : TINTA, color: PAPEL }}>
+                          {emLote ? 'Lançando…' : `Lançar ${podem.length} nota${podem.length > 1 ? 's' : ''}`}
+                        </button>
+                      )}
+                      {travadas.length > 0 && (
+                        <span style={{ fontSize: 11.5, color: AMBAR }}>
+                          {travadas.length} nota{travadas.length > 1 ? 's' : ''} de mês fechado
+                          {' '}({[...new Set(travadas.map(x => x.competencia_nf))].join(', ')}) — não dá para alterar
+                        </span>
+                      )}
+                      {podem.length > 0 && <span style={{ fontSize: 11, color: SUAVE }}>uma por vez</span>}
+                    </div>
+                  )
+                })()}
 
                 {ab && (
                   <div style={{ borderTop: `1px solid ${TRACO}`, background: '#FDFCFA' }}>
@@ -426,7 +443,12 @@ export default function Frete({ sessao }) {
                                     nº único {l.nf_nunota}
                                   </div>
                                 </td>
-                                <td style={{ padding: '9px 12px', fontSize: 11.5, color: SUAVE }}>{dBR(l.nf_data)}</td>
+                                <td style={{ padding: '9px 12px', fontSize: 11.5,
+                                             color: l.nota_de_outro_mes ? AMBAR : SUAVE,
+                                             fontWeight: l.nota_de_outro_mes ? 600 : 400 }}>
+                                  {dBR(l.nf_data)}
+                                  {l.nota_de_outro_mes && <span title="Nota de mês diferente do CT-e"> ⚠</span>}
+                                </td>
                                 <td style={{ padding: '9px 12px', fontSize: 12, textAlign: 'right',
                                              color: SUAVE, fontVariantNumeric: 'tabular-nums' }}>
                                   {brl(l.nf_valor)}</td>
@@ -469,7 +491,7 @@ export default function Frete({ sessao }) {
                                     )
                                     return (
                                       <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                                        {editavel && (
+                                        {l.editavel ? (
                                           <button onClick={() => lancar(l)} disabled={emLote}
                                             style={{ fontFamily: 'inherit', fontSize: 11.5, fontWeight: 600,
                                                      cursor: emLote ? 'default' : 'pointer',
@@ -477,6 +499,11 @@ export default function Frete({ sessao }) {
                                                      borderRadius: 5, background: '#fff', color: TINTA }}>
                                             Lançar
                                           </button>
+                                        ) : (
+                                          <span style={{ fontSize: 10.5, color: AMBAR, lineHeight: 1.35 }}
+                                                title={`Nota de ${l.competencia_nf}; só a competência ${l.competencia} está liberada`}>
+                                            nota de {l.competencia_nf} · mês fechado
+                                          </span>
                                         )}
                                         {res && !res.ok && (
                                           <span style={{ fontSize: 10.5, color: VERM, maxWidth: 230, lineHeight: 1.4 }}
