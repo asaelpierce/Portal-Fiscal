@@ -41,18 +41,45 @@ export default function Frete({ sessao }) {
   const [enviando, setEnviando] = useState(null)      // chave em andamento
   const [resultados, setResultados] = useState({})    // chave -> resultado
   const [emLote, setEmLote] = useState(false)
+  const [sincronizando, setSincronizando] = useState(false)
+  const [sincronizadoEm, setSincronizadoEm] = useState(null)
 
   useEffect(() => {
     (async () => {
       try {
         const d = await sbFetch('frete_diagnostico?select=*&order=cte_data.desc,cte_nunota')
         setLinhas(d || [])
+        const maisNovo = (d || []).reduce((m, x) =>
+          !m || String(x.sincronizado_em) > m ? String(x.sincronizado_em) : m, null)
+        setSincronizadoEm(maisNovo)
         const ed = (d || []).find(x => x.editavel)
         setCompetencia(ed?.competencia || (d || [])[0]?.competencia || '')
         setFase('pronto')
       } catch (e) { setErro(String(e?.message ?? e)); setFase('erro') }
     })()
   }, [])
+
+  // Sem isto a tela mostra o que o Sankhya tinha na ultima carga, nao o
+  // de agora. Um frete lancado a mao no ERP nao aparece aqui ate alguem
+  // sincronizar, e a conferencia fica em cima de dado velho.
+  const sincronizar = async () => {
+    setSincronizando(true)
+    try {
+      await fetch(`${SUPABASE_URL}/functions/v1/sankhya-frete-cte-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': 'kb2026sync!',
+                   apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ desde: '2026-07-01' }),
+      })
+      const d = await sbFetch('frete_diagnostico?select=*&order=cte_data.desc,cte_nunota')
+      setLinhas(d || [])
+      setResultados({})
+      const maisNovo = (d || []).reduce((m, x) =>
+        !m || String(x.sincronizado_em) > m ? String(x.sincronizado_em) : m, null)
+      setSincronizadoEm(maisNovo)
+    } catch (e) { setErro(String(e?.message ?? e)) }
+    setSincronizando(false)
+  }
 
   const lancar = async (l) => {
     const chave = `${l.cte_nunota}-${l.nf_nunota}`
@@ -70,9 +97,11 @@ export default function Frete({ sessao }) {
       const d = await r.json()
       setResultados(v => ({ ...v, [chave]: d }))
       if (d.ok) {
+        // usa o valor que o ERP confirmou na releitura, nao o que pedimos
+        const confirmado = d.confirmado_no_erp ?? d.valor_novo
         setLinhas(ls => ls.map(x =>
           x.cte_nunota === l.cte_nunota && x.nf_nunota === l.nf_nunota
-            ? { ...x, nf_frete_lancado: d.valor_novo, situacao: 'ok', diferenca: 0 } : x))
+            ? { ...x, nf_frete_lancado: confirmado, situacao: 'ok', diferenca: 0 } : x))
       }
       return d
     } catch (e) {
@@ -177,6 +206,20 @@ export default function Frete({ sessao }) {
                        color: editavel ? VERDE : SUAVE, background: editavel ? '#E9F7F1' : '#F0EEEA' }}>
           {editavel ? 'competência liberada' : 'mês fechado · só consulta'}
         </span>
+
+        <button onClick={sincronizar} disabled={sincronizando || emLote || !!enviando}
+          style={{ fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600,
+                   cursor: sincronizando ? 'default' : 'pointer', padding: '7px 14px',
+                   border: `1px solid ${TRACO}`, borderRadius: 6, background: '#fff',
+                   color: sincronizando ? SUAVE : TINTA }}>
+          {sincronizando ? 'Buscando no Sankhya…' : '↻ Atualizar do Sankhya'}
+        </button>
+        {sincronizadoEm && (
+          <span style={{ fontSize: 11, color: SUAVE }}>
+            dados de {new Date(sincronizadoEm).toLocaleString('pt-BR',
+              { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))',
