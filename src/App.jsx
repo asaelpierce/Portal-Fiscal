@@ -377,7 +377,7 @@ function AppAutenticado({ sessao, onLogout }) {
           ) : pagina === 'modulos' ? (
             <Modulos sessao={sessao} />
           ) : pagina === 'frete' ? (
-            <Frete />
+            <Frete sessao={sessao} />
           ) : pagina === 'entregas' ? (
             <Entregas />
           ) : pagina === 'demandas' ? (

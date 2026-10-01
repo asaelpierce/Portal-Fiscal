@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { sbFetch } from '../config.js'
+import { sbFetch, SUPABASE_URL, SUPABASE_ANON_KEY } from '../config.js'
 
 // ============================================================================
 // Apropriação de Frete
@@ -29,7 +29,7 @@ const SIT = {
 const brl = (v) => Number(v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const dBR = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
 
-export default function Frete() {
+export default function Frete({ sessao }) {
   const [linhas, setLinhas] = useState([])
   const [competencia, setCompetencia] = useState('')
   const [fase, setFase] = useState('carregando')
@@ -38,6 +38,9 @@ export default function Frete() {
   const [tipo, setTipo] = useState('todos')
   const [busca, setBusca] = useState('')
   const [aberto, setAberto] = useState(null)
+  const [enviando, setEnviando] = useState(null)      // chave em andamento
+  const [resultados, setResultados] = useState({})    // chave -> resultado
+  const [emLote, setEmLote] = useState(false)
 
   useEffect(() => {
     (async () => {
@@ -50,6 +53,45 @@ export default function Frete() {
       } catch (e) { setErro(String(e?.message ?? e)); setFase('erro') }
     })()
   }, [])
+
+  const lancar = async (l) => {
+    const chave = `${l.cte_nunota}-${l.nf_nunota}`
+    setEnviando(chave)
+    try {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/sankhya-frete-lancar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY,
+                   Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({
+          cte_nunota: l.cte_nunota, nf_nunota: l.nf_nunota,
+          usuario: sessao?.email || '',
+        }),
+      })
+      const d = await r.json()
+      setResultados(v => ({ ...v, [chave]: d }))
+      if (d.ok) {
+        setLinhas(ls => ls.map(x =>
+          x.cte_nunota === l.cte_nunota && x.nf_nunota === l.nf_nunota
+            ? { ...x, nf_frete_lancado: d.valor_novo, situacao: 'ok', diferenca: 0 } : x))
+      }
+      return d
+    } catch (e) {
+      const d = { ok: false, erro: String(e?.message ?? e) }
+      setResultados(v => ({ ...v, [chave]: d }))
+      return d
+    } finally { setEnviando(null) }
+  }
+
+  // envia um a um, em sequência: o Sankhya recusa chamadas simultâneas
+  // na mesma sessão de tela
+  const lancarTodos = async (lista) => {
+    setEmLote(true)
+    for (const l of lista) {
+      if (l.situacao === 'ok') continue
+      await lancar(l)
+    }
+    setEmLote(false)
+  }
 
   const comps = useMemo(
     () => [...new Set(linhas.map(l => l.competencia))].sort().reverse(), [linhas])
@@ -113,12 +155,16 @@ export default function Frete() {
         proporcional ao valor dos itens de cada nota dentro do CT-e, não divisão igual entre elas.
       </p>
 
-      <div style={{ background: '#FDF3E7', border: `1px solid #F5D9B0`, borderRadius: 8,
-                    padding: '12px 15px', marginBottom: 18, fontSize: 12.5, color: '#7A4A12', lineHeight: 1.6 }}>
-        <strong>Esta tela ainda não grava no Sankhya.</strong> Ela aponta o que está divergente para
-        você conferir. O lançamento automático entra depois que os valores aqui forem validados à
-        mão em alguns casos — se o cálculo estiver errado e a gravação já estiver ligada, o erro vai
-        para o ERP em dezenas de notas de uma vez.
+      <div style={{ background: '#EAF1FA', border: `1px solid #C9DCF0`, borderRadius: 8,
+                    padding: '12px 15px', marginBottom: 18, fontSize: 12.5, color: '#19477F', lineHeight: 1.6 }}>
+        O botão <strong>Lançar</strong> grava o frete direto no Sankhya, na Central de Notas. Antes
+        de gravar, o sistema confere se alguém alterou a nota desde a última sincronização, e depois
+        relê para confirmar que só o frete mudou. Cada lançamento fica registrado com quem mandou,
+        valor anterior e novo.
+        <div style={{ marginTop: 6, color: '#4A4741' }}>
+          Nota que o Sankhya recusar aparece com o motivo dele ao lado — há casos em que o ERP não
+          permite alterar o frete, e a mensagem diz qual é.
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -222,6 +268,20 @@ export default function Frete() {
                   </span>
                 </button>
 
+                {editavel && somaDif > 0.005 && (
+                  <div style={{ padding: '0 15px 11px', display: 'flex', gap: 9, alignItems: 'center' }}>
+                    <button onClick={(ev) => { ev.stopPropagation(); lancarTodos(g.notas) }}
+                      disabled={emLote || !!enviando}
+                      style={{ fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+                               cursor: emLote ? 'default' : 'pointer', padding: '6px 14px',
+                               border: 'none', borderRadius: 5,
+                               background: emLote ? SUAVE : TINTA, color: PAPEL }}>
+                      {emLote ? 'Lançando…' : `Lançar as ${g.notas.filter(x => x.situacao !== 'ok').length} divergentes deste CT-e`}
+                    </button>
+                    <span style={{ fontSize: 11, color: SUAVE }}>uma nota por vez</span>
+                  </div>
+                )}
+
                 {ab && (
                   <div style={{ borderTop: `1px solid ${TRACO}`, background: '#FDFCFA' }}>
                     <div style={{ overflowX: 'auto' }}>
@@ -229,7 +289,7 @@ export default function Frete() {
                         <thead>
                           <tr>
                             {['Nota', 'Data', 'Valor da nota', 'Base de itens', 'Frete lançado',
-                              'Frete correto', 'Diferença', 'Situação'].map((h, i) => (
+                              'Frete correto', 'Diferença', 'Situação', ''].map((h, i) => (
                               <th key={h} style={{ padding: '8px 12px', fontSize: 10.5, fontWeight: 600,
                                 color: '#9A958E', textAlign: i >= 2 && i <= 6 ? 'right' : 'left',
                                 borderBottom: `1px solid ${TRACO}`, whiteSpace: 'nowrap' }}>{h}</th>
@@ -276,6 +336,39 @@ export default function Frete() {
                                   <span style={{ fontSize: 10.5, fontWeight: 700, padding: '3px 8px',
                                                  borderRadius: 4, color: s.cor, background: s.bg,
                                                  whiteSpace: 'nowrap' }}>{s.rot}</span>
+                                </td>
+                                <td style={{ padding: '9px 12px', minWidth: 190 }}>
+                                  {(() => {
+                                    const chave = `${l.cte_nunota}-${l.nf_nunota}`
+                                    const res = resultados[chave]
+                                    const indo = enviando === chave
+                                    if (l.situacao === 'ok' && !res) return null
+                                    if (indo) return <span style={{ fontSize: 11.5, color: SUAVE }}>enviando…</span>
+                                    if (res?.ok) return (
+                                      <span style={{ fontSize: 11.5, color: VERDE, fontWeight: 600 }}>
+                                        ✓ lançado R$ {brl(res.valor_novo)}
+                                      </span>
+                                    )
+                                    return (
+                                      <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                        {editavel && (
+                                          <button onClick={() => lancar(l)} disabled={emLote}
+                                            style={{ fontFamily: 'inherit', fontSize: 11.5, fontWeight: 600,
+                                                     cursor: emLote ? 'default' : 'pointer',
+                                                     padding: '5px 12px', border: `1px solid ${TINTA}`,
+                                                     borderRadius: 5, background: '#fff', color: TINTA }}>
+                                            Lançar
+                                          </button>
+                                        )}
+                                        {res && !res.ok && (
+                                          <span style={{ fontSize: 10.5, color: VERM, maxWidth: 230, lineHeight: 1.4 }}
+                                                title={res.erro}>
+                                            {res.erro}
+                                          </span>
+                                        )}
+                                      </span>
+                                    )
+                                  })()}
                                 </td>
                               </tr>
                             )
