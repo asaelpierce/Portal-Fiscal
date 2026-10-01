@@ -129,8 +129,11 @@ export default function Frete({ sessao }) {
   const comps = useMemo(
     () => [...new Set(linhas.map(l => l.competencia))].sort().reverse(), [linhas])
 
+  // Nota de venda nao entra: o Sankhya nao permite apropriar frete nela,
+  // entao listar so geraria ruido. A apuracao e de nota de compra.
   const doMes = useMemo(
-    () => linhas.filter(l => l.competencia === competencia), [linhas, competencia])
+    () => linhas.filter(l => l.competencia === competencia && l.e_compra),
+    [linhas, competencia])
 
   // Editável é decidido por NOTA, não pelo CT-e: um CT-e de setembro pode
   // amarrar nota de agosto, e mês fechado não se altera.
@@ -139,9 +142,7 @@ export default function Frete({ sessao }) {
 
   const vistas = useMemo(() => doMes
     .filter(l => foco === 'todos' || (foco === 'corrigir' ? l.situacao !== 'ok' : l.situacao === 'ok'))
-    .filter(l => tipo === 'todos' ? true
-               : tipo === 'compra' ? l.e_compra
-               : tipo === 'um' ? l.um_para_um : !l.um_para_um)
+    .filter(l => tipo === 'todos' || (tipo === 'um' ? l.um_para_um : !l.um_para_um))
     .filter(l => !busca || `${l.cte_numnota} ${l.nf_numnota} ${l.transportador || ''} ${l.cte_nunota} ${l.nf_nunota}`
       .toLowerCase().includes(busca.toLowerCase()))
     .sort((a, b) => Math.abs(Number(b.diferenca) || 0) - Math.abs(Number(a.diferenca) || 0)),
@@ -157,8 +158,8 @@ export default function Frete({ sessao }) {
       valor: corrigir.reduce((s, l) => s + Math.abs(Number(l.diferenca) || 0), 0),
       um: corrigir.filter(l => l.um_para_um).length,
       rateado: corrigir.filter(l => !l.um_para_um).length,
-      compra: corrigir.filter(l => l.e_compra).length,
       podeLancar: corrigir.filter(l => l.editavel).length,
+      venda: linhas.filter(l => l.competencia === competencia && !l.e_compra).length,
     }
   }, [doMes])
 
@@ -331,8 +332,8 @@ export default function Frete({ sessao }) {
           }}>{r}</button>
         ))}
         <span style={{ width: 1, height: 20, background: TRACO, margin: '0 3px' }} />
-        {[['todos', 'Todos'], ['compra', `Só compra (${tot.compra})`],
-          ['um', `Um-para-um (${tot.um})`], ['rateado', `Rateado (${tot.rateado})`]].map(([k, r]) => (
+        {[['todos', 'Todos'], ['um', `Um-para-um (${tot.um})`],
+          ['rateado', `Rateado (${tot.rateado})`]].map(([k, r]) => (
           <button key={k} onClick={() => setTipo(k)} style={{
             fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', padding: '5px 11px', borderRadius: 5,
             border: `1px solid ${tipo === k ? AZUL : TRACO}`,
@@ -414,9 +415,8 @@ export default function Frete({ sessao }) {
                       )}
                       {travadas.length > 0 && (
                         <span style={{ fontSize: 11.5, color: AMBAR }}>
-                          {travadas.length} fora do alcance:{' '}
-                          {[...new Set(travadas.map(x => x.motivo_bloqueio === 'nota de venda'
-                            ? 'nota de venda' : `nota de ${x.competencia_nf}`))].join(' · ')}
+                          {travadas.length} de mês fechado:{' '}
+                          {[...new Set(travadas.map(x => x.competencia_nf))].join(', ')}
                         </span>
                       )}
                       {podem.length > 0 && <span style={{ fontSize: 11, color: SUAVE }}>uma por vez</span>}
@@ -551,6 +551,10 @@ export default function Frete({ sessao }) {
       <div style={{ fontSize: 11, color: SUAVE, marginTop: 16, lineHeight: 1.55, maxWidth: 760 }}>
         Clique no CT-e para ver as notas. A conferência vale só para a competência anterior à
         corrente — meses mais antigos estão fechados e aparecem apenas para consulta.
+        {tot.venda > 0 && (
+          <> Nota de venda não entra nesta apuração: o Sankhya não permite apropriar frete nela.
+          {' '}<strong>{tot.venda}</strong> ficaram de fora neste mês.</>
+        )}
       </div>
     </div>
   )
