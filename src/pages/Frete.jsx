@@ -139,7 +139,9 @@ export default function Frete({ sessao }) {
 
   const vistas = useMemo(() => doMes
     .filter(l => foco === 'todos' || (foco === 'corrigir' ? l.situacao !== 'ok' : l.situacao === 'ok'))
-    .filter(l => tipo === 'todos' || (tipo === 'um' ? l.um_para_um : !l.um_para_um))
+    .filter(l => tipo === 'todos' ? true
+               : tipo === 'compra' ? l.e_compra
+               : tipo === 'um' ? l.um_para_um : !l.um_para_um)
     .filter(l => !busca || `${l.cte_numnota} ${l.nf_numnota} ${l.transportador || ''} ${l.cte_nunota} ${l.nf_nunota}`
       .toLowerCase().includes(busca.toLowerCase()))
     .sort((a, b) => Math.abs(Number(b.diferenca) || 0) - Math.abs(Number(a.diferenca) || 0)),
@@ -155,6 +157,8 @@ export default function Frete({ sessao }) {
       valor: corrigir.reduce((s, l) => s + Math.abs(Number(l.diferenca) || 0), 0),
       um: corrigir.filter(l => l.um_para_um).length,
       rateado: corrigir.filter(l => !l.um_para_um).length,
+      compra: corrigir.filter(l => l.e_compra).length,
+      podeLancar: corrigir.filter(l => l.editavel).length,
     }
   }, [doMes])
 
@@ -307,6 +311,7 @@ export default function Frete({ sessao }) {
           ['Notas vinculadas', String(tot.vinculos)],
           ['Conferem', String(tot.ok), VERDE],
           ['A corrigir', String(tot.corrigir), tot.corrigir ? VERM : VERDE],
+          ['Dá para lançar', String(tot.podeLancar), tot.podeLancar ? AZUL : SUAVE],
           ['Valor em jogo', `R$ ${brl(tot.valor)}`, tot.valor ? VERM : SUAVE],
         ].map(([r, v, c]) => (
           <div key={r}>
@@ -326,7 +331,8 @@ export default function Frete({ sessao }) {
           }}>{r}</button>
         ))}
         <span style={{ width: 1, height: 20, background: TRACO, margin: '0 3px' }} />
-        {[['todos', 'Todos'], ['um', `Um-para-um (${tot.um} a corrigir)`], ['rateado', `Rateado (${tot.rateado})`]].map(([k, r]) => (
+        {[['todos', 'Todos'], ['compra', `Só compra (${tot.compra})`],
+          ['um', `Um-para-um (${tot.um})`], ['rateado', `Rateado (${tot.rateado})`]].map(([k, r]) => (
           <button key={k} onClick={() => setTipo(k)} style={{
             fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', padding: '5px 11px', borderRadius: 5,
             border: `1px solid ${tipo === k ? AZUL : TRACO}`,
@@ -408,8 +414,9 @@ export default function Frete({ sessao }) {
                       )}
                       {travadas.length > 0 && (
                         <span style={{ fontSize: 11.5, color: AMBAR }}>
-                          {travadas.length} nota{travadas.length > 1 ? 's' : ''} de mês fechado
-                          {' '}({[...new Set(travadas.map(x => x.competencia_nf))].join(', ')}) — não dá para alterar
+                          {travadas.length} fora do alcance:{' '}
+                          {[...new Set(travadas.map(x => x.motivo_bloqueio === 'nota de venda'
+                            ? 'nota de venda' : `nota de ${x.competencia_nf}`))].join(' · ')}
                         </span>
                       )}
                       {podem.length > 0 && <span style={{ fontSize: 11, color: SUAVE }}>uma por vez</span>}
@@ -501,8 +508,12 @@ export default function Frete({ sessao }) {
                                           </button>
                                         ) : (
                                           <span style={{ fontSize: 10.5, color: AMBAR, lineHeight: 1.35 }}
-                                                title={`Nota de ${l.competencia_nf}; só a competência ${l.competencia} está liberada`}>
-                                            nota de {l.competencia_nf} · mês fechado
+                                                title={l.motivo_bloqueio === 'nota de venda'
+                                                  ? `TOP ${l.nf_top}: ${l.nf_top_nome || 'venda'}. O Sankhya só aceita alterar frete em nota de compra.`
+                                                  : `Nota de ${l.competencia_nf}; só ${competencia} está liberada`}>
+                                            {l.motivo_bloqueio === 'nota de venda'
+                                              ? 'nota de venda'
+                                              : `nota de ${l.competencia_nf} · mês fechado`}
                                           </span>
                                         )}
                                         {res && !res.ok && (
