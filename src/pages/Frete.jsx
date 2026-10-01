@@ -43,6 +43,8 @@ export default function Frete({ sessao }) {
   const [emLote, setEmLote] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
   const [sincronizadoEm, setSincronizadoEm] = useState(null)
+  const [historico, setHistorico] = useState([])
+  const [verHistorico, setVerHistorico] = useState(false)
 
   useEffect(() => {
     (async () => {
@@ -54,6 +56,7 @@ export default function Frete({ sessao }) {
         setSincronizadoEm(maisNovo)
         const ed = (d || []).find(x => x.editavel)
         setCompetencia(ed?.competencia || (d || [])[0]?.competencia || '')
+        setHistorico(await sbFetch('frete_historico?select=*&limit=200') || [])
         setFase('pronto')
       } catch (e) { setErro(String(e?.message ?? e)); setFase('erro') }
     })()
@@ -96,6 +99,7 @@ export default function Frete({ sessao }) {
       })
       const d = await r.json()
       setResultados(v => ({ ...v, [chave]: d }))
+      sbFetch('frete_historico?select=*&limit=200').then(h => setHistorico(h || [])).catch(() => {})
       if (d.ok) {
         // usa o valor que o ERP confirmou na releitura, nao o que pedimos
         const confirmado = d.confirmado_no_erp ?? d.valor_novo
@@ -220,7 +224,78 @@ export default function Frete({ sessao }) {
               { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
           </span>
         )}
+        <button onClick={() => setVerHistorico(v => !v)}
+          style={{ fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', padding: '7px 13px',
+                   border: `1px solid ${verHistorico ? TINTA : TRACO}`, borderRadius: 6,
+                   background: verHistorico ? TINTA : '#fff', color: verHistorico ? PAPEL : SUAVE,
+                   marginLeft: 'auto' }}>
+          Registros{historico.length ? ` (${historico.length})` : ''}
+        </button>
       </div>
+
+      {verHistorico && (
+        <div style={{ background: '#fff', border: `1px solid ${TRACO}`, marginBottom: 18 }}>
+          <div style={{ padding: '11px 15px', borderBottom: `1px solid ${TRACO}`,
+                        fontSize: 12, color: SUAVE, lineHeight: 1.55 }}>
+            Tudo que o portal mandou para o Sankhya, inclusive o que falhou e o motivo.
+            Nenhum lancamento acontece sem passar por aqui.
+          </div>
+          {historico.length === 0 ? (
+            <div style={{ padding: '20px 15px', fontSize: 13, color: SUAVE }}>
+              Nenhum lançamento feito ainda.
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto', maxHeight: 420 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
+                <thead>
+                  <tr>
+                    {['Quando', 'Quem', 'CT-e', 'Nota', 'De', 'Para', 'Resultado', 'Observação'].map((h, i) => (
+                      <th key={h} style={{ padding: '9px 12px', fontSize: 10.5, fontWeight: 600,
+                        color: '#9A958E', textAlign: i >= 4 && i <= 5 ? 'right' : 'left',
+                        borderBottom: `1px solid ${TRACO}`, position: 'sticky', top: 0,
+                        background: '#fff', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {historico.map(h => {
+                    const deu = h.resultado === 'ok'
+                    return (
+                      <tr key={h.id} style={{ borderBottom: '1px solid #F0EEEA' }}>
+                        <td style={{ padding: '8px 12px', fontSize: 11.5, color: SUAVE, whiteSpace: 'nowrap' }}>
+                          {new Date(h.feito_em).toLocaleString('pt-BR',
+                            { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td style={{ padding: '8px 12px', fontSize: 11.5, color: SUAVE }}>
+                          {String(h.feito_por || '').split('@')[0]}
+                        </td>
+                        <td style={{ padding: '8px 12px', fontSize: 12, color: TINTA,
+                                     fontVariantNumeric: 'tabular-nums' }}>{h.cte_numnota || h.cte_nunota}</td>
+                        <td style={{ padding: '8px 12px', fontSize: 12, color: TINTA, fontWeight: 600,
+                                     fontVariantNumeric: 'tabular-nums' }}>{h.nf_numnota || h.nf_nunota}</td>
+                        <td style={{ padding: '8px 12px', fontSize: 12, textAlign: 'right',
+                                     color: SUAVE, fontVariantNumeric: 'tabular-nums' }}>
+                          {brl(h.valor_anterior)}</td>
+                        <td style={{ padding: '8px 12px', fontSize: 12, textAlign: 'right',
+                                     color: TINTA, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                          {brl(h.valor_novo)}</td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <span style={{ fontSize: 10.5, fontWeight: 700, padding: '3px 8px', borderRadius: 4,
+                                         color: deu ? VERDE : VERM, background: deu ? '#E9F7F1' : '#FDECEA' }}>
+                            {deu ? 'gravado' : 'recusado'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 12px', fontSize: 11, color: SUAVE, maxWidth: 300,
+                                     lineHeight: 1.4 }}>{h.mensagem || '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))',
                     gap: 18, marginBottom: 20 }}>
