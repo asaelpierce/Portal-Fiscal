@@ -74,6 +74,9 @@ function Dica({ active, payload, label }) {
 
 export default function Economia({ embutido = false }) {
   const { lang, t } = useIdioma()
+  // nome do projeto no idioma da tela; cai no português se faltar tradução
+  const nomeProj = (x) => (lang === 'en' ? (x?.nome_projeto_en || x?.nome_projeto) : x?.nome_projeto)
+  const nomeSetor = (x) => (lang === 'en' ? (x?.setor_en || x?.setor) : x?.setor)
   const [totais, setTotais] = useState(null)
   const [tarefas, setTarefas] = useState([])
   const [setores, setSetores] = useState([])
@@ -108,13 +111,13 @@ export default function Economia({ embutido = false }) {
     () => tarefas.map((t, i) => ({ ...t, cor: RAMPA[i % RAMPA.length] })), [tarefas])
 
   const { serie, projetos, coresProjeto } = useMemo(() => {
-    const nomes = Array.from(new Set(mensal.map((r) => r.nome_projeto)))
+    const nomes = Array.from(new Set(mensal.map((r) => nomeProj(r))))
     const cores = Object.fromEntries(nomes.map((n, i) => [n, RAMPA[i % RAMPA.length]]))
     const porMes = new Map()
     for (const r of mensal) {
       if (!porMes.has(r.mes)) porMes.set(r.mes, { mes: rotuloMes(r.mes) + (emCurso(r.mes) ? ' ·' : ''), _iso: r.mes, _curso: emCurso(r.mes) })
       const l = porMes.get(r.mes)
-      l[r.nome_projeto] = (l[r.nome_projeto] || 0) + Number(r.horas)
+      l[nomeProj(r)] = (l[nomeProj(r)] || 0) + Number(r.horas)
     }
     const ord = [...porMes.values()].sort((a, b) => a._iso.localeCompare(b._iso))
     let ac = 0
@@ -130,7 +133,7 @@ export default function Economia({ embutido = false }) {
       .filter((t) => Number(t.horas_acumuladas) > 0)
       .map((t) => ({
         name: t.tarefa,
-        projeto: t.nome_projeto,
+        projeto: nomeProj(t),
         valor: Number(t.horas_acumuladas),
         volume: Number(t.vol_medido) || 0,
         min: Number(t.min_antes) - Number(t.min_depois),
@@ -144,7 +147,7 @@ export default function Economia({ embutido = false }) {
     () => lista
       .filter((t) => Number(t.vol_medido) > 0 && Number(t.horas_acumuladas) > 0)
       .map((t) => ({
-        tarefa: t.tarefa, projeto: t.nome_projeto, cor: t.cor,
+        tarefa: t.tarefa, projeto: nomeProj(t), cor: t.cor,
         vol: Number(t.vol_medido),
         min: Number(t.min_antes) - Number(t.min_depois),
         horas: Number(t.horas_acumuladas),
@@ -338,7 +341,7 @@ export default function Economia({ embutido = false }) {
                 {t.tarefa}
                 {t.tem_baseline_declarado && <span style={{ color: SINAL, marginLeft: 5, fontWeight: 600 }}>*</span>}
                 <span style={{ color: SUAVE, fontSize: 11.5, marginLeft: 8 }}>
-                  {t.nome_projeto}
+                  {nomeProj(t)}
                   {t.medido_desde && ` · desde ${dMes(t.medido_desde)}`}
                 </span>
               </div>
@@ -395,7 +398,7 @@ export default function Economia({ embutido = false }) {
               width: 9, height: 9, background: t.cor,
               boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.14)',
             }} />
-            {t.nome_projeto}
+            {nomeProj(t)}
             <span style={{ ...num, color: TINTA }}>{nf(t.horas_acumuladas)} h</span>
           </span>
         ))}
@@ -418,7 +421,7 @@ export default function Economia({ embutido = false }) {
             })
             .sort((a, b) => b.fatia - a.fatia)
           return (
-            <div key={s.setor} style={{ borderBottom: `1px solid ${TRACO}` }}>
+            <div key={nomeSetor(s)} style={{ borderBottom: `1px solid ${TRACO}` }}>
               <button onClick={() => setSetorAberto(aberto ? null : s.setor)} aria-expanded={aberto}
                 style={{
                   width: '100%', display: 'grid', gridTemplateColumns: '14px 124px 1fr 96px',
@@ -429,7 +432,7 @@ export default function Economia({ embutido = false }) {
                   fontSize: 10, color: SUAVE, lineHeight: 1,
                   transform: aberto ? 'rotate(90deg)' : 'none', transition: 'transform .18s ease',
                 }}>▶</span>
-                <span style={{ fontSize: 13.5 }}>{s.setor}</span>
+                <span style={{ fontSize: 13.5 }}>{nomeSetor(s)}</span>
                 <span style={{ height: 10, background: '#EFEDE8', display: 'block' }}>
                   <span className="ec-barra" style={{
                     width: `${(v / maiorSetor) * 100}%`, height: '100%', background: RAMPA[1], display: 'block',
@@ -454,7 +457,7 @@ export default function Economia({ embutido = false }) {
                       <span style={{ fontSize: 11.5, color: SUAVE, lineHeight: 1.4 }}>
                         {t.divisor > 1
                           ? `1/${t.divisor} de ${nf(t.horas_acumuladas)} h, dividida com ${t.setores.filter((x) => x !== s.setor).join(' e ')}`
-                          : t.nome_projeto}
+                          : nomeProj(t)}
                       </span>
                       <span style={{ ...num, fontSize: 12.5, textAlign: 'right' }}>{nf(t.fatia)} h</span>
                     </div>
@@ -464,7 +467,7 @@ export default function Economia({ embutido = false }) {
                     padding: '9px 0 0 14px', marginTop: 4, borderTop: `1px solid ${TRACO}`,
                     fontSize: 12.5, fontWeight: 600,
                   }}>
-                    <span>{contrib.length} tarefa{contrib.length > 1 ? 's' : ''} em {s.setor}</span>
+                    <span>{contrib.length} tarefa{contrib.length > 1 ? 's' : ''} em {nomeSetor(s)}</span>
                     <span /><span style={{ ...num, textAlign: 'right' }}>{nf(v)} h</span>
                   </div>
                 </div>
@@ -505,7 +508,7 @@ export default function Economia({ embutido = false }) {
                       <span style={{ ...num, color: c.cor, fontWeight: 500, marginLeft: 7 }}>{b.valor}</span>
                     )}
                   </div>
-                  <div style={{ fontSize: 11, color: SUAVE, marginTop: 2 }}>{b.nome_projeto}</div>
+                  <div style={{ fontSize: 11, color: SUAVE, marginTop: 2 }}>{nomeProj(b)}</div>
                 </div>
               ))}
             </div>
@@ -544,7 +547,7 @@ export default function Economia({ embutido = false }) {
                   {t.tarefa}
                   {t.tem_baseline_declarado && <span style={{ color: SINAL, marginLeft: 5, fontWeight: 600 }}>*</span>}
                 </td>
-                <td style={{ ...td(), color: SUAVE, fontSize: 12.5 }}>{t.nome_projeto}</td>
+                <td style={{ ...td(), color: SUAVE, fontSize: 12.5 }}>{nomeProj(t)}</td>
                 <td style={{ ...td(), color: SUAVE, fontSize: 12 }}>{dMes(t.medido_desde)}</td>
                 <td style={{ ...td('right'), ...num, color: SUAVE, fontSize: 12 }}>
                   {t.meses_ativa != null ? nf(t.meses_ativa, 1) : '—'}

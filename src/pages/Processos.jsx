@@ -23,6 +23,7 @@ export default function Processos({ sessao }) {
 
 function ProcessosConteudo({ sessao }) {
   const { t, lang } = useIdioma()
+  const nomeProj = (x) => (lang === 'en' ? (x?.nome_projeto_en || x?.nome_projeto) : x?.nome_projeto)
   const [vista, setVista] = useState('mapa')
   const [totais, setTotais] = useState(null)
   const [resumo, setResumo] = useState([])
@@ -121,7 +122,7 @@ function ProcessosConteudo({ sessao }) {
                 fontFamily: 'inherit', textAlign: 'left',
               }}>
               <div style={{ fontSize: 12, color: TINTA, fontWeight: 600, lineHeight: 1.3 }}>
-                {r.nome_projeto}
+                {nomeProj(r)}
               </div>
               {Number(r.horas_acumuladas) > 0 ? (
                 <>
@@ -157,7 +158,7 @@ function ProcessosConteudo({ sessao }) {
           padding: '9px 26px', fontSize: 12, color: '#A2600F',
           background: '#FDF3E7', borderBottom: '1px solid #F5D9B0',
         }}>
-          {semMapa.map((r) => r.nome_projeto).join(', ')} {semMapa.length > 1 ? 'têm' : 'tem'} ganho
+          {semMapa.map((r) => nomeProj(r)).join(', ')} {semMapa.length > 1 ? 'têm' : 'tem'} ganho
           medido mas ainda não {semMapa.length > 1 ? 'aparecem' : 'aparece'} no mapa.
         </div>
       )}
