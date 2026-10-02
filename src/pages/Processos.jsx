@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { IdiomaProvider, useIdioma, BotaoIdioma, fmtNum, fmtInt } from '../i18n.jsx'
 import { sbFetch } from '../config.js'
 import { Spinner, EmptyState, Btn } from '../components/UI.jsx'
 import Economia from './Economia.jsx'
@@ -14,7 +15,14 @@ const nf = (v, d = 1) =>
 const ni = (v) => Number(v ?? 0).toLocaleString('pt-BR')
 const num = { fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum"' }
 
+// O provider envolve a tela inteira para que o mapa, os números e a
+// economia troquem de idioma juntos.
 export default function Processos({ sessao }) {
+  return <IdiomaProvider><ProcessosConteudo sessao={sessao} /></IdiomaProvider>
+}
+
+function ProcessosConteudo({ sessao }) {
+  const { t, lang } = useIdioma()
   const [vista, setVista] = useState('mapa')
   const [totais, setTotais] = useState(null)
   const [resumo, setResumo] = useState([])
@@ -87,9 +95,12 @@ export default function Processos({ sessao }) {
           </div>
         ))}
         <div style={{ flex: 1 }} />
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button style={aba('mapa')} onClick={() => setVista('mapa')}>Mapa</button>
-          <button style={aba('numeros')} onClick={() => setVista('numeros')}>Números</button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <BotaoIdioma />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button style={aba('mapa')} onClick={() => setVista('mapa')}>{t('mapa')}</button>
+            <button style={aba('numeros')} onClick={() => setVista('numeros')}>{t('numeros')}</button>
+          </div>
         </div>
       </div>
 
