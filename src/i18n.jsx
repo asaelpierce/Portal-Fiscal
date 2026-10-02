@@ -64,9 +64,11 @@ export const TEXTOS = {
     todasAreas: 'Todas as áreas', todosSistemas: 'Todos os sistemas',
     organizar: 'Organizar', novoNo: 'Novo nó', expandir: 'Expandir',
     foraDoMapa: 'fora do mapa',
+    sairTelaCheia: 'Sair da tela cheia',
     foraDoMapaTitulo: 'Fora do mapa',
     foraDoMapaTexto: 'Recursos que existem no banco mas não aparecem em nenhum nó. Se algo novo for criado e ninguém desenhar, aparece aqui.',
     areas: 'Áreas', quemExecuta: 'Quem executa', novaArea: '+ nova área',
+    quemExecutava: 'Quem executava',
     semGanhoNoMapa: 'têm ganho medido mas ainda não aparecem no mapa.',
   },
   en: {
@@ -114,9 +116,11 @@ export const TEXTOS = {
     todasAreas: 'All areas', todosSistemas: 'All systems',
     organizar: 'Arrange', novoNo: 'New node', expandir: 'Expand',
     foraDoMapa: 'off the map',
+    sairTelaCheia: 'Exit full screen',
     foraDoMapaTitulo: 'Off the map',
     foraDoMapaTexto: 'Resources that exist in the database but are not on any node. If something new is created and nobody draws it, it shows up here.',
     areas: 'Areas', quemExecuta: 'Who performs it', novaArea: '+ new area',
+    quemExecutava: 'Who used to perform it',
     semGanhoNoMapa: 'have measured gains but are not on the map yet.',
   },
 }

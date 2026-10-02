@@ -202,7 +202,7 @@ const tiposAresta = { flutuante: ArestaFlutuante }
 const CORLINHA = { dados: '#8B8781', gatilho: '#1F60A8', notificacao: '#B45309', condicional: '#6D28D9', interacao: '#A2600F' }
 
 export default function MapaFluxos({ embutido = false, sessao }) {
-  const { lang } = useIdioma()
+  const { lang, t: tr } = useIdioma()
   // Só editor altera o mapa. Quem visualiza não arrasta, não cria e não
   // exclui — e os controles somem, em vez de darem erro ao clicar.
   const podeEditar = sessao?.nivel === 'editor'
@@ -263,7 +263,9 @@ export default function MapaFluxos({ embutido = false, sessao }) {
       })
       setLinhas((c || []).map((e) => ({
         id: e.id, source: e.de, target: e.para,
-        label: (lang === 'en' ? (e.rotulo_en || e.rotulo) : e.rotulo) || undefined,
+        // guarda os dois; a escolha acontece no memo, que reage ao idioma
+        rotulo: e.rotulo, rotulo_en: e.rotulo_en,
+        label: e.rotulo || undefined,
         type: 'flutuante',
         animated: e.tipo === 'gatilho',
         style: {
@@ -473,11 +475,17 @@ export default function MapaFluxos({ embutido = false, sessao }) {
     const linhasCamada = linhas.filter(
       (l) => chavesCamada.has(l.source) && chavesCamada.has(l.target))
     const nosBase = nosCamada, linhasBase = linhasCamada
+    // rótulo da ligação no idioma corrente; sem isso ele ficaria no
+    // português de quando as linhas foram carregadas
+    const rotularLigacao = (l) => ({
+      ...l,
+      label: (lang === 'en' ? (l.rotulo_en || l.rotulo) : l.rotulo) || undefined,
+    })
     if (area === 'todas') {
       const base = (filtro === 'todos' ? nosBase
         : nosBase.map((n) => ({ ...n, style: { opacity: n.data.sistema === filtro ? 1 : .22 } })))
         .map((n) => ({ ...n, data: { ...n.data, lang, __corPorArea: modoCor === 'area', __irmao: irmaos.has(n.id) } }))
-      return { nosFiltrados: base, linhasFiltradas: linhasBase }
+      return { nosFiltrados: base, linhasFiltradas: linhasBase.map(rotularLigacao) }
     }
     const dentro = new Set(
       nosBase.filter((n) => (n.data.area || 'Sem área') === area).map((n) => n.id))
@@ -500,9 +508,11 @@ export default function MapaFluxos({ embutido = false, sessao }) {
     const chaves = new Set(visiveis.map((n) => n.id))
     return {
       nosFiltrados: visiveis,
-      linhasFiltradas: linhasBase.filter((l) => chaves.has(l.source) && chaves.has(l.target)),
+      linhasFiltradas: linhasBase
+        .filter((l) => chaves.has(l.source) && chaves.has(l.target))
+        .map(rotularLigacao),
     }
-  }, [nos, linhas, filtro, area, camada, modoCor, irmaos])
+  }, [nos, linhas, filtro, area, camada, modoCor, irmaos, lang])
 
   const legenda = useMemo(() => {
     const conta = new Map()
@@ -560,7 +570,7 @@ export default function MapaFluxos({ embutido = false, sessao }) {
         padding: '12px 26px', borderBottom: '1px solid #E4E1DC', background: '#fff',
         display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
       }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#1A1A18' }}>Mapa dos processos</div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#1A1A18' }}>{tr('mapaProcessos')}</div>
         <div style={{ fontSize: 12, color: '#6E6A64' }}>
           {area === 'todas'
             ? `${bruto.length} nós · ${linhas.length} ligações`
@@ -574,11 +584,13 @@ export default function MapaFluxos({ embutido = false, sessao }) {
             border: '1px solid #E4E1DC', background: '#fff', color: '#1A1A18', borderRadius: 3,
             whiteSpace: 'nowrap',
           }}>
-          Cor: {modoCor === 'area' ? 'área' : 'sistema'}
+          {lang === 'en' ? 'Colour' : 'Cor'}: {modoCor === 'area'
+            ? (lang === 'en' ? 'area' : 'área')
+            : (lang === 'en' ? 'system' : 'sistema')}
         </button>
 
         <div style={{ display: 'flex', gap: 4 }}>
-          {[['processo','Processo'],['medicao','Medição'],['tudo','Tudo']].map(([k, r]) => (
+          {[['processo',tr('processo')],['medicao',tr('medicao')],['tudo',tr('tudo')]].map(([k, r]) => (
             <button key={k} onClick={() => setCamada(k)}
               title={k === 'processo' ? 'Só o processo do negócio'
                    : k === 'medicao' ? 'Só a instrumentação que mede' : 'Processo e medição juntos'}
@@ -597,7 +609,7 @@ export default function MapaFluxos({ embutido = false, sessao }) {
             border: `1px solid ${area === 'todas' ? '#E4E1DC' : '#1A1A18'}`, borderRadius: 3,
             background: '#fff', color: '#1A1A18', fontWeight: area === 'todas' ? 400 : 600,
           }}>
-          <option value="todas">Todas as áreas · {bruto.length} nós</option>
+          <option value="todas">{tr('todasAreas')} · {bruto.length} {tr('nos')}</option>
           {areas.map((a) => (
             <option key={a.area} value={a.area}>{a.area} · {a.nos} nós</option>
           ))}
@@ -608,7 +620,7 @@ export default function MapaFluxos({ embutido = false, sessao }) {
             fontFamily: 'inherit', fontSize: 12.5, padding: '5px 9px',
             border: '1px solid #E4E1DC', borderRadius: 3, background: '#fff', color: '#1A1A18',
           }}>
-          {sistemas.map((s) => <option key={s} value={s}>{s === 'todos' ? 'Todos os sistemas' : s}</option>)}
+          {sistemas.map((s) => <option key={s} value={s}>{s === 'todos' ? tr('todosSistemas') : s}</option>)}
         </select>
 
         <div style={{ flex: 1 }} />
@@ -623,12 +635,12 @@ export default function MapaFluxos({ embutido = false, sessao }) {
           style={{
             fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', padding: '5px 11px',
             border: '1px solid #E4E1DC', background: '#fff', color: '#1A1A18', borderRadius: 3,
-          }}>⇄  Organizar</button>}
+          }}>⇄  {tr('organizar')}</button>}
         {podeEditar && <button onClick={() => { setCriando(true); setSel(null) }}
           style={{
             fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', padding: '5px 11px',
             border: '1px solid #E4E1DC', background: '#fff', color: '#1A1A18', borderRadius: 3,
-          }}>+  Novo nó</button>}
+          }}>+  {tr('novoNo')}</button>}
         <button onClick={() => setExpandido((v) => !v)}
           title={expandido ? 'Sair da tela cheia (Esc)' : 'Expandir para trabalhar no mapa'}
           style={{
@@ -636,7 +648,7 @@ export default function MapaFluxos({ embutido = false, sessao }) {
             border: '1px solid #E4E1DC', background: expandido ? '#1A1A18' : '#fff',
             color: expandido ? '#fff' : '#1A1A18', borderRadius: 3, whiteSpace: 'nowrap',
           }}>
-          {expandido ? '✕  Sair da tela cheia' : '⤢  Expandir'}
+          {expandido ? `✕  ${tr('sairTelaCheia')}` : `⤢  ${tr('expandir')}`}
         </button>
         {orfaos.length > 0 && (
           <div style={{
@@ -657,7 +669,7 @@ export default function MapaFluxos({ embutido = false, sessao }) {
               boxShadow: '0 1px 6px rgba(0,0,0,.06)',
             }}>
               <div style={{ fontSize: 10, color: '#6E6A64', textTransform: 'uppercase',
-                            letterSpacing: '.05em', marginBottom: 7 }}>Áreas</div>
+                            letterSpacing: '.05em', marginBottom: 7 }}>{tr('areas')}</div>
               {legenda.map((l) => (
                 <button key={l.nome} onClick={() => setArea(area === l.nome ? 'todas' : l.nome)}
                   title={`${l.qtd} nó(s) · clique para filtrar`}
@@ -676,11 +688,11 @@ export default function MapaFluxos({ embutido = false, sessao }) {
               <button onClick={criarArea} style={{
                 marginTop: 7, fontSize: 11, color: '#1F60A8', background: 'transparent',
                 border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit',
-              }}>+ nova área</button>
+              }}>{tr('novaArea')}</button>
 
               <div style={{ marginTop: 11, paddingTop: 9, borderTop: '1px solid #F1EFEB' }}>
                 <div style={{ fontSize: 10, color: '#6E6A64', textTransform: 'uppercase',
-                              letterSpacing: '.05em', marginBottom: 6 }}>Quem executa</div>
+                              letterSpacing: '.05em', marginBottom: 6 }}>{tr('quemExecuta')}</div>
                 {Object.entries(EXEC).map(([k, v]) => (
                   <div key={k} title={v.desc}
                     style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0' }}>
@@ -751,7 +763,7 @@ export default function MapaFluxos({ embutido = false, sessao }) {
             ) : (
               <div>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: '#B45309', marginBottom: 6 }}>
-                  Fora do mapa
+                  {tr('foraDoMapaTitulo')}
                 </div>
                 <p style={{ fontSize: 12, color: '#6E6A64', lineHeight: 1.55, marginTop: 0 }}>
                   Recursos que existem no banco mas não aparecem em nenhum nó. Se algo novo for
@@ -854,7 +866,7 @@ function DetalheNo({ no, podeEditar = true, onSalvar, onExcluir, onFechar, proje
             </div>
 
             <label style={{ fontSize: 11, color: '#6E6A64', margin: '12px 0 4px', display: 'block' }}>
-              Quem executa
+              {tr('quemExecuta')}
             </label>
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
               {Object.entries(EXEC).map(([k, v]) => {
@@ -1113,7 +1125,7 @@ function BlocoAutomacao({ no, projetos, ganhos, onVincular, onCriarProjeto, onCr
                      onChange={(e) => setT({ ...t, ocorrencias: e.target.value })} />
             </div>
           </div>
-          <label style={rot}>Quem executava</label>
+          <label style={rot}>{tr('quemExecutava')}</label>
           <input style={campo} value={t.quem} onChange={(e) => setT({ ...t, quem: e.target.value })} />
           {t.min_antes && t.ocorrencias && (
             <div style={{ fontSize: 11.5, color: '#12805C', marginBottom: 8 }}>
