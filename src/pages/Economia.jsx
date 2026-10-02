@@ -16,9 +16,9 @@ const SINAL = '#A2600F'
 const LINHA = '#12805C'
 
 const TIPO_BENEF = {
-  material:   { cor: '#166534', rot: t("material"),   sub: t("recursoFisico") },
-  risco:      { cor: '#A2600F', rot: t("risco"),      sub: 'Erro, esquecimento ou retrabalho que saiu do processo' },
-  eficiencia: { cor: '#1F60A8', rot: t("eficiencia"), sub: 'Trabalho que ficou mais rápido ou deixou de depender de alguém' },
+  material:   { cor: '#166534', rot: tr("material"),   sub: tr("recursoFisico") },
+  risco:      { cor: '#A2600F', rot: tr("risco"),      sub: 'Erro, esquecimento ou retrabalho que saiu do processo' },
+  eficiencia: { cor: '#1F60A8', rot: tr("eficiencia"), sub: 'Trabalho que ficou mais rápido ou deixou de depender de alguém' },
 }
 
 const nf = (v, d = 1) =>
@@ -64,7 +64,7 @@ function Dica({ active, payload, label }) {
           display: 'flex', justifyContent: 'space-between', gap: 14,
           marginTop: 7, paddingTop: 7, borderTop: `1px solid ${TRACO}`, fontWeight: 600,
         }}>
-          <span style={{ color: LINHA }}>{t("acumulado")}</span>
+          <span style={{ color: LINHA }}>{tr("acumulado")}</span>
           <span style={{ ...num, color: LINHA }}>{nf(acum.value)} h</span>
         </div>
       )}
@@ -73,7 +73,8 @@ function Dica({ active, payload, label }) {
 }
 
 export default function Economia({ embutido = false }) {
-  const { lang, t } = useIdioma()
+  // 'tr' e não 't': a tela já usa t como variável de linha nos map()
+  const { lang, t: tr } = useIdioma()
   // nome do projeto no idioma da tela; cai no português se faltar tradução
   const nomeProj = (x) => (lang === 'en' ? (x?.nome_projeto_en || x?.nome_projeto) : x?.nome_projeto)
   const nomeSetor = (x) => (lang === 'en' ? (x?.setor_en || x?.setor) : x?.setor)
@@ -161,12 +162,12 @@ export default function Economia({ embutido = false }) {
 
   if (fase === 'carregando') return <Spinner />
   if (fase === 'erro') {
-    return <EmptyState title={t("naoCarregou")} text={erro}>
-      <Btn primary onClick={carregar}>{t("tentarDeNovo")}</Btn>
+    return <EmptyState title={tr("naoCarregou")} text={erro}>
+      <Btn primary onClick={carregar}>{tr("tentarDeNovo")}</Btn>
     </EmptyState>
   }
   if (!lista.length) {
-    return <EmptyState title={t("semTarefa")}
+    return <EmptyState title={tr("semTarefa")}
       text="Cadastre o ganho de uma automação em Controle de Automações." />
   }
 
@@ -204,7 +205,7 @@ export default function Economia({ embutido = false }) {
         <button onClick={() => window.print()} style={{
           fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', padding: '6px 13px',
           border: `1px solid ${TRACO}`, background: '#fff', color: TINTA, borderRadius: 3,
-        }}>{t("imprimir")}</button>
+        }}>{tr("imprimir")}</button>
       </div>
 
       <div className="ec-resumo" style={{
@@ -245,9 +246,9 @@ export default function Economia({ embutido = false }) {
           </div>
           <div style={{ display: 'flex', gap: 34, flexWrap: 'wrap' }}>
             {[
-              [t("jaEconomizado"), `R$ ${ni(fin.acumulado_min)} a ${ni(fin.acumulado_max)}`],
-              [t("porMes"), `R$ ${ni(fin.mensal_min)} a ${ni(fin.mensal_max)}`],
-              [t("porAno"), `R$ ${ni(fin.anual_min)} a ${ni(fin.anual_max)}`],
+              [tr("jaEconomizado"), `R$ ${ni(fin.acumulado_min)} a ${ni(fin.acumulado_max)}`],
+              [tr("porMes"), `R$ ${ni(fin.mensal_min)} a ${ni(fin.mensal_max)}`],
+              [tr("porAno"), `R$ ${ni(fin.anual_min)} a ${ni(fin.anual_max)}`],
             ].map(([r, v]) => (
               <div key={r}>
                 <div style={{ fontSize: 12, color: SUAVE, marginBottom: 5 }}>{r}</div>
@@ -272,7 +273,7 @@ export default function Economia({ embutido = false }) {
         gap: 28, flexWrap: 'wrap', paddingBottom: 26,
       }}>
         <div>
-          <div style={{ fontSize: 14, color: SUAVE, marginBottom: 10 }}>{t("horasDevolvidas")}</div>
+          <div style={{ fontSize: 14, color: SUAVE, marginBottom: 10 }}>{tr("horasDevolvidas")}</div>
           <div style={{ ...num, fontSize: 76, fontWeight: 300, letterSpacing: '-.035em', lineHeight: .88, color: TINTA }}>
             {nf(totais?.horas_acumuladas)}
           </div>
@@ -282,10 +283,10 @@ export default function Economia({ embutido = false }) {
         </div>
         <div style={{ display: 'flex', gap: 30, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           {[
-            [t("ritmoAtual"), `${nf(totais?.horas_mes)} h`, 'por mês'],
-            [t("projecaoAnual"), `${nf(totais?.horas_ano, 0)} h`, `${nf((totais?.horas_ano || 0) / 8, 0)} dias`],
-            [t("itensProcessados"), ni(totais?.eventos_processados), 'contados no banco'],
-            [t("folhasNaoImpressas"), ni(totais?.folhas_evitadas), 'checklist em papel'],
+            [tr("ritmoAtual"), `${nf(totais?.horas_mes)} h`, 'por mês'],
+            [tr("projecaoAnual"), `${nf(totais?.horas_ano, 0)} h`, `${nf((totais?.horas_ano || 0) / 8, 0)} dias`],
+            [tr("itensProcessados"), ni(totais?.eventos_processados), 'contados no banco'],
+            [tr("folhasNaoImpressas"), ni(totais?.folhas_evitadas), 'checklist em papel'],
           ].map(([r, v, s]) => (
             <div key={r} style={{ minWidth: 112 }}>
               <div style={{ fontSize: 12.5, color: SUAVE, marginBottom: 6 }}>{r}</div>
@@ -297,7 +298,7 @@ export default function Economia({ embutido = false }) {
       </div>
       )}
 
-      <h2 style={h2}>{t("comoEconomiaCresceu")}</h2>
+      <h2 style={h2}>{tr("comoEconomiaCresceu")}</h2>
       <p style={sub}>
         As barras mostram quanto cada automação devolveu naquele mês. A linha verde é o total somado desde
         o começo. O mês marcado com · ainda está correndo, por isso a barra é menor.
@@ -322,7 +323,7 @@ export default function Economia({ embutido = false }) {
         </div>
       </div>
 
-      <h2 style={h2}>{t("oQueCustava")}</h2>
+      <h2 style={h2}>{tr("oQueCustava")}</h2>
       <p style={sub}>
         A barra escura é o tempo que sobrou. A clara é o que a automação devolveu.
         Nem toda tarefa foi a zero: algumas só encolheram.
@@ -367,7 +368,7 @@ export default function Economia({ embutido = false }) {
         })}
       </div>
 
-      <h2 style={h2}>{t("pesoCadaAutomacao")}</h2>
+      <h2 style={h2}>{tr("pesoCadaAutomacao")}</h2>
       <p style={sub}>
         Cada retângulo é uma tarefa, e a área é proporcional às horas economizadas. Serve para
         enxergar de uma vez onde está o resultado — e onde ainda não está.
@@ -404,7 +405,7 @@ export default function Economia({ embutido = false }) {
         ))}
       </div>
 
-      <h2 style={h2}>{t("quemGanhouTempo")}</h2>
+      <h2 style={h2}>{tr("quemGanhouTempo")}</h2>
       <p style={sub}>
         Tarefas que atravessam mais de um setor são divididas por igual entre eles.
         Clique num setor para ver de onde vem o tempo dele.
@@ -477,7 +478,7 @@ export default function Economia({ embutido = false }) {
         })}
       </div>
 
-      <h2 style={h2}>{t("ganhosSemHora")}</h2>
+      <h2 style={h2}>{tr("ganhosSemHora")}</h2>
       <p style={sub}>
         Nem todo resultado cabe numa conta de minutos. Papel que deixou de ser impresso, risco que
         saiu do processo, informação que passou a chegar sozinha — {ni(benef.length)} registros.
@@ -516,7 +517,7 @@ export default function Economia({ embutido = false }) {
         })}
       </div>
 
-      <h2 style={h2}>{t("comoApurado")}</h2>
+      <h2 style={h2}>{tr("comoApurado")}</h2>
       <p style={sub}>
         O volume vem da contagem real no banco e cresce a cada sincronização. A coluna
         Entrando/mês mostra o ritmo de entrada.
@@ -525,15 +526,15 @@ export default function Economia({ embutido = false }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
           <thead>
             <tr>
-              <th style={th()}>{t("tarefa")}</th>
-              <th style={th()}>{t("automacao")}</th>
-              <th style={th()}>{t("desde")}</th>
-              <th style={th('right')}>{t("meses")}</th>
-              <th style={th('right')}>{t("volume")}</th>
-              <th style={th('right')}>{t("entrandoMes")}</th>
-              <th style={th('right')}>{t("minItem")}</th>
-              <th style={th('right')}>{t("horasAcum")}</th>
-              <th style={th('right')}>{t("horasMes")}</th>
+              <th style={th()}>{tr("tarefa")}</th>
+              <th style={th()}>{tr("automacao")}</th>
+              <th style={th()}>{tr("desde")}</th>
+              <th style={th('right')}>{tr("meses")}</th>
+              <th style={th('right')}>{tr("volume")}</th>
+              <th style={th('right')}>{tr("entrandoMes")}</th>
+              <th style={th('right')}>{tr("minItem")}</th>
+              <th style={th('right')}>{tr("horasAcum")}</th>
+              <th style={th('right')}>{tr("horasMes")}</th>
             </tr>
           </thead>
           <tbody>
@@ -562,7 +563,7 @@ export default function Economia({ embutido = false }) {
           </tbody>
           <tfoot>
             <tr>
-              <td style={{ ...td(), fontWeight: 600, borderBottom: 'none' }}>{t("total")}</td>
+              <td style={{ ...td(), fontWeight: 600, borderBottom: 'none' }}>{tr("total")}</td>
               <td style={{ ...td(), borderBottom: 'none' }} />
               <td style={{ ...td(), borderBottom: 'none' }} />
               <td style={{ ...td(), borderBottom: 'none' }} />

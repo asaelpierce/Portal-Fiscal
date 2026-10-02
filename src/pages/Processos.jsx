@@ -22,7 +22,8 @@ export default function Processos({ sessao }) {
 }
 
 function ProcessosConteudo({ sessao }) {
-  const { t, lang } = useIdioma()
+  // 'tr' e não 't': o map de tarefas abaixo já usa t como variável
+  const { t: tr, lang } = useIdioma()
   const nomeProj = (x) => (lang === 'en' ? (x?.nome_projeto_en || x?.nome_projeto) : x?.nome_projeto)
   const [vista, setVista] = useState('mapa')
   const [totais, setTotais] = useState(null)
@@ -99,8 +100,8 @@ function ProcessosConteudo({ sessao }) {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <BotaoIdioma />
           <div style={{ display: 'flex', gap: 6 }}>
-            <button style={aba('mapa')} onClick={() => setVista('mapa')}>{t('mapa')}</button>
-            <button style={aba('numeros')} onClick={() => setVista('numeros')}>{t('numeros')}</button>
+            <button style={aba('mapa')} onClick={() => setVista('mapa')}>{tr('mapa')}</button>
+            <button style={aba('numeros')} onClick={() => setVista('numeros')}>{tr('numeros')}</button>
           </div>
         </div>
       </div>
