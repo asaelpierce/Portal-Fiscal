@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useIdioma } from '../i18n.jsx'
 import {
   ReactFlow, Background, Controls, MiniMap, Handle, Position,
   useNodesState, useEdgesState, MarkerType, addEdge,
@@ -51,7 +52,7 @@ function NoFluxo({ data, selected }) {
   // cor da área vem do cadastro; sem área, cai no cinza neutro
   const s = porArea
     ? { cor: data.area_cor || '#6E6A64', fundo: (data.area_cor || '#6E6A64') + '14',
-        sigla: (data.area || 'Sem área').slice(0, 12) }
+        sigla: ((data.lang === 'en' ? (data.area_en || data.area) : data.area) || 'Sem área').slice(0, 12) }
     : base
   const f = FORMA[data.tipo] || FORMA.passo
   const e = EXEC[data.execucao] || EXEC.manual
@@ -94,7 +95,7 @@ function NoFluxo({ data, selected }) {
       </div>
       <div style={{
         fontSize: compacto ? 11.5 : 12.5, fontWeight: 600, color: '#1A1A18', lineHeight: 1.3,
-      }}>{data.rotulo}</div>
+      }}>{data.lang === 'en' ? (data.rotulo_en || data.rotulo) : data.rotulo}</div>
       {!compacto && (data.artefato_nome || (data.sistema && data.sistema !== 'Externo')) && (
         <div style={{ fontSize: 9.5, color: '#6E6A64', marginTop: 4, lineHeight: 1.3 }}>
           {data.artefato_nome
@@ -201,6 +202,7 @@ const tiposAresta = { flutuante: ArestaFlutuante }
 const CORLINHA = { dados: '#8B8781', gatilho: '#1F60A8', notificacao: '#B45309', condicional: '#6D28D9', interacao: '#A2600F' }
 
 export default function MapaFluxos({ embutido = false, sessao }) {
+  const { lang } = useIdioma()
   // Só editor altera o mapa. Quem visualiza não arrasta, não cria e não
   // exclui — e os controles somem, em vez de darem erro ao clicar.
   const podeEditar = sessao?.nivel === 'editor'
@@ -256,11 +258,12 @@ export default function MapaFluxos({ embutido = false, sessao }) {
         return (m || []).map((n) => ({
           id: n.chave, type: 'fluxo',
           position: posAtual.get(n.chave) ?? { x: n.x, y: n.y },
-          data: { ...n },
+          data: { ...n, lang },
         }))
       })
       setLinhas((c || []).map((e) => ({
-        id: e.id, source: e.de, target: e.para, label: e.rotulo || undefined,
+        id: e.id, source: e.de, target: e.para,
+        label: (lang === 'en' ? (e.rotulo_en || e.rotulo) : e.rotulo) || undefined,
         type: 'flutuante',
         animated: e.tipo === 'gatilho',
         style: {
@@ -473,7 +476,7 @@ export default function MapaFluxos({ embutido = false, sessao }) {
     if (area === 'todas') {
       const base = (filtro === 'todos' ? nosBase
         : nosBase.map((n) => ({ ...n, style: { opacity: n.data.sistema === filtro ? 1 : .22 } })))
-        .map((n) => ({ ...n, data: { ...n.data, __corPorArea: modoCor === 'area', __irmao: irmaos.has(n.id) } }))
+        .map((n) => ({ ...n, data: { ...n.data, lang, __corPorArea: modoCor === 'area', __irmao: irmaos.has(n.id) } }))
       return { nosFiltrados: base, linhasFiltradas: linhasBase }
     }
     const dentro = new Set(
@@ -490,7 +493,7 @@ export default function MapaFluxos({ embutido = false, sessao }) {
         const apagadoPorSistema = filtro !== 'todos' && n.data.sistema !== filtro
         return {
           ...n,
-          data: { ...n.data, __corPorArea: modoCor === 'area', __irmao: irmaos.has(n.id) },
+          data: { ...n.data, lang, __corPorArea: modoCor === 'area', __irmao: irmaos.has(n.id) },
           style: { opacity: fora ? 0.3 : (apagadoPorSistema ? 0.22 : 1) },
         }
       })
