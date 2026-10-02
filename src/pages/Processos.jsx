@@ -60,7 +60,7 @@ function ProcessosConteudo({ sessao }) {
   if (fase === 'carregando') return <Spinner />
   if (fase === 'erro') {
     return <EmptyState title="Não foi possível carregar" text={erro}>
-      <Btn primary onClick={() => window.location.reload()}>Recarregar</Btn>
+      <Btn primary onClick={() => window.location.reload()}>{tr('recarregar')}</Btn>
     </EmptyState>
   }
 
@@ -79,17 +79,17 @@ function ProcessosConteudo({ sessao }) {
         display: 'flex', alignItems: 'flex-end', gap: 34, flexWrap: 'wrap',
       }}>
         <div>
-          <div style={{ fontSize: 12.5, color: SUAVE, marginBottom: 6 }}>Horas devolvidas ao time</div>
+          <div style={{ fontSize: 12.5, color: SUAVE, marginBottom: 6 }}>{tr('horasDevolvidas')}</div>
           <div style={{ ...num, fontSize: 44, fontWeight: 300, letterSpacing: '-.03em', lineHeight: .9, color: TINTA }}>
             {nf(totais?.horas_acumuladas)}
           </div>
         </div>
         {[
-          ['Por mês', `${nf(totais?.horas_mes)} h`],
-          ['Por ano', `${nf(totais?.horas_ano, 0)} h`],
-          ['Automações', ni(resumo.length)],
-          ['Tarefas', ni(totais?.tarefas)],
-          ['Itens processados', ni(totais?.eventos_processados)],
+          [tr('porMes'), `${nf(totais?.horas_mes)} h`],
+          [tr('porAno'), `${nf(totais?.horas_ano, 0)} h`],
+          [tr('automacoes'), ni(resumo.length)],
+          [tr('tarefas'), ni(totais?.tarefas)],
+          [tr('itensProcessados'), ni(totais?.eventos_processados)],
         ].map(([r, v]) => (
           <div key={r}>
             <div style={{ fontSize: 11.5, color: SUAVE, marginBottom: 5 }}>{r}</div>
@@ -131,7 +131,7 @@ function ProcessosConteudo({ sessao }) {
                     {nf(r.horas_acumuladas)} h
                   </div>
                   <div style={{ fontSize: 10.5, color: SUAVE, marginTop: 3 }}>
-                    {r.nos > 0 ? `${r.nos} nós · ` : 'sem nó no mapa · '}{ni(r.volume)} itens
+                    {r.nos > 0 ? `${r.nos} ${tr('nos')} · ` : `${tr('semNoNoMapa')} · `}{ni(r.volume)} {tr('itens')}
                   </div>
                 </>
               ) : (
@@ -159,8 +159,10 @@ function ProcessosConteudo({ sessao }) {
           padding: '9px 26px', fontSize: 12, color: '#A2600F',
           background: '#FDF3E7', borderBottom: '1px solid #F5D9B0',
         }}>
-          {semMapa.map((r) => nomeProj(r)).join(', ')} {semMapa.length > 1 ? 'têm' : 'tem'} ganho
-          medido mas ainda não {semMapa.length > 1 ? 'aparecem' : 'aparece'} no mapa.
+          {semMapa.map((r) => nomeProj(r)).join(', ')}{' '}
+          {lang === 'en'
+            ? tr('semGanhoNoMapa')
+            : `${semMapa.length > 1 ? 'têm' : 'tem'} ganho medido mas ainda não ${semMapa.length > 1 ? 'aparecem' : 'aparece'} no mapa.`}
         </div>
       )}
 
@@ -172,17 +174,20 @@ function ProcessosConteudo({ sessao }) {
 }
 
 
+// Guarda a chave: constante de módulo roda antes de existir componente,
+// então não pode chamar o hook de idioma.
 const CORTIPO = {
-  material:    { cor: '#166534', fundo: '#E9F7EF', rot: 'Material' },
-  eficiencia:  { cor: '#1F60A8', fundo: '#EAF1FA', rot: 'Eficiência' },
-  risco:       { cor: '#A2600F', fundo: '#FDF3E7', rot: 'Risco' },
-  qualitativo: { cor: '#4A4741', fundo: '#F1EFEB', rot: 'Qualitativo' },
+  material:    { cor: '#166534', fundo: '#E9F7EF', rot: 'material' },
+  eficiencia:  { cor: '#1F60A8', fundo: '#EAF1FA', rot: 'eficiencia' },
+  risco:       { cor: '#A2600F', fundo: '#FDF3E7', rot: 'risco' },
+  qualitativo: { cor: '#4A4741', fundo: '#F1EFEB', rot: 'qualitativo' },
 }
 
 function PainelBeneficios({ dados, carregando, onFechar }) {
+  const { t: tr } = useIdioma()
   if (carregando) {
     return <div style={{ padding: '20px 26px', fontSize: 13, color: SUAVE, background: '#fff',
-      borderBottom: `1px solid ${TRACO}` }}>Carregando…</div>
+      borderBottom: `1px solid ${TRACO}` }}>{tr('carregando')}</div>
   }
   if (!dados) return null
   const tarefas = dados.tarefas_detalhe || []
@@ -212,9 +217,9 @@ function PainelBeneficios({ dados, carregando, onFechar }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(290px,1fr))', gap: 26, marginTop: 20 }}>
         <div>
           <div style={{ fontSize: 11, color: SUAVE, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
-            Tarefas que deixaram de existir
+            {tr('tarefasQueSumiram')}
           </div>
-          {tarefas.length === 0 && <div style={{ fontSize: 12.5, color: SUAVE }}>Nenhuma medida ainda.</div>}
+          {tarefas.length === 0 && <div style={{ fontSize: 12.5, color: SUAVE }}>{tr('nenhumaMedida')}</div>}
           {tarefas.map((t, i) => (
             <div key={i} style={{ padding: '9px 0', borderTop: i ? `1px solid ${TRACO}` : 'none' }}>
               <div style={{ fontSize: 12.5, color: TINTA, lineHeight: 1.4 }}>{t.tarefa}</div>
@@ -232,7 +237,7 @@ function PainelBeneficios({ dados, carregando, onFechar }) {
             Ganhos que não viram hora
           </div>
           {benef.length === 0 && (
-            <div style={{ fontSize: 12.5, color: SUAVE }}>Nada registrado ainda.</div>
+            <div style={{ fontSize: 12.5, color: SUAVE }}>{tr('nadaRegistrado')}</div>
           )}
           {benef.map((b, i) => {
             const c = CORTIPO[b.tipo] || CORTIPO.qualitativo
@@ -242,7 +247,7 @@ function PainelBeneficios({ dados, carregando, onFechar }) {
                   <span style={{
                     fontSize: 9.5, fontWeight: 700, color: c.cor, background: c.fundo,
                     padding: '2px 6px', borderRadius: 2, letterSpacing: '.04em',
-                  }}>{c.rot.toUpperCase()}</span>
+                  }}>{tr(c.rot).toUpperCase()}</span>
                   <span style={{ fontSize: 12.5, color: TINTA, fontWeight: 600 }}>{b.titulo}</span>
                   {b.valor && <span style={{ ...num, fontSize: 12, color: c.cor }}>{b.valor}</span>}
                 </div>
