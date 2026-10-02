@@ -39,6 +39,8 @@ export const TEXTOS = {
     jaEconomizado: 'Já economizado', ritmoAtual: 'Ritmo atual',
     projecaoAnual: 'Projeção anual',
     recursoFisico: 'Recurso físico que deixou de ser consumido',
+    riscoSub: 'Erro, esquecimento ou retrabalho que saiu do processo',
+    eficienciaSub: 'Trabalho que ficou mais rápido ou deixou de depender de alguém',
     idadesDiferentes: 'Idades diferentes: ',
     procedencia: 'Procedência: ',
     // ações e estados
@@ -74,6 +76,8 @@ export const TEXTOS = {
     jaEconomizado: 'Saved so far', ritmoAtual: 'Current pace',
     projecaoAnual: 'Annual projection',
     recursoFisico: 'Physical resource no longer consumed',
+    riscoSub: 'Error, oversight or rework removed from the process',
+    eficienciaSub: 'Work that got faster or no longer depends on one person',
     idadesDiferentes: 'Different ages: ',
     procedencia: 'Source: ',
     imprimir: 'Print or save as PDF',

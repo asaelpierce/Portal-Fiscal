@@ -15,10 +15,13 @@ const SUAVE = '#6E6A64'
 const SINAL = '#A2600F'
 const LINHA = '#12805C'
 
+// Guarda a CHAVE, não o texto: constante de nível superior roda antes de
+// qualquer componente existir, então não pode chamar o hook de idioma.
+// A tradução acontece na hora de exibir.
 const TIPO_BENEF = {
-  material:   { cor: '#166534', rot: tr("material"),   sub: tr("recursoFisico") },
-  risco:      { cor: '#A2600F', rot: tr("risco"),      sub: 'Erro, esquecimento ou retrabalho que saiu do processo' },
-  eficiencia: { cor: '#1F60A8', rot: tr("eficiencia"), sub: 'Trabalho que ficou mais rápido ou deixou de depender de alguém' },
+  material:   { cor: '#166534', rot: 'material',   sub: 'recursoFisico' },
+  risco:      { cor: '#A2600F', rot: 'risco',      sub: 'riscoSub' },
+  eficiencia: { cor: '#1F60A8', rot: 'eficiencia', sub: 'eficienciaSub' },
 }
 
 const nf = (v, d = 1) =>
@@ -41,6 +44,10 @@ const mesCorrente = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStar
 const emCurso = (iso) => String(iso || '').startsWith(mesCorrente)
 
 function Dica({ active, payload, label }) {
+  // O tooltip do gráfico mora fora do componente, então pega o idioma
+  // pelo hook em vez de receber por prop — o Recharts monta este
+  // elemento por conta própria e não repassaria a prop.
+  const { t: tr } = useIdioma()
   if (!active || !payload?.length) return null
   const barras = payload.filter((p) => p.dataKey !== 'acumulado' && p.value > 0)
   const acum = payload.find((p) => p.dataKey === 'acumulado')
@@ -499,8 +506,8 @@ export default function Economia({ embutido = false }) {
               <div style={{
                 fontSize: 11, fontWeight: 700, color: c.cor, letterSpacing: '.05em',
                 textTransform: 'uppercase', marginBottom: 3,
-              }}>{c.rot}</div>
-              <div style={{ fontSize: 11.5, color: SUAVE, marginBottom: 12 }}>{c.sub}</div>
+              }}>{tr(c.rot)}</div>
+              <div style={{ fontSize: 11.5, color: SUAVE, marginBottom: 12 }}>{tr(c.sub)}</div>
               {itens.map((b, k) => (
                 <div key={b.id} style={{ padding: '8px 0', borderTop: k ? `1px solid ${TRACO}` : 'none' }}>
                   <div style={{ fontSize: 12.5, color: TINTA, fontWeight: 600, lineHeight: 1.35 }}>
