@@ -787,6 +787,7 @@ export default function MapaFluxos({ embutido = false, sessao }) {
 }
 
 function DetalheNo({ no, podeEditar = true, onSalvar, onExcluir, onFechar, projetos, ganhos, areas, artefatos, onCriarArtefato, onVincular, onCriarProjeto, onCriarTarefa, onRecarregar }) {
+  const { t: tr } = useIdioma()
   const [edicao, setEdicao] = useState(false)
   const [f, setF] = useState({ rotulo: no.rotulo, descricao: no.descricao || '', sistema: no.sistema, tipo: no.tipo })
   const [salvando, setSalvando] = useState(false)
@@ -999,6 +1000,7 @@ function NovoNo({ onCriar, onFechar }) {
 // Liga o nó do processo ao controle de automações: enquanto se desenha o
 // fluxo, já se registra o que foi automatizado e quanto tempo custava.
 function BlocoAutomacao({ no, projetos, ganhos, onVincular, onCriarProjeto, onCriarTarefa, onRecarregar }) {
+  const { t: tr } = useIdioma()
   const [modo, setModo] = useState(null)          // vincular | novoProjeto | novaTarefa
   const [sel, setSel] = useState(no.projeto_id || '')
   const [nome, setNome] = useState(no.rotulo)
