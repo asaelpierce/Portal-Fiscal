@@ -430,7 +430,7 @@ export default function Frete({ sessao }) {
                       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
                         <thead>
                           <tr>
-                            {['Nota', 'Data', 'Valor da nota', 'Base de itens', 'Frete lançado',
+                            {['Nota', 'Data', 'Valor da nota', 'Base do rateio', 'Frete lançado',
                               'Frete correto', 'Diferença', 'Situação', ''].map((h, i) => (
                               <th key={h} style={{ padding: '8px 12px', fontSize: 10.5, fontWeight: 600,
                                 color: '#9A958E', textAlign: i >= 2 && i <= 6 ? 'right' : 'left',
@@ -461,7 +461,7 @@ export default function Frete({ sessao }) {
                                   {brl(l.nf_valor)}</td>
                                 <td style={{ padding: '9px 12px', fontSize: 11.5, textAlign: 'right',
                                              color: '#9A958E', fontVariantNumeric: 'tabular-nums' }}
-                                    title="Soma de quantidade × valor unitário dos itens. É o peso do rateio.">
+                                    title="Valor bruto da nota — é o peso dela no rateio do CT-e.">
                                   {brl(l.base_itens)}
                                   {!l.um_para_um && l.base_itens_cte > 0 && (
                                     <div style={{ fontSize: 10 }}>
@@ -535,9 +535,9 @@ export default function Frete({ sessao }) {
                     {!c.um_para_um && (
                       <div style={{ padding: '10px 15px', fontSize: 11, color: SUAVE, lineHeight: 1.5,
                                     borderTop: `1px solid #F0EEEA` }}>
-                        Rateio proporcional: cada nota recebe a fatia do frete equivalente ao peso
-                        dos seus itens no total do CT-e. A soma das colunas de frete correto fecha
-                        com o valor do CT-e.
+                        Rateio proporcional ao valor BRUTO de cada nota, não ao líquido dos itens.
+                        Nota com IPI ou substituição tributária alta pesa o que realmente vale.
+                        A soma das colunas de frete correto fecha com o valor do CT-e.
                       </div>
                     )}
                   </div>
