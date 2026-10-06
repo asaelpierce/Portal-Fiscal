@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { SUPABASE_URL, SUPABASE_ANON_KEY, sbFetch, brl } from '../config.js'
 import { Panel, Btn, Spinner } from '../components/UI.jsx'
 import { lerRateioPdf } from '../lib/rateioPdfParser.js'
@@ -234,6 +234,27 @@ export default function RateioCompras() {
   const codnatPadraoAtual = naturezasPorTipo[tipoPadrao] ?? ''
   const total = linhas.reduce((acc, l) => acc + l.valor, 0)
   const semCentroResultado = linhas.filter(l => !l.codcencus)
+
+  // Centro repetido quase sempre é setor lido duas vezes do PDF, ou dois
+  // setores diferentes mapeados para o mesmo código por engano. O Sankhya
+  // aceita, e o valor acaba somado no mesmo centro sem ninguém perceber.
+  const centrosRepetidos = useMemo(() => {
+    const conta = {}
+    linhas.forEach(l => { if (l.codcencus) conta[l.codcencus] = (conta[l.codcencus] || 0) + 1 })
+    return new Set(Object.entries(conta).filter(([, n]) => n > 1).map(([c]) => c))
+  }, [linhas])
+
+  // Natureza repetida é normal — várias linhas costumam usar a mesma.
+  // Só vira aviso quando a natureza foi digitada à mão numa linha e
+  // difere do resto, que é o sinal de engano.
+  const naturezasUsadas = useMemo(() => {
+    const conta = {}
+    linhas.forEach(l => { if (l.codnat) conta[l.codnat] = (conta[l.codnat] || 0) + 1 })
+    return conta
+  }, [linhas])
+
+  const naturezaIsolada = (l) =>
+    l.naturezaManual && l.codnat && naturezasUsadas[l.codnat] === 1 && linhas.length > 2
 
   async function aoEscolherArquivo(e) {
     const arquivo = e.target.files?.[0]
@@ -590,7 +611,11 @@ export default function RateioCompras() {
               </thead>
               <tbody>
                 {linhas.map((l, i) => (
-                  <tr key={i} style={{ background: l.codcencus ? '#fff' : '#FEF2F2', borderTop:'1px solid #F3F4F6' }}>
+                  <tr key={i} style={{
+                    background: !l.codcencus ? '#FEF2F2'
+                      : centrosRepetidos.has(l.codcencus) ? '#FDF3E7' : '#fff',
+                    borderTop:'1px solid #F3F4F6',
+                  }}>
                     <td style={{ padding:'8px 14px' }}>{l.setor}</td>
                     <td style={{ padding:'6px 14px', textAlign:'right' }}>
                       <input
@@ -613,16 +638,37 @@ export default function RateioCompras() {
                         type="text" value={l.codcencus}
                         onChange={e => editarCentroResultado(i, e.target.value)}
                         placeholder="⚠ preencher"
-                        style={{ ...inputStyle, width:110, textAlign:'center', padding:'6px 8px' }}
+                        title={centrosRepetidos.has(l.codcencus)
+                          ? `Este centro aparece em ${linhas.filter(x => x.codcencus === l.codcencus).length} linhas. Confira se é mesmo para somar os dois valores no mesmo centro.`
+                          : 'Centro de Resultado deste setor'}
+                        style={{ ...inputStyle, width:110, textAlign:'center', padding:'6px 8px',
+                          borderColor: centrosRepetidos.has(l.codcencus) ? '#B45309' : undefined,
+                          borderWidth: centrosRepetidos.has(l.codcencus) ? 2 : undefined,
+                          fontWeight: centrosRepetidos.has(l.codcencus) ? 600 : undefined }}
                       />
+                      {centrosRepetidos.has(l.codcencus) && (
+                        <div style={{ fontSize:10.5, color:'#B45309', marginTop:3, lineHeight:1.3 }}>
+                          repete {linhas.filter(x => x.codcencus === l.codcencus).length}×
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding:'6px 14px', textAlign:'center' }}>
                       <input
                         type="text" value={l.codnat}
                         onChange={e => editarNatureza(i, e.target.value)}
-                        style={{ ...inputStyle, width:90, textAlign:'center', padding:'6px 8px' }}
+                        title={naturezaIsolada(l)
+                          ? 'Esta é a única linha com esta natureza, e foi digitada à mão. Confira se não foi engano.'
+                          : 'Natureza desta linha'}
+                        style={{ ...inputStyle, width:90, textAlign:'center', padding:'6px 8px',
+                          borderColor: naturezaIsolada(l) ? '#B45309' : undefined,
+                          borderWidth: naturezaIsolada(l) ? 2 : undefined }}
                       />
                       {l.naturezaManual && <span style={{ fontSize:11, color:'#9CA3AF', marginLeft:4 }}>✎</span>}
+                      {naturezaIsolada(l) && (
+                        <div style={{ fontSize:10.5, color:'#B45309', marginTop:3, lineHeight:1.3 }}>
+                          só esta linha
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding:'6px 14px', textAlign:'center' }}>
                       <button
@@ -717,6 +763,12 @@ export default function RateioCompras() {
 
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:16 }}>
             <div style={{ fontSize:12.5, color: semCentroResultado.length ? '#B42318' : '#6B7280' }}>
+              {centrosRepetidos.size > 0 && (
+                <div style={{ color:'#B45309', marginBottom:4 }}>
+                  ⚠ {centrosRepetidos.size} centro(s) de resultado repetido(s): {[...centrosRepetidos].join(', ')}
+                  {' '}— o valor vai somar no mesmo centro
+                </div>
+              )}
               {semCentroResultado.length > 0
                 ? `⚠ ${semCentroResultado.length} setor(es) sem Centro de Resultado`
                 : '✓ Todos os setores com Centro de Resultado preenchido'}
