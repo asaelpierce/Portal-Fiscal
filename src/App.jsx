@@ -75,7 +75,10 @@ export default function App() {
   // Rota pública: quem abre o link de solicitação não tem conta no portal,
   // então a verificação da URL vem ANTES da exigência de login.
   const tokenPublico = new URLSearchParams(window.location.search).get('solicitar')
-  if (tokenPublico) return <SolicitarPublico token={tokenPublico} />
+  if (tokenPublico) {
+    document.title = 'Pedir uma automação — Kalenborn'
+    return <SolicitarPublico token={tokenPublico} />
+  }
 
   if (!sessao) {
     return <Login onLogin={(s) => { registrarAuditoria(s?.email, 'login', null, null); setSessao(s) }} />
@@ -110,8 +113,16 @@ function AppAutenticado({ sessao, onLogout }) {
   // Menu filtrado só com as páginas liberadas para esse usuário
   const MENU = MENU_COMPLETO.filter(m => sessao.paginas.includes(m.id))
 
+
   const [trocandoSenha, setTrocandoSenha] = useState(false)
   const [pagina, setPagina] = useState(MENU[0]?.id || 'visao')
+
+  // O título da aba acompanha a página aberta: com vários portais em abas
+  // diferentes, todas mostravam o mesmo nome e não dava para distinguir.
+  useEffect(() => {
+    const atual = MENU_COMPLETO.find(m => m.id === pagina)
+    document.title = atual ? `${atual.label} — Kalenborn` : 'Portal Kalenborn'
+  }, [pagina])
   const [fase, setFase] = useState('carregando')
   const [erro, setErro] = useState('')
   const [lancamentos, setLancamentos] = useState([])
