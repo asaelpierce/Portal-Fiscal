@@ -461,8 +461,14 @@ export default function Frete({ sessao }) {
                                   {brl(l.nf_valor)}</td>
                                 <td style={{ padding: '9px 12px', fontSize: 11.5, textAlign: 'right',
                                              color: '#9A958E', fontVariantNumeric: 'tabular-nums' }}
-                                    title="Valor bruto da nota — é o peso dela no rateio do CT-e.">
+                                    title="Soma de quantidade × valor unitário dos itens — é o peso da nota no rateio, mesmo critério do SQL da contabilidade.">
                                   {brl(l.base_itens)}
+                                  {Number(l.base_itens) === 0 && Number(l.base_bruta) > 0 && (
+                                    <div style={{ fontSize: 10, color: VERM, lineHeight: 1.3 }}
+                                         title={`A nota vale ${brl(l.base_bruta)}, mas a soma dos itens é zero — todo o valor está em IPI ou substituição tributária. Por isso ela não recebe frete no rateio.`}>
+                                      ⚠ itens zerados · nota vale {brl(l.base_bruta)}
+                                    </div>
+                                  )}
                                   {!l.um_para_um && l.base_itens_cte > 0 && (
                                     <div style={{ fontSize: 10 }}>
                                       {((l.base_itens / l.base_itens_cte) * 100).toFixed(1)}% do CT-e
@@ -535,9 +541,9 @@ export default function Frete({ sessao }) {
                     {!c.um_para_um && (
                       <div style={{ padding: '10px 15px', fontSize: 11, color: SUAVE, lineHeight: 1.5,
                                     borderTop: `1px solid #F0EEEA` }}>
-                        Rateio proporcional ao valor BRUTO de cada nota, não ao líquido dos itens.
-                        Nota com IPI ou substituição tributária alta pesa o que realmente vale.
-                        A soma das colunas de frete correto fecha com o valor do CT-e.
+                        O valor rateado é o BRUTO do CT-e, com ICMS por dentro — não o líquido.
+                        O peso de cada nota é a soma dos seus itens, mesmo critério do SQL da
+                        contabilidade. A soma da coluna de frete correto fecha com o CT-e.
                       </div>
                     )}
                   </div>
