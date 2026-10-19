@@ -152,11 +152,10 @@ export default function Frete({ sessao }) {
   const temEditavel = doMes.some(l => l.editavel)
   const editavel = temEditavel
 
-  // 'fechado' e 'ainda não liberado' são coisas opostas e a tela dizia
-  // fechado para os dois. O mês corrente ainda vai ser liberado no mês
-  // que vem; o anterior ao liberado é que está fechado de vez.
-  const porQue = (comp) => comp > liberada ? 'ainda não liberado'
-                         : comp < liberada ? 'mês fechado' : null
+  // Lança-se no mês CORRENTE. Mês anterior já fechou. Nota com data
+  // futura, se houver, ainda não entra.
+  const porQue = (comp) => comp < liberada ? 'mês fechado'
+                         : comp > liberada ? 'data futura' : null
 
   const vistas = useMemo(() => doMes
     .filter(l => foco === 'todos' || (foco === 'corrigir' ? l.situacao !== 'ok' : l.situacao === 'ok'))
@@ -216,10 +215,10 @@ export default function Frete({ sessao }) {
 
       <div style={{ background: '#EAF1FA', border: `1px solid #C9DCF0`, borderRadius: 8,
                     padding: '12px 15px', marginBottom: 18, fontSize: 12.5, color: '#19477F', lineHeight: 1.6 }}>
-        O botão <strong>Lançar</strong> grava o frete direto no Sankhya, na Central de Notas. Antes
-        de gravar, o sistema confere se alguém alterou a nota desde a última sincronização, e depois
-        relê para confirmar que só o frete mudou. Cada lançamento fica registrado com quem mandou,
-        valor anterior e novo.
+        O botão <strong>Lançar</strong> grava o frete direto no Sankhya, na Central de Notas.
+        Vale para o <strong>mês corrente</strong>; meses anteriores já estão fechados e aparecem só
+        para consulta. Antes de gravar, o sistema confere se alguém alterou a nota desde a última
+        sincronização, e depois relê para confirmar que só o frete mudou.
         <div style={{ marginTop: 6, color: '#4A4741' }}>
           Nota que o Sankhya recusar aparece com o motivo dele ao lado — há casos em que o ERP não
           permite alterar o frete, e a mensagem diz qual é.
@@ -234,16 +233,14 @@ export default function Frete({ sessao }) {
         </select>
         {(() => {
           const motivo = porQue(competencia)
-          const cor = !motivo ? VERDE : motivo === 'ainda não liberado' ? AZUL : SUAVE
-          const fundo = !motivo ? '#E9F7F1' : motivo === 'ainda não liberado' ? '#EAF1FA' : '#F0EEEA'
+          const cor = !motivo ? VERDE : motivo === 'data futura' ? AZUL : SUAVE
+          const fundo = !motivo ? '#E9F7F1' : motivo === 'data futura' ? '#EAF1FA' : '#F0EEEA'
           return (
             <span style={{ fontSize: 11.5, fontWeight: 700, padding: '4px 10px', borderRadius: 5,
                            color: cor, background: fundo }}>
-              {!motivo ? 'competência liberada'
-               : motivo === 'ainda não liberado'
-                 ? `mês corrente · libera em ${new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)
-                     .toLocaleDateString('pt-BR', { month: 'long' })}`
-                 : 'mês fechado · só consulta'}
+              {!motivo ? 'mês corrente · liberado'
+               : motivo === 'data futura' ? 'data futura · não lança'
+               : 'mês fechado · só consulta'}
             </span>
           )
         })()}
@@ -585,9 +582,8 @@ export default function Frete({ sessao }) {
       )}
 
       <div style={{ fontSize: 11, color: SUAVE, marginTop: 16, lineHeight: 1.55, maxWidth: 760 }}>
-        Clique no CT-e para ver as notas. O lançamento vale só para a competência anterior à
-        corrente{liberada ? ` — hoje, ${liberada}` : ''}. O mês corrente ainda não libera, e os
-        anteriores já estão fechados; os dois aparecem só para consulta.
+        Clique no CT-e para ver as notas. O lançamento vale para o mês corrente{liberada ? `, hoje ${liberada}` : ''}.
+        Meses anteriores estão fechados e aparecem apenas para consulta.
         {tot.venda > 0 && (
           <> Nota de venda não entra nesta apuração: o Sankhya não permite apropriar frete nela.
           {' '}<strong>{tot.venda}</strong> ficaram de fora neste mês.</>
