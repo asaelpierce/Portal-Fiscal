@@ -35,6 +35,7 @@ export default function CifFob({ sessao }) {
   const [verHistorico, setVerHistorico] = useState(false)
   const [lote, setLote] = useState(10)
   const [confirmandoBaixa, setConfirmandoBaixa] = useState(false)
+  const [confirmandoRetry, setConfirmandoRetry] = useState(null)   // 'frete' | 'baixa'
 
   const carregar = async () => {
     try {
@@ -86,6 +87,29 @@ export default function CifFob({ sessao }) {
     setRodando(false)
   }
 
+  // Repete nos que o Sankhya recusou. Útil depois que a contabilidade
+  // ajusta o cadastro que causou a recusa — centro inativo, natureza
+  // incompatível. A tentativa anterior fica guardada no histórico.
+  const reprocessar = async (etapa) => {
+    setConfirmandoRetry(null); setRodando(true); setResultado(null)
+    const url = etapa === 'frete' ? 'sankhya-cif-fob' : 'sankhya-cif-fob-baixa'
+    const corpo = etapa === 'frete'
+      ? { modo: 'aplicar', reprocessar: true, ano: anoSel ? Number(anoSel) : null, limite: lote }
+      : { reprocessar: true, ano: anoSel ? Number(anoSel) : null, limite: lote }
+    try {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/${url}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY,
+                   Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ ...corpo, usuario: sessao?.email || '' }),
+      })
+      const d = await r.json()
+      setResultado({ ...d, modo: etapa === 'frete' ? 'aplicar' : 'baixa', retry: true })
+      await carregar()
+    } catch (e) { setResultado({ ok: false, erro: String(e?.message ?? e) }) }
+    setRodando(false)
+  }
+
   const aplicar = async () => {
     setConfirmando(false); setRodando(true); setResultado(null)
     try {
@@ -106,6 +130,8 @@ export default function CifFob({ sessao }) {
       erros: base.filter(p => p.resultado === 'erro').length,
       valor: base.reduce((s, p) => s + (Number(p.vlr_nota) || 0), 0),
       aBaixar: base.filter(p => p.resultado === 'ok' && !p.baixa_resultado).length,
+      erroFrete: base.filter(p => p.resultado === 'erro').length,
+      erroBaixa: base.filter(p => p.baixa_resultado === 'erro').length,
       baixados: base.filter(p => p.baixa_resultado === 'ok').length,
     }
   }, [pedidos, anoSel])
@@ -236,6 +262,45 @@ export default function CifFob({ sessao }) {
           Histórico{historico.length ? ` (${historico.length})` : ''}
         </button>
       </div>
+
+      {(tot.erroFrete > 0 || tot.erroBaixa > 0) && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
+                      marginBottom: 16, padding: '11px 14px', background: '#FDECEA',
+                      border: '1px solid #F5C6C0', borderRadius: 8 }}>
+          <span style={{ fontSize: 12.5, color: '#8A1C14' }}>
+            Recusados pelo Sankhya: {tot.erroFrete > 0 && `${tot.erroFrete} no frete`}
+            {tot.erroFrete > 0 && tot.erroBaixa > 0 && ' · '}
+            {tot.erroBaixa > 0 && `${tot.erroBaixa} na pendência`}.
+            {' '}Depois de ajustar o cadastro no Sankhya, tente de novo.
+          </span>
+          {['frete', 'baixa'].map(etapa => {
+            const qtd = etapa === 'frete' ? tot.erroFrete : tot.erroBaixa
+            if (!qtd) return null
+            return confirmandoRetry === etapa ? (
+              <span key={etapa} style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: '#8A1C14' }}>
+                  Tentar {Math.min(lote, qtd)} de novo?
+                </span>
+                <button onClick={() => reprocessar(etapa)}
+                  style={{ fontFamily: 'inherit', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                           padding: '5px 12px', border: 'none', borderRadius: 5,
+                           background: VERM, color: '#fff' }}>Sim</button>
+                <button onClick={() => setConfirmandoRetry(null)}
+                  style={{ fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', padding: '5px 8px',
+                           border: 'none', background: 'none', color: SUAVE }}>não</button>
+              </span>
+            ) : (
+              <button key={etapa} onClick={() => setConfirmandoRetry(etapa)} disabled={rodando}
+                style={{ fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600,
+                         cursor: rodando ? 'default' : 'pointer', padding: '6px 13px',
+                         border: `1px solid ${VERM}`, borderRadius: 6,
+                         background: '#fff', color: VERM }}>
+                ↻ Tentar {etapa === 'frete' ? 'o frete' : 'a pendência'} ({qtd})
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {resultado && (
         <div style={{ background: resultado.ok ? '#E9F7F1' : '#FDECEA',
