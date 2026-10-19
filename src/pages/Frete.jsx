@@ -43,6 +43,7 @@ export default function Frete({ sessao }) {
   const [emLote, setEmLote] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
   const [sincronizadoEm, setSincronizadoEm] = useState(null)
+  const [liberada, setLiberada] = useState('')
   const [historico, setHistorico] = useState([])
   const [verHistorico, setVerHistorico] = useState(false)
 
@@ -55,7 +56,18 @@ export default function Frete({ sessao }) {
           !m || String(x.sincronizado_em) > m ? String(x.sincronizado_em) : m, null)
         setSincronizadoEm(maisNovo)
         const ed = (d || []).find(x => x.editavel)
-        setCompetencia(ed?.competencia || (d || [])[0]?.competencia || '')
+        setLiberada(ed?.competencia_nf || '')
+        // Abre na competência que tem mais linhas editáveis, não na
+        // primeira editável que aparecer: a lista vem por data, e um
+        // CT-e de outubro com nota de setembro fazia abrir em outubro,
+        // onde nada pode ser lançado.
+        const peso = {}
+        ;(d || []).forEach(x => {
+          if (!x.editavel) return
+          peso[x.competencia] = (peso[x.competencia] || 0) + (x.situacao !== 'ok' ? 10 : 1)
+        })
+        const melhor = Object.entries(peso).sort((a, b) => b[1] - a[1])[0]?.[0]
+        setCompetencia(melhor || ed?.competencia || (d || [])[0]?.competencia || '')
         setHistorico(await sbFetch('frete_historico?select=*&limit=200') || [])
         setFase('pronto')
       } catch (e) { setErro(String(e?.message ?? e)); setFase('erro') }
@@ -140,6 +152,12 @@ export default function Frete({ sessao }) {
   const temEditavel = doMes.some(l => l.editavel)
   const editavel = temEditavel
 
+  // 'fechado' e 'ainda não liberado' são coisas opostas e a tela dizia
+  // fechado para os dois. O mês corrente ainda vai ser liberado no mês
+  // que vem; o anterior ao liberado é que está fechado de vez.
+  const porQue = (comp) => comp > liberada ? 'ainda não liberado'
+                         : comp < liberada ? 'mês fechado' : null
+
   const vistas = useMemo(() => doMes
     .filter(l => foco === 'todos' || (foco === 'corrigir' ? l.situacao !== 'ok' : l.situacao === 'ok'))
     .filter(l => tipo === 'todos' || (tipo === 'um' ? l.um_para_um : !l.um_para_um))
@@ -214,10 +232,28 @@ export default function Frete({ sessao }) {
                    border: `1px solid ${TRACO}`, borderRadius: 6, background: '#fff', color: TINTA }}>
           {comps.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        <span style={{ fontSize: 11.5, fontWeight: 700, padding: '4px 10px', borderRadius: 5,
-                       color: editavel ? VERDE : SUAVE, background: editavel ? '#E9F7F1' : '#F0EEEA' }}>
-          {editavel ? 'competência liberada' : 'mês fechado · só consulta'}
-        </span>
+        {(() => {
+          const motivo = porQue(competencia)
+          const cor = !motivo ? VERDE : motivo === 'ainda não liberado' ? AZUL : SUAVE
+          const fundo = !motivo ? '#E9F7F1' : motivo === 'ainda não liberado' ? '#EAF1FA' : '#F0EEEA'
+          return (
+            <span style={{ fontSize: 11.5, fontWeight: 700, padding: '4px 10px', borderRadius: 5,
+                           color: cor, background: fundo }}>
+              {!motivo ? 'competência liberada'
+               : motivo === 'ainda não liberado'
+                 ? `mês corrente · libera em ${new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)
+                     .toLocaleDateString('pt-BR', { month: 'long' })}`
+                 : 'mês fechado · só consulta'}
+            </span>
+          )
+        })()}
+        {liberada && competencia !== liberada && (
+          <button onClick={() => setCompetencia(liberada)}
+            style={{ fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', padding: '5px 11px',
+                     border: `1px solid ${VERDE}`, borderRadius: 5, background: '#fff', color: VERDE }}>
+            ir para {liberada}
+          </button>
+        )}
 
         <button onClick={sincronizar} disabled={sincronizando || emLote || !!enviando}
           style={{ fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600,
@@ -415,8 +451,8 @@ export default function Frete({ sessao }) {
                       )}
                       {travadas.length > 0 && (
                         <span style={{ fontSize: 11.5, color: AMBAR }}>
-                          {travadas.length} de mês fechado:{' '}
-                          {[...new Set(travadas.map(x => x.competencia_nf))].join(', ')}
+                          {travadas.length} fora da janela:{' '}
+                          {[...new Set(travadas.map(x => `${x.competencia_nf} (${porQue(x.competencia_nf) || '?'})`))].join(' · ')}
                         </span>
                       )}
                       {podem.length > 0 && <span style={{ fontSize: 11, color: SUAVE }}>uma por vez</span>}
@@ -513,7 +549,7 @@ export default function Frete({ sessao }) {
                                                   : `Nota de ${l.competencia_nf}; só ${competencia} está liberada`}>
                                             {l.motivo_bloqueio === 'nota de venda'
                                               ? 'nota de venda'
-                                              : `nota de ${l.competencia_nf} · mês fechado`}
+                                              : `nota de ${l.competencia_nf} · ${porQue(l.competencia_nf) || 'fora da janela'}`}
                                           </span>
                                         )}
                                         {res && !res.ok && (
@@ -549,8 +585,9 @@ export default function Frete({ sessao }) {
       )}
 
       <div style={{ fontSize: 11, color: SUAVE, marginTop: 16, lineHeight: 1.55, maxWidth: 760 }}>
-        Clique no CT-e para ver as notas. A conferência vale só para a competência anterior à
-        corrente — meses mais antigos estão fechados e aparecem apenas para consulta.
+        Clique no CT-e para ver as notas. O lançamento vale só para a competência anterior à
+        corrente{liberada ? ` — hoje, ${liberada}` : ''}. O mês corrente ainda não libera, e os
+        anteriores já estão fechados; os dois aparecem só para consulta.
         {tot.venda > 0 && (
           <> Nota de venda não entra nesta apuração: o Sankhya não permite apropriar frete nela.
           {' '}<strong>{tot.venda}</strong> ficaram de fora neste mês.</>
