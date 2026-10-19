@@ -34,6 +34,7 @@ export default function CifFob({ sessao }) {
   const [confirmando, setConfirmando] = useState(false)
   const [verHistorico, setVerHistorico] = useState(false)
   const [lote, setLote] = useState(10)
+  const [confirmandoBaixa, setConfirmandoBaixa] = useState(false)
 
   const carregar = async () => {
     try {
@@ -67,6 +68,24 @@ export default function CifFob({ sessao }) {
     setRodando(false)
   }
 
+  // Segundo passo: fecha a pendência. Só roda em pedido que já teve o
+  // frete trocado — pedido ainda com F é recusado pelo próprio Sankhya.
+  const baixar = async () => {
+    setConfirmandoBaixa(false); setRodando(true); setResultado(null)
+    try {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/sankhya-cif-fob-baixa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY,
+                   Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ usuario: sessao?.email || '',
+                               ano: anoSel ? Number(anoSel) : null, limite: lote }),
+      })
+      const d = await r.json()
+      setResultado({ ...d, modo: 'baixa' }); await carregar()
+    } catch (e) { setResultado({ ok: false, erro: String(e?.message ?? e) }) }
+    setRodando(false)
+  }
+
   const aplicar = async () => {
     setConfirmando(false); setRodando(true); setResultado(null)
     try {
@@ -86,6 +105,8 @@ export default function CifFob({ sessao }) {
       feitos: base.filter(p => p.resultado === 'ok').length,
       erros: base.filter(p => p.resultado === 'erro').length,
       valor: base.reduce((s, p) => s + (Number(p.vlr_nota) || 0), 0),
+      aBaixar: base.filter(p => p.resultado === 'ok' && !p.baixa_resultado).length,
+      baixados: base.filter(p => p.baixa_resultado === 'ok').length,
     }
   }, [pedidos, anoSel])
 
@@ -125,6 +146,7 @@ export default function CifFob({ sessao }) {
           ['A alterar', int(tot.aFazer), tot.aFazer ? AMBAR : VERDE],
           ['Já alterados', int(tot.feitos), VERDE],
           ['Com erro', int(tot.erros), tot.erros ? VERM : SUAVE],
+          ['Pendência fechada', int(tot.baixados), VERDE],
           ['Valor envolvido', `R$ ${brl(tot.valor)}`],
         ].map(([r, v, c]) => (
           <div key={r}>
@@ -176,6 +198,31 @@ export default function CifFob({ sessao }) {
           </span>
         )}
 
+        {tot.aBaixar > 0 && (!confirmandoBaixa ? (
+          <button onClick={() => setConfirmandoBaixa(true)} disabled={rodando}
+            style={{ fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
+                     cursor: rodando ? 'default' : 'pointer', padding: '8px 16px',
+                     border: 'none', borderRadius: 6,
+                     background: rodando ? SUAVE : VERDE, color: '#fff' }}>
+            Tirar pendência de {Math.min(lote, tot.aBaixar)}
+          </button>
+        ) : (
+          <span style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#E9F7F1',
+                         padding: '7px 12px', borderRadius: 6 }}>
+            <span style={{ fontSize: 12.5, color: '#0C6349' }}>
+              Marcar {Math.min(lote, tot.aBaixar)} como não pendente?
+            </span>
+            <button onClick={baixar}
+              style={{ fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                       padding: '6px 14px', border: 'none', borderRadius: 5, background: VERDE, color: '#fff' }}>
+              Sim
+            </button>
+            <button onClick={() => setConfirmandoBaixa(false)}
+              style={{ fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', padding: '6px 10px',
+                       border: 'none', background: 'none', color: SUAVE }}>cancelar</button>
+          </span>
+        ))}
+
         <button onClick={atualizarLista} disabled={rodando}
           style={{ fontFamily: 'inherit', fontSize: 12.5, cursor: rodando ? 'default' : 'pointer',
                    padding: '8px 14px', border: `1px solid ${TRACO}`, borderRadius: 6,
@@ -196,7 +243,10 @@ export default function CifFob({ sessao }) {
                       padding: '12px 15px', marginBottom: 16, fontSize: 12.5, lineHeight: 1.6,
                       color: resultado.ok ? '#0C6349' : '#8A1C14' }}>
           {resultado.ok
-            ? (resultado.modo === 'listar'
+            ? (resultado.modo === 'baixa'
+                ? (resultado.nada_a_fazer ? 'Nada para tirar pendência.'
+                   : `${resultado.baixados} pedido(s) marcado(s) como não pendente, ${resultado.erros} com erro.`)
+              : resultado.modo === 'listar'
                 ? `Lista atualizada: ${resultado.encontrados} pedidos na regra.`
                 : resultado.nada_a_fazer
                   ? 'Nada a alterar nesse filtro.'
