@@ -166,26 +166,44 @@ export default function Frete({ sessao }) {
   [doMes, foco, tipo, busca])
 
   const tot = useMemo(() => {
-    const corrigir = doMes.filter(l => l.situacao !== 'ok')
+    // Conta por NOTA, não por vínculo: uma nota com três CT-e é um
+    // problema só, e a diferença dela não pode entrar três vezes.
+    const porNota = new Map()
+    doMes.forEach(l => { if (!porNota.has(l.nf_nunota)) porNota.set(l.nf_nunota, l) })
+    const notas = [...porNota.values()]
+    const corrigir = notas.filter(l => l.situacao !== 'ok')
     return {
-      vinculos: doMes.length,
+      vinculos: notas.length,
       ctes: new Set(doMes.map(l => l.cte_nunota)).size,
-      ok: doMes.filter(l => l.situacao === 'ok').length,
+      ok: notas.filter(l => l.situacao === 'ok').length,
       corrigir: corrigir.length,
       valor: corrigir.reduce((s, l) => s + Math.abs(Number(l.diferenca) || 0), 0),
       um: corrigir.filter(l => l.um_para_um).length,
       rateado: corrigir.filter(l => !l.um_para_um).length,
       podeLancar: corrigir.filter(l => l.editavel).length,
-      venda: linhas.filter(l => l.competencia === competencia && !l.e_compra).length,
+      venda: new Set(linhas.filter(l => l.competencia === competencia && !l.e_compra)
+                     .map(l => l.nf_nunota)).size,
     }
   }, [doMes])
 
   // agrupa por CT-e, que é como a conferência acontece na prática
+  // Agrupa por CT-e, EXCETO quando a nota recebe vários conhecimentos:
+  // aí os CT-e dela viram um bloco só. Três cartões com o mesmo botão
+  // fazendo a mesma coisa (gravar o total) é convite a erro.
   const porCte = useMemo(() => {
     const m = new Map()
     vistas.forEach(l => {
-      if (!m.has(l.cte_nunota)) m.set(l.cte_nunota, { cte: l.cte_nunota, cab: l, notas: [] })
-      m.get(l.cte_nunota).notas.push(l)
+      const chave = l.nota_com_varios_ctes ? `nf-${l.nf_nunota}` : `cte-${l.cte_nunota}`
+      if (!m.has(chave)) {
+        m.set(chave, {
+          chave, porNota: !!l.nota_com_varios_ctes,
+          cte: l.cte_nunota, nf: l.nf_nunota, cab: l,
+          ctes: [], notas: [],
+        })
+      }
+      const g = m.get(chave)
+      g.notas.push(l)
+      if (!g.ctes.some(c => c.cte_nunota === l.cte_nunota)) g.ctes.push(l)
     })
     return [...m.values()]
   }, [vistas])
@@ -388,11 +406,11 @@ export default function Frete({ sessao }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {porCte.map(g => {
             const c = g.cab
-            const ab = aberto === g.cte
+            const ab = aberto === g.chave
             const somaDif = g.notas.reduce((s, l) => s + Math.abs(Number(l.diferenca) || 0), 0)
             return (
-              <div key={g.cte} style={{ background: '#fff', border: `1px solid ${TRACO}` }}>
-                <button onClick={() => setAberto(ab ? null : g.cte)} aria-expanded={ab}
+              <div key={g.chave} style={{ background: '#fff', border: `1px solid ${TRACO}` }}>
+                <button onClick={() => setAberto(ab ? null : g.chave)} aria-expanded={ab}
                   style={{ width: '100%', display: 'grid',
                            gridTemplateColumns: '16px 130px 1fr 110px 90px 120px',
                            gap: 12, alignItems: 'center', padding: '12px 15px',
@@ -402,9 +420,13 @@ export default function Frete({ sessao }) {
                                  transform: ab ? 'rotate(90deg)' : 'none', transition: 'transform .18s' }}>▶</span>
                   <span>
                     <div style={{ fontSize: 13, fontWeight: 600, color: TINTA, fontVariantNumeric: 'tabular-nums' }}>
-                      CT-e {c.cte_numnota}
+                      {g.porNota ? `Nota ${c.nf_numnota}` : `CT-e ${c.cte_numnota}`}
                     </div>
-                    <div style={{ fontSize: 10.5, color: '#9A958E' }}>{dBR(c.cte_data)}</div>
+                    <div style={{ fontSize: 10.5, color: '#9A958E' }}>
+                      {g.porNota
+                        ? `${g.ctes.length} CT-e: ${g.ctes.map(x => x.cte_numnota).join(', ')}`
+                        : dBR(c.cte_data)}
+                    </div>
                   </span>
                   <span style={{ fontSize: 12, color: SUAVE, overflow: 'hidden',
                                  textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -412,10 +434,13 @@ export default function Frete({ sessao }) {
                   </span>
                   <span style={{ fontSize: 12.5, color: TINTA, textAlign: 'right',
                                  fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
-                    R$ {brl(c.cte_valor)}
+                    R$ {brl(g.porNota
+                      ? g.ctes.reduce((t, x) => t + (Number(x.cte_valor) || 0), 0)
+                      : c.cte_valor)}
                   </span>
-                  <span style={{ fontSize: 11.5, color: c.um_para_um ? SUAVE : AZUL, textAlign: 'center' }}>
-                    {c.um_para_um ? '1 nota' : `${c.nfs_no_cte} notas`}
+                  <span style={{ fontSize: 11.5, color: g.porNota ? AZUL : (c.um_para_um ? SUAVE : AZUL),
+                                 textAlign: 'center' }}>
+                    {g.porNota ? `${g.ctes.length} CT-e` : (c.um_para_um ? '1 nota' : `${c.nfs_no_cte} notas`)}
                   </span>
                   <span style={{ textAlign: 'right' }}>
                     {somaDif > 0.005 ? (
@@ -430,8 +455,11 @@ export default function Frete({ sessao }) {
                 </button>
 
                 {(() => {
-                  const podem = g.notas.filter(x => x.situacao !== 'ok' && x.editavel)
-                  const travadas = g.notas.filter(x => x.situacao !== 'ok' && !x.editavel)
+                  // Num bloco por nota, todos os CT-e gravam o MESMO total.
+                  // Basta um lançamento; mandar os três seria repetir.
+                  const candidatos = g.porNota ? g.notas.slice(0, 1) : g.notas
+                  const podem = candidatos.filter(x => x.situacao !== 'ok' && x.editavel)
+                  const travadas = candidatos.filter(x => x.situacao !== 'ok' && !x.editavel)
                   if (!podem.length && !travadas.length) return null
                   return (
                     <div style={{ padding: '0 15px 11px', display: 'flex', gap: 10,
@@ -443,7 +471,10 @@ export default function Frete({ sessao }) {
                                    cursor: emLote ? 'default' : 'pointer', padding: '6px 14px',
                                    border: 'none', borderRadius: 5,
                                    background: emLote ? SUAVE : TINTA, color: PAPEL }}>
-                          {emLote ? 'Lançando…' : `Lançar ${podem.length} nota${podem.length > 1 ? 's' : ''}`}
+                          {emLote ? 'Lançando…'
+                            : g.porNota
+                              ? `Lançar R$ ${brl(g.notas[0].frete_correto_nota)} na nota ${g.notas[0].nf_numnota}`
+                              : `Lançar ${podem.length} nota${podem.length > 1 ? 's' : ''}`}
                         </button>
                       )}
                       {travadas.length > 0 && (
@@ -452,7 +483,11 @@ export default function Frete({ sessao }) {
                           {[...new Set(travadas.map(x => `${x.competencia_nf} (${porQue(x.competencia_nf) || '?'})`))].join(' · ')}
                         </span>
                       )}
-                      {podem.length > 0 && <span style={{ fontSize: 11, color: SUAVE }}>uma por vez</span>}
+                      {podem.length > 0 && (
+                        <span style={{ fontSize: 11, color: SUAVE }}>
+                          {g.porNota ? `soma dos ${g.ctes.length} CT-e` : 'uma por vez'}
+                        </span>
+                      )}
                     </div>
                   )
                 })()}
@@ -472,7 +507,7 @@ export default function Frete({ sessao }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {g.notas.map(l => {
+                          {(g.porNota ? g.notas.slice(0, 1) : g.notas).map(l => {
                             const s = SIT[l.situacao] || SIT.ok
                             return (
                               <tr key={l.nf_nunota} style={{ borderBottom: `1px solid #F0EEEA` }}>
