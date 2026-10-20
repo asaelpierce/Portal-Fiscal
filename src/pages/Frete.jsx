@@ -220,8 +220,8 @@ export default function Frete({ sessao }) {
         para consulta. Antes de gravar, o sistema confere se alguém alterou a nota desde a última
         sincronização, e depois relê para confirmar que só o frete mudou.
         <div style={{ marginTop: 6, color: '#4A4741' }}>
-          Nota que o Sankhya recusar aparece com o motivo dele ao lado — há casos em que o ERP não
-          permite alterar o frete, e a mensagem diz qual é.
+          Nota que recebe <strong>mais de um CT-e</strong> é comparada pela soma dos conhecimentos,
+          não por um de cada vez. Nota que o Sankhya recusar aparece com o motivo dele ao lado.
         </div>
       </div>
 
@@ -507,7 +507,13 @@ export default function Frete({ sessao }) {
                                   {brl(l.nf_frete_lancado)}</td>
                                 <td style={{ padding: '9px 12px', fontSize: 12.5, textAlign: 'right',
                                              color: VERDE, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                                  {brl(l.frete_correto)}</td>
+                                  {brl(l.frete_correto_nota ?? l.frete_correto)}
+                                  {l.nota_com_varios_ctes && (
+                                    <div style={{ fontSize: 10, color: AZUL, fontWeight: 400, lineHeight: 1.3 }}
+                                         title={`Esta nota recebe frete de ${l.ctes_na_nota} CT-e. Deste conhecimento vêm R$ ${brl(l.frete_correto)}; o valor da nota é a soma de todos.`}>
+                                      {l.ctes_na_nota} CT-e · deste: {brl(l.frete_correto)}
+                                    </div>
+                                  )}</td>
                                 <td style={{ padding: '9px 12px', fontSize: 12.5, textAlign: 'right',
                                              fontWeight: 600, fontVariantNumeric: 'tabular-nums',
                                              color: Math.abs(l.diferenca) < 0.01 ? '#9A958E' : VERM }}>
