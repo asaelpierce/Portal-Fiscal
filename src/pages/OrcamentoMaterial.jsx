@@ -24,6 +24,19 @@ const GRUPOS = [
 ]
 
 const brl = (v) => Number(v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// Custo unitário pode passar de duas casas: a base tem 6299,2125 e
+// 50,369984. Arredondar para duas apagaria a precisão que o Sankhya
+// guarda, e o total sairia diferente do dele.
+const num = (v) => {
+  const n = Number(v ?? 0)
+  if (!isFinite(n)) return '0,00'
+  const casas = (String(v ?? '').split('.')[1] || '').length
+  return n.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: Math.max(2, Math.min(casas, 6)),
+  })
+}
 const dh = (v) => v ? new Date(v).toLocaleString('pt-BR',
   { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
 
@@ -679,12 +692,14 @@ export default function OrcamentoMaterial({ sessao }) {
                       <td style={{ ...td, textAlign: 'right' }}>
                         <input value={x.custo_unit || ''} onChange={e => mudar(i, 'custo_unit', numero(e.target.value))}
                           onFocus={foco} onBlur={desfoco} placeholder="0,00"
-                          style={cel({ width: 84, textAlign: 'right',
+                          title="aceita mais de duas casas decimais"
+                          style={cel({ width: 96, textAlign: 'right',
                                        fontVariantNumeric: 'tabular-nums' })} /></td>
                       <td style={{ ...td, textAlign: 'right', fontWeight: 600,
                                    color: (Number(x.qtd) * Number(x.custo_unit)) > 0 ? TINTA : '#C9C5BE',
                                    fontVariantNumeric: 'tabular-nums' }}>
-                        {(Number(x.qtd) * Number(x.custo_unit)) > 0 ? brl(Number(x.qtd) * Number(x.custo_unit)) : '—'}</td>
+                        {(Number(x.qtd) * Number(x.custo_unit)) > 0
+                          ? num(Number(x.qtd) * Number(x.custo_unit)) : '—'}</td>
                       <td style={{ ...td }}>
                         <button onClick={() => setItens(xs => xs.filter((_, j) => j !== i))}
                           title="tirar esta linha"
@@ -730,7 +745,7 @@ export default function OrcamentoMaterial({ sessao }) {
               </span>
             )}
             <span style={{ fontSize: 12, color: SUAVE, fontVariantNumeric: 'tabular-nums' }}>
-              total R$ {brl(prontos.reduce((s, x) => s + x.qtd * x.custo_unit, 0))}
+              total R$ {num(prontos.reduce((s, x) => s + Number(x.qtd) * Number(x.custo_unit), 0))}
             </span>
             {comProblema.length > 0 && (
               <span style={{ fontSize: 12, color: AMBAR }}>
@@ -767,9 +782,9 @@ export default function OrcamentoMaterial({ sessao }) {
                     <td style={{ ...td, color: SUAVE }}>{it.cod_vol}</td>
                     <td style={{ ...td, color: SUAVE }}>{it.grupo_mat}</td>
                     <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{it.qtd}</td>
-                    <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{brl(it.custo_unit)}</td>
+                    <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{num(it.custo_unit)}</td>
                     <td style={{ ...td, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                      {brl(it.custo_total)}</td>
+                      {num(it.custo_total)}</td>
                   </tr>
                 ))}
               </tbody>
