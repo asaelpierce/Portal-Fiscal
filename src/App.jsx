@@ -26,6 +26,7 @@ import Demandas from './pages/Demandas.jsx'
 import Entregas from './pages/Entregas.jsx'
 import Frete from './pages/Frete.jsx'
 import CifFob from './pages/CifFob.jsx'
+import OrcamentoMaterial from './pages/OrcamentoMaterial.jsx'
 import SolicitarPublico from './pages/SolicitarPublico.jsx'
 import TrocarSenha from './components/TrocarSenha.jsx'
 import Automacoes from './pages/Automacoes.jsx'
@@ -54,6 +55,7 @@ const MENU_COMPLETO = [
   { id: 'entregas', label: 'Entregas', icon: '📦' },
   { id: 'frete', label: 'Apropriação de Frete', icon: '🚚' },
   { id: 'ciffob', label: 'Tipo de Frete — Pendentes', icon: '🏷️' },
+  { id: 'orcmat', label: 'Matéria-prima em Orçamento', icon: '🧱' },
   { id: 'demandas', label: 'Demandas', icon: '📥' },
   { id: 'admin', label: 'Administração', icon: '🔐' },
 ]
@@ -340,7 +342,7 @@ function AppAutenticado({ sessao, onLogout }) {
                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {MENU.find(m => m.id === pagina)?.label}
             </h1>
-            {dtIniISO && dtFimISO && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin', 'reqalmox', 'automacoes', 'processos', 'modulos', 'demandas', 'entregas', 'frete', 'ciffob'].includes(pagina) && (
+            {dtIniISO && dtFimISO && !['fechamento', 'razao', 'historico', 'painel', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin', 'reqalmox', 'automacoes', 'processos', 'modulos', 'demandas', 'entregas', 'frete', 'ciffob', 'orcmat'].includes(pagina) && (
               <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9CA3AF' }}>
                 Período {dBR(dtIniISO)} a {dBR(dtFimISO)}
               </p>
@@ -348,14 +350,14 @@ function AppAutenticado({ sessao, onLogout }) {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            {!['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin', 'reqalmox', 'automacoes', 'processos', 'modulos', 'demandas', 'entregas', 'frete', 'ciffob'].includes(pagina) && (
+            {!['fechamento', 'razao', 'sync', 'fluxocaixa', 'compfiscal', 'confiscal', 'rateio', 'auditoria', 'baixagas', 'vinculofrete', 'admin', 'reqalmox', 'automacoes', 'processos', 'modulos', 'demandas', 'entregas', 'frete', 'ciffob', 'orcmat'].includes(pagina) && (
               <SeletorPeriodo
                 dtIni={dtIniISO} dtFim={dtFimISO}
                 onChange={selecionarPeriodo}
                 fase={faseSync}
               />
             )}
-            {pagina !== 'rateio' && pagina !== 'auditoria' && pagina !== 'baixagas' && pagina !== 'vinculofrete' && pagina !== 'admin' && pagina !== 'reqalmox' && pagina !== 'automacoes' && pagina !== 'processos' && pagina !== 'modulos' && pagina !== 'demandas' && pagina !== 'entregas' && pagina !== 'frete' && pagina !== 'ciffob' && (
+            {pagina !== 'rateio' && pagina !== 'auditoria' && pagina !== 'baixagas' && pagina !== 'vinculofrete' && pagina !== 'admin' && pagina !== 'reqalmox' && pagina !== 'automacoes' && pagina !== 'processos' && pagina !== 'modulos' && pagina !== 'demandas' && pagina !== 'entregas' && pagina !== 'frete' && pagina !== 'ciffob' && pagina !== 'orcmat' && (
               <Btn primary onClick={atualizar} disabled={atualizando || fase === 'carregando'}>
                 {atualizando ? '↻ Atualizando…' : '↻ Atualizar dados'}
               </Btn>
@@ -389,6 +391,8 @@ function AppAutenticado({ sessao, onLogout }) {
             <Processos sessao={sessao} />
           ) : pagina === 'modulos' ? (
             <Modulos sessao={sessao} />
+          ) : pagina === 'orcmat' ? (
+            <OrcamentoMaterial sessao={sessao} />
           ) : pagina === 'ciffob' ? (
             <CifFob sessao={sessao} />
           ) : pagina === 'frete' ? (
