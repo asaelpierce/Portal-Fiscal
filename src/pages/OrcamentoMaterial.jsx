@@ -16,6 +16,38 @@ import { sbFetch, SUPABASE_URL, SUPABASE_ANON_KEY } from '../config.js'
 const PAPEL = '#FBFAF8', TINTA = '#1A1A18', TRACO = '#E4E1DC', SUAVE = '#6E6A64'
 const VERDE = '#12805C', VERM = '#B42318', AMBAR = '#B45309', AZUL = '#1F60A8'
 
+// As 22 unidades do Sankhya. Mandar uma que não existe derruba a
+// gravação com "chave mãe não localizada" — foi o que aconteceu com
+// 'l' da planilha, que virou 'L' e não existe: litro é LT.
+const UNIDADES = ['BD','CD','CJ','CX','GL','HH','HR','KG','KT','LA','LT',
+                  'MH','ML','MT','M2','M3','PA','PC','SC','TO','UN']
+
+// Como a planilha escreve, e o que o Sankhya espera.
+const APELIDO_UN = {
+  L: 'LT', LITRO: 'LT', LITROS: 'LT', LTS: 'LT',
+  KGS: 'KG', QUILO: 'KG', QUILOS: 'KG', QUILOGRAMA: 'KG', K: 'KG',
+  M: 'MT', METRO: 'MT', METROS: 'MT',
+  'M²': 'M2', MM2: 'M2', M2: 'M2',
+  'M³': 'M3', MM3: 'M3',
+  PÇ: 'PC', PECA: 'PC', 'PEÇA': 'PC', PCS: 'PC', PEÇAS: 'PC', PECAS: 'PC',
+  UND: 'UN', UNID: 'UN', UNIDADE: 'UN', U: 'UN',
+  H: 'HR', HORA: 'HR', HORAS: 'HR',
+  TON: 'TO', TONELADA: 'TO', T: 'TO',
+  CAIXA: 'CX', PAR: 'PA', SACO: 'SC', GALAO: 'GL', 'GALÃO': 'GL',
+  LATA: 'LA', BALDE: 'BD', KIT: 'KT', CONJUNTO: 'CJ',
+}
+
+const normalizarUnidade = (v) => {
+  const t = String(v ?? '').trim().toUpperCase()
+  if (!t) return ''
+  if (UNIDADES.includes(t)) return t
+  // tira acento E símbolo: 'pç' e 'm³' passavam direto e quebravam
+  const semAcento = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const semSimbolo = semAcento.replace(/²/g, '2').replace(/³/g, '3')
+  return APELIDO_UN[t] || APELIDO_UN[semAcento] || APELIDO_UN[semSimbolo]
+      || (UNIDADES.includes(semSimbolo) ? semSimbolo : t)
+}
+
 const GRUPOS = [
   { cod: 'DM', nome: 'Direct Material Cost' },
   { cod: 'PC', nome: 'Packaging Cost' },
@@ -122,7 +154,7 @@ function lerColado(texto) {
       item: String(item || '').trim(),
       custo_unit: numero(valor),
       qtd: numero(qtd),
-      cod_vol: String(unidade || '').trim().toUpperCase(),
+      cod_vol: normalizarUnidade(unidade),
       grupo_mat: resolverGrupo(grupo),
       cod_prod: /^\d+$/.test(String(codigo || '').trim()) ? Number(codigo) : null,
       descr_prod: '', descr_gen: '', resolvido: false, opcoes: [],
@@ -310,6 +342,8 @@ export default function OrcamentoMaterial({ sessao }) {
     if (temCod && temGen) return 'código e descrição genérica juntos'
     if (!temCod && !temGen) return 'escolha o produto ou marque como genérico'
     if (!(Number(x.qtd) > 0)) return 'quantidade precisa ser maior que zero'
+    // unidade que não existe derruba a gravação no Sankhya
+    if (x.cod_vol && !UNIDADES.includes(x.cod_vol)) return `unidade "${x.cod_vol}" não existe no Sankhya`
     return null
   }
 
@@ -718,9 +752,16 @@ export default function OrcamentoMaterial({ sessao }) {
                         )}
                       </td>
                       <td style={{ ...td }}>
-                        <input value={x.cod_vol} onChange={e => mudar(i, 'cod_vol', e.target.value.toUpperCase())}
-                          onFocus={foco} onBlur={desfoco} placeholder="—"
-                          style={cel({ width: 52, textAlign: 'center' })} /></td>
+                        <select value={x.cod_vol} onChange={e => mudar(i, 'cod_vol', e.target.value)}
+                          onFocus={foco} onBlur={desfoco}
+                          style={cel({ width: 68, cursor: 'pointer',
+                                       color: x.cod_vol ? TINTA : AMBAR })}>
+                          <option value="">—</option>
+                          {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                          {x.cod_vol && !UNIDADES.includes(x.cod_vol) && (
+                            <option value={x.cod_vol}>{x.cod_vol} (não existe)</option>
+                          )}
+                        </select></td>
                       <td style={{ ...td }}>
                         <select value={x.grupo_mat} onChange={e => mudar(i, 'grupo_mat', e.target.value)}
                           onFocus={foco} onBlur={desfoco}
