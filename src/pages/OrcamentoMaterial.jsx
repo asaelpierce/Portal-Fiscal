@@ -50,6 +50,10 @@ const ALIAS = {
   quantidade: 'qtd', qtd: 'qtd', qtde: 'qtd',
   unidade: 'unidade', un: 'unidade',
   grupo: 'grupo', grupomateriaprima: 'grupo', grupodemateriaprima: 'grupo',
+  // A planilha que a engenharia preenche chama a coluna do grupo de
+  // 'descrição de matéria prima' e põe o ÍNDICE (1 a 4), não o nome.
+  descricaodemateriaprima: 'grupo', descricaomateriaprima: 'grupo',
+  descrmateriaprima: 'grupo', materiaprima: 'grupo',
 }
 const normalizar = (s) => String(s || '').toLowerCase()
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '')
@@ -61,6 +65,19 @@ const numero = (s) => {
   const limpo = t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t
   const n = Number(limpo)
   return isFinite(n) ? n : 0
+}
+
+// O grupo chega de três jeitos: o código (DM), o nome inteiro
+// (Direct Material Cost) ou o índice 1 a 4, que é como a planilha da
+// engenharia preenche.
+function resolverGrupo(valor) {
+  const t = String(valor ?? '').trim()
+  if (!t) return 'DM'
+  if (/^[1-4]$/.test(t)) return GRUPOS[Number(t) - 1].cod
+  const porCod = GRUPOS.find(g => g.cod === t.toUpperCase())
+  if (porCod) return porCod.cod
+  const porNome = GRUPOS.find(g => normalizar(g.nome) === normalizar(t))
+  return porNome ? porNome.cod : 'DM'
 }
 
 function lerColado(texto) {
@@ -106,8 +123,7 @@ function lerColado(texto) {
       custo_unit: numero(valor),
       qtd: numero(qtd),
       cod_vol: String(unidade || '').trim().toUpperCase(),
-      grupo_mat: (GRUPOS.find(g => g.cod === String(grupo).trim().toUpperCase()
-                   || normalizar(g.nome) === normalizar(grupo))?.cod) || 'DM',
+      grupo_mat: resolverGrupo(grupo),
       cod_prod: /^\d+$/.test(String(codigo || '').trim()) ? Number(codigo) : null,
       descr_prod: '', descr_gen: '', resolvido: false, opcoes: [],
     }
@@ -212,25 +228,28 @@ export default function OrcamentoMaterial({ sessao }) {
   const interpretar = async () => {
     const { itens: lidos } = lerColado(colado)
     if (!lidos.length) { setResultado({ ok: false, erro: 'Não consegui ler nenhuma linha.' }); return }
-    setItens(lidos); setResultado(null)
+    setResultado(null)
 
-    // quem não veio com código precisa ser procurado pelo nome
-    const semCodigo = lidos.filter(x => !x.cod_prod && x.item)
-    if (!semCodigo.length) { setItens(lidos.map(x => ({ ...x, resolvido: true }))); return }
+    // Nome no campo Item é descrição genérica, ponto. Só quem veio com
+    // código precisa ir ao cadastro, e só para pegar a descrição.
+    const comCodigo = lidos.filter(x => x.cod_prod)
+    if (!comCodigo.length) {
+      setItens(lidos.map(x => ({ ...x, descr_gen: x.item, resolvido: true })))
+      return
+    }
 
+    setItens(lidos)
     setResolvendo(true)
     try {
-      const d = await chamar({ modo: 'produtos', nomes: semCodigo.map(x => x.item) })
-      const porNome = new Map((d.produtos || []).map(p => [p.nome, p.achados || []]))
+      const d = await chamar({ modo: 'produtos', nomes: comCodigo.map(x => String(x.cod_prod)) })
+      const porCod = new Map((d.produtos || []).map(p => [String(p.nome), p.achados?.[0] || null]))
       setItens(lidos.map(x => {
-        if (x.cod_prod) return { ...x, resolvido: true }
-        const op = porNome.get(x.item) || []
-        // um só achado: usa. Vários ou nenhum: a pessoa decide.
-        if (op.length === 1) {
-          return { ...x, cod_prod: op[0].cod_prod, descr_prod: op[0].descr_prod,
-                   cod_vol: x.cod_vol || op[0].cod_vol, opcoes: op, resolvido: true }
-        }
-        return { ...x, opcoes: op, resolvido: false }
+        if (!x.cod_prod) return { ...x, descr_gen: x.item, resolvido: true }
+        const a = porCod.get(String(x.cod_prod))
+        return a
+          ? { ...x, descr_prod: a.descr_prod, cod_vol: x.cod_vol || a.cod_vol,
+              item: '', descr_gen: '', resolvido: true, naoAchado: false }
+          : { ...x, cod_prod: null, resolvido: false, naoAchado: true }
       }))
     } catch (e) { setResultado({ ok: false, erro: String(e?.message ?? e) }) }
     setResolvendo(false)
@@ -245,40 +264,43 @@ export default function OrcamentoMaterial({ sessao }) {
   const adicionarLinha = () =>
     setItens(xs => [...xs, { ...LINHA_VAZIA, linha: xs.length + 1 }])
 
-  // Procura o produto de uma linha só, quando a pessoa termina de
-  // digitar o código ou o nome. Evita obrigar a reler tudo.
-  const procurarNaLinha = async (i) => {
-    const x = itens[i]
-    const busca = String(x.codigo || x.item || '').trim()
-    if (!busca) return
+  // Busca SÓ pelo código, e só para mostrar o nome do produto na tela.
+  // Nome digitado no campo Item é descrição genérica por definição: não
+  // se procura no cadastro. Tentar adivinhar dava ruído — 'Cola' trazia
+  // seis produtos diferentes e 'Chemitac CH110' não trazia nenhum.
+  const buscarCodigo = async (i) => {
+    const cod = String(itens[i]?.codigo || '').trim()
+    if (!/^\d+$/.test(cod)) return
     try {
-      const d = await chamar({ modo: 'produtos', nomes: [busca] })
-      const op = d.produtos?.[0]?.achados || []
-      setItens(xs => xs.map((y, j) => {
-        if (j !== i) return y
-        if (op.length === 1) {
-          return { ...y, cod_prod: op[0].cod_prod, descr_prod: op[0].descr_prod,
-                   descr_gen: '', cod_vol: y.cod_vol || op[0].cod_vol,
-                   opcoes: op, resolvido: true }
-        }
-        return { ...y, opcoes: op, resolvido: false }
-      }))
-    } catch { /* deixa a pessoa resolver à mão */ }
+      const d = await chamar({ modo: 'produtos', nomes: [cod] })
+      const achado = d.produtos?.[0]?.achados?.[0]
+      setItens(xs => xs.map((y, j) => j !== i ? y : (achado
+        ? { ...y, cod_prod: achado.cod_prod, descr_prod: achado.descr_prod,
+            item: '', descr_gen: '', cod_vol: y.cod_vol || achado.cod_vol,
+            resolvido: true, naoAchado: false }
+        : { ...y, cod_prod: null, descr_prod: '', resolvido: false, naoAchado: true })))
+    } catch { /* a pessoa vê o campo sem descrição e corrige */ }
   }
 
   const mudar = (i, campo, valor) =>
-    setItens(xs => xs.map((x, j) => j === i ? { ...x, [campo]: valor } : x))
+    setItens(xs => xs.map((x, j) => {
+      if (j !== i) return x
+      const y = { ...x, [campo]: valor }
+      // digitou nome: é genérico, e limpa qualquer produto que estivesse ali
+      if (campo === 'item') {
+        y.descr_gen = valor
+        if (valor.trim()) { y.cod_prod = null; y.descr_prod = ''; y.codigo = '' }
+        y.resolvido = !!valor.trim()
+      }
+      // limpou o código: volta a ser genérico se houver nome
+      if (campo === 'codigo' && !String(valor).trim()) {
+        y.cod_prod = null; y.descr_prod = ''; y.naoAchado = false
+        y.descr_gen = y.item; y.resolvido = !!y.item.trim()
+      }
+      return y
+    }))
 
-  const usarProduto = (i, op) =>
-    setItens(xs => xs.map((x, j) => j === i
-      ? { ...x, cod_prod: op.cod_prod, descr_prod: op.descr_prod,
-          descr_gen: '', cod_vol: x.cod_vol || op.cod_vol, resolvido: true }
-      : x))
 
-  const usarGenerico = (i) =>
-    setItens(xs => xs.map((x, j) => j === i
-      ? { ...x, cod_prod: null, descr_prod: '', descr_gen: x.item, resolvido: true }
-      : x))
 
   // a mesma regra que a função valida no servidor, para a pessoa ver antes
   const problema = (x) => {
@@ -332,6 +354,13 @@ export default function OrcamentoMaterial({ sessao }) {
   })
   const foco = (e) => { e.target.style.background = '#fff'; e.target.style.borderColor = AZUL }
   const desfoco = (e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent' }
+
+  // Número no campo: cru enquanto se digita, com vírgula quando se sai.
+  // Mostrar 0.7186 cortado, com ponto, obriga a pessoa a desconfiar do
+  // que o portal entendeu.
+  const [editando, setEditando] = useState(null)   // 'i-campo' em edição
+  const mostrarNum = (i, campo, valor) =>
+    editando === `${i}-${campo}` ? (valor ?? '') : (Number(valor) ? num(valor) : '')
 
   return (
     <div style={{ background: PAPEL,
@@ -525,8 +554,9 @@ export default function OrcamentoMaterial({ sessao }) {
 
           {verColar && <>
           <div style={{ fontSize: 11.5, color: SUAVE, margin: '13px 0 8px', lineHeight: 1.6 }}>
-            Copie as células do Excel e cole aqui, ou arraste um arquivo CSV. Cada coluna da
-            planilha vira uma coluna da tabela.
+            Copie as células do Excel e cole aqui, ou arraste um arquivo CSV.
+            Reconhece as colunas <i>Item, Preço/unidade, Unidade, Quantidade</i> e
+            <i> descrição de matéria prima</i> pelo nome, em qualquer ordem.
           </div>
           <div onDragOver={e => { e.preventDefault(); setArrastando(true) }}
                onDragLeave={() => setArrastando(false)}
@@ -600,6 +630,9 @@ export default function OrcamentoMaterial({ sessao }) {
                 {comProblema.length} precisa{comProblema.length > 1 ? 'm' : ''} de atenção
               </span>
             )}
+            <span style={{ fontSize: 11.5, color: SUAVE, marginLeft: 'auto' }}>
+              Com código, vira produto do cadastro. Só com nome, vira descrição genérica.
+            </span>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 940 }}>
@@ -616,7 +649,7 @@ export default function OrcamentoMaterial({ sessao }) {
                       <td style={{ ...td, color: SUAVE }}>{x.linha}</td>
                       <td style={{ ...td }}>
                         <input value={x.codigo} onChange={e => mudar(i, 'codigo', e.target.value)}
-                          onFocus={foco} onBlur={e => { desfoco(e); x.codigo && procurarNaLinha(i) }}
+                          onFocus={foco} onBlur={e => { desfoco(e); buscarCodigo(i) }}
                           placeholder="—"
                           style={cel({ width: 72, textAlign: 'right',
                                        fontVariantNumeric: 'tabular-nums', color: SUAVE })} />
@@ -626,38 +659,14 @@ export default function OrcamentoMaterial({ sessao }) {
                           <div style={{ color: TINTA }}>{x.descr_prod}</div>
                         ) : (
                           <input value={x.item} onChange={e => mudar(i, 'item', e.target.value)}
-                            onFocus={foco} onBlur={e => { desfoco(e); x.item && !x.resolvido && procurarNaLinha(i) }}
-                            placeholder="digite o nome do material"
-                            style={cel({ minWidth: 190 })} />
+                            onFocus={foco} onBlur={desfoco}
+                            placeholder="nome do material, se não tiver código"
+                            style={cel({ minWidth: 220 })} />
                         )}
                         {p && <div style={{ fontSize: 10.5, color: AMBAR, marginTop: 2 }}>{p}</div>}
-                        {!x.resolvido && x.opcoes.length > 1 && (
-                          <div style={{ marginTop: 5, display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                            {x.opcoes.slice(0, 4).map(op => (
-                              <button key={op.cod_prod} onClick={() => usarProduto(i, op)}
-                                title={op.descr_prod}
-                                style={{ fontFamily: 'inherit', fontSize: 10.5, cursor: 'pointer',
-                                         padding: '3px 8px', border: `1px solid ${AZUL}`,
-                                         borderRadius: 4, background: '#fff', color: AZUL }}>
-                                {op.cod_prod} · {op.descr_prod.slice(0, 26)}
-                              </button>
-                            ))}
-                            <button onClick={() => usarGenerico(i)}
-                              style={{ fontFamily: 'inherit', fontSize: 10.5, cursor: 'pointer',
-                                       padding: '3px 8px', border: `1px solid ${TRACO}`,
-                                       borderRadius: 4, background: '#fff', color: SUAVE }}>
-                              usar como genérico
-                            </button>
-                          </div>
-                        )}
-                        {!x.resolvido && x.opcoes.length === 0 && x.item && (
-                          <div style={{ marginTop: 5 }}>
-                            <button onClick={() => usarGenerico(i)}
-                              style={{ fontFamily: 'inherit', fontSize: 10.5, cursor: 'pointer',
-                                       padding: '3px 8px', border: `1px solid ${AMBAR}`,
-                                       borderRadius: 4, background: '#fff', color: AMBAR }}>
-                              não achei no cadastro · lançar como genérico
-                            </button>
+                        {x.naoAchado && (
+                          <div style={{ fontSize: 10.5, color: VERM, marginTop: 2 }}>
+                            código {x.codigo} não existe no cadastro
                           </div>
                         )}
                       </td>
@@ -685,21 +694,26 @@ export default function OrcamentoMaterial({ sessao }) {
                           {GRUPOS.map(g => <option key={g.cod} value={g.cod}>{g.cod} — {g.nome}</option>)}
                         </select></td>
                       <td style={{ ...td, textAlign: 'right' }}>
-                        <input value={x.qtd || ''} onChange={e => mudar(i, 'qtd', numero(e.target.value))}
-                          onFocus={foco} onBlur={desfoco} placeholder="0"
-                          style={cel({ width: 64, textAlign: 'right',
+                        <input value={mostrarNum(i, 'qtd', x.qtd)}
+                          onChange={e => mudar(i, 'qtd', numero(e.target.value))}
+                          onFocus={e => { foco(e); setEditando(`${i}-qtd`) }}
+                          onBlur={e => { desfoco(e); setEditando(null) }}
+                          placeholder="0"
+                          style={cel({ width: 92, textAlign: 'right',
                                        fontVariantNumeric: 'tabular-nums' })} /></td>
                       <td style={{ ...td, textAlign: 'right' }}>
-                        <input value={x.custo_unit || ''} onChange={e => mudar(i, 'custo_unit', numero(e.target.value))}
-                          onFocus={foco} onBlur={desfoco} placeholder="0,00"
-                          title="aceita mais de duas casas decimais"
+                        <input value={mostrarNum(i, 'custo', x.custo_unit)}
+                          onChange={e => mudar(i, 'custo_unit', numero(e.target.value))}
+                          onFocus={e => { foco(e); setEditando(`${i}-custo`) }}
+                          onBlur={e => { desfoco(e); setEditando(null) }}
+                          placeholder="0,00" title="aceita mais de duas casas"
                           style={cel({ width: 96, textAlign: 'right',
                                        fontVariantNumeric: 'tabular-nums' })} /></td>
                       <td style={{ ...td, textAlign: 'right', fontWeight: 600,
                                    color: (Number(x.qtd) * Number(x.custo_unit)) > 0 ? TINTA : '#C9C5BE',
                                    fontVariantNumeric: 'tabular-nums' }}>
                         {(Number(x.qtd) * Number(x.custo_unit)) > 0
-                          ? num(Number(x.qtd) * Number(x.custo_unit)) : '—'}</td>
+                          ? brl(Number(x.qtd) * Number(x.custo_unit)) : '—'}</td>
                       <td style={{ ...td }}>
                         <button onClick={() => setItens(xs => xs.filter((_, j) => j !== i))}
                           title="tirar esta linha"
@@ -745,7 +759,7 @@ export default function OrcamentoMaterial({ sessao }) {
               </span>
             )}
             <span style={{ fontSize: 12, color: SUAVE, fontVariantNumeric: 'tabular-nums' }}>
-              total R$ {num(prontos.reduce((s, x) => s + Number(x.qtd) * Number(x.custo_unit), 0))}
+              total R$ {brl(prontos.reduce((s, x) => s + Number(x.qtd) * Number(x.custo_unit), 0))}
             </span>
             {comProblema.length > 0 && (
               <span style={{ fontSize: 12, color: AMBAR }}>
