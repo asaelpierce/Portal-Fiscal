@@ -112,6 +112,7 @@ export default function OrcamentoMaterial({ sessao }) {
   const [produtosOrc, setProdutosOrc] = useState([])
   const [seq, setSeq] = useState(null)        // produto escolhido
   const [arrastando, setArrastando] = useState(false)
+  const [verColar, setVerColar] = useState(false)
   const [colado, setColado] = useState('')
   const [itens, setItens] = useState([])
   const [resolvendo, setResolvendo] = useState(false)
@@ -301,11 +302,23 @@ export default function OrcamentoMaterial({ sessao }) {
     setGravando(false)
   }
 
-  const td = { padding: '8px 10px', fontSize: 12, borderBottom: '1px solid #F0EEEA' }
-  const th = { padding: '9px 10px', fontSize: 10.5, fontWeight: 600, color: '#9A958E',
+  const td = { padding: '3px 6px', fontSize: 12, borderBottom: '1px solid #F2F0EC',
+               verticalAlign: 'middle' }
+  const th = { padding: '8px 10px', fontSize: 11, fontWeight: 500, color: '#9A958E',
                textAlign: 'left', borderBottom: `1px solid ${TRACO}`, whiteSpace: 'nowrap' }
   const inp = { fontFamily: 'inherit', fontSize: 12, padding: '5px 7px',
                 border: `1px solid ${TRACO}`, borderRadius: 4, background: '#fff' }
+
+  // Campo de planilha: sem moldura até receber o foco. Uma tabela com
+  // trinta caixas desenhadas vira ruído; o que importa é o valor.
+  const cel = (extra = {}) => ({
+    fontFamily: 'inherit', fontSize: 12.5, color: TINTA,
+    padding: '7px 8px', border: '1px solid transparent', borderRadius: 4,
+    background: 'transparent', width: '100%', outline: 'none',
+    transition: 'background .1s, border-color .1s', ...extra,
+  })
+  const foco = (e) => { e.target.style.background = '#fff'; e.target.style.borderColor = AZUL }
+  const desfoco = (e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent' }
 
   return (
     <div style={{ background: PAPEL,
@@ -482,23 +495,26 @@ export default function OrcamentoMaterial({ sessao }) {
       {/* ─── colar ou arrastar ─── */}
       {orc && seq != null && (
         <div style={{ background: '#fff', border: `1px solid ${TRACO}`, padding: '15px 16px', marginBottom: 16 }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <button onClick={adicionarLinha}
-              style={{ fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                       padding: '8px 16px', border: 'none', borderRadius: 6,
+              style={{ fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
+                       padding: '10px 18px', border: 'none', borderRadius: 7,
                        background: TINTA, color: PAPEL }}>
-              + Adicionar item à mão
+              Adicionar item
             </button>
-            <span style={{ fontSize: 12.5, color: SUAVE }}>
-              ou cole a planilha abaixo
-            </span>
+            <button onClick={() => setVerColar(v => !v)}
+              style={{ fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer',
+                       padding: '10px 14px', border: `1px solid ${TRACO}`, borderRadius: 7,
+                       background: '#fff', color: SUAVE }}>
+              {verColar ? 'fechar' : 'colar da planilha'}
+            </button>
           </div>
 
-          <div style={{ fontSize: 11.5, color: SUAVE, marginBottom: 8, lineHeight: 1.6 }}>
-            Copie as células do Excel e cole aqui, ou arraste um CSV. Cada coluna da planilha
-            vira uma coluna da tabela — <b>não precisa separar por vírgula</b>.
+          {verColar && <>
+          <div style={{ fontSize: 11.5, color: SUAVE, margin: '13px 0 8px', lineHeight: 1.6 }}>
+            Copie as células do Excel e cole aqui, ou arraste um arquivo CSV. Cada coluna da
+            planilha vira uma coluna da tabela.
           </div>
-
           <div onDragOver={e => { e.preventDefault(); setArrastando(true) }}
                onDragLeave={() => setArrastando(false)}
                onDrop={aoSoltar}
@@ -520,29 +536,24 @@ export default function OrcamentoMaterial({ sessao }) {
             )}
           </div>
 
-          <div style={{ marginTop: 8 }}>
+          <div style={{ marginTop: 8, display: 'flex', gap: 14, alignItems: 'center' }}>
             <label style={{ fontSize: 11.5, color: AZUL, cursor: 'pointer' }}>
-              ou escolher um arquivo
+              escolher um arquivo
               <input type="file" accept=".csv,.txt,.tsv"
                 onChange={e => lerArquivo(e.target.files?.[0])}
                 style={{ display: 'none' }} />
             </label>
-          </div>
-          <div style={{ display: 'flex', gap: 9, marginTop: 10, alignItems: 'center' }}>
             <button onClick={interpretar} disabled={resolvendo || !colado.trim()}
-              style={{ fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
-                       cursor: resolvendo ? 'default' : 'pointer', padding: '8px 16px',
-                       border: 'none', borderRadius: 6,
-                       background: resolvendo ? SUAVE : TINTA, color: PAPEL }}>
-              {resolvendo ? 'Procurando produtos…' : 'Ler e conferir'}
+              style={{ fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600,
+                       cursor: resolvendo || !colado.trim() ? 'default' : 'pointer',
+                       padding: '7px 14px', border: 'none', borderRadius: 6,
+                       background: resolvendo || !colado.trim() ? '#E4E1DC' : TINTA,
+                       color: resolvendo || !colado.trim() ? SUAVE : PAPEL }}>
+              {resolvendo ? 'procurando…' : 'ler o que foi colado'}
             </button>
-            {itens.length > 0 && (
-              <span style={{ fontSize: 12, color: SUAVE }}>
-                {itens.length} linha(s) · {prontos.length} pronta(s)
-                {comProblema.length > 0 && <span style={{ color: VERM }}> · {comProblema.length} a resolver</span>}
-              </span>
-            )}
           </div>
+          </>}
+
         </div>
       )}
 
@@ -566,14 +577,21 @@ export default function OrcamentoMaterial({ sessao }) {
       {/* ─── conferência ─── */}
       {orc && seq != null && itens.length > 0 && (
         <div style={{ background: '#fff', border: `1px solid ${TRACO}`, marginBottom: 16 }}>
-          <div style={{ padding: '11px 15px', borderBottom: `1px solid ${TRACO}`, fontSize: 11,
-                        color: SUAVE, fontWeight: 600 }}>
-            O QUE VAI SER LANÇADO
+          <div style={{ padding: '12px 15px', borderBottom: `1px solid ${TRACO}`,
+                        display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13.5, fontWeight: 600, color: TINTA }}>
+              {itens.length} item{itens.length > 1 ? 's' : ''} para lançar
+            </span>
+            {comProblema.length > 0 && (
+              <span style={{ fontSize: 12, color: AMBAR }}>
+                {comProblema.length} precisa{comProblema.length > 1 ? 'm' : ''} de atenção
+              </span>
+            )}
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 940 }}>
               <thead><tr>
-                {['#', 'Código', 'Item / descrição', 'Vira', 'Unid.', 'Grupo', 'Qtd', 'Custo unit.', 'Total', ''].map((h, i) => (
+                {['', 'Código', 'Material', 'Como entra', 'Unid.', 'Grupo', 'Qtd', 'Custo unit.', 'Total', ''].map((h, i) => (
                   <th key={h} style={{ ...th, textAlign: i >= 6 && i <= 8 ? 'right' : 'left' }}>{h}</th>
                 ))}
               </tr></thead>
@@ -585,18 +603,19 @@ export default function OrcamentoMaterial({ sessao }) {
                       <td style={{ ...td, color: SUAVE }}>{x.linha}</td>
                       <td style={{ ...td }}>
                         <input value={x.codigo} onChange={e => mudar(i, 'codigo', e.target.value)}
-                          onBlur={() => x.codigo && procurarNaLinha(i)}
+                          onFocus={foco} onBlur={e => { desfoco(e); x.codigo && procurarNaLinha(i) }}
                           placeholder="—"
-                          style={{ ...inp, width: 74, textAlign: 'right' }} />
+                          style={cel({ width: 72, textAlign: 'right',
+                                       fontVariantNumeric: 'tabular-nums', color: SUAVE })} />
                       </td>
                       <td style={{ ...td, maxWidth: 300 }}>
                         {x.descr_prod ? (
                           <div style={{ color: TINTA }}>{x.descr_prod}</div>
                         ) : (
                           <input value={x.item} onChange={e => mudar(i, 'item', e.target.value)}
-                            onBlur={() => x.item && !x.resolvido && procurarNaLinha(i)}
-                            placeholder="nome do material"
-                            style={{ ...inp, width: '100%', minWidth: 180 }} />
+                            onFocus={foco} onBlur={e => { desfoco(e); x.item && !x.resolvido && procurarNaLinha(i) }}
+                            placeholder="digite o nome do material"
+                            style={cel({ minWidth: 190 })} />
                         )}
                         {p && <div style={{ fontSize: 10.5, color: AMBAR, marginTop: 2 }}>{p}</div>}
                         {!x.resolvido && x.opcoes.length > 1 && (
@@ -631,36 +650,41 @@ export default function OrcamentoMaterial({ sessao }) {
                       </td>
                       <td style={{ ...td }}>
                         {x.cod_prod ? (
-                          <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px',
-                                         borderRadius: 4, color: VERDE, background: '#E9F7F1' }}>
-                            produto {x.cod_prod}
+                          <span style={{ fontSize: 11, color: VERDE }}>
+                            cadastrado
                           </span>
                         ) : x.descr_gen ? (
-                          <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px',
-                                         borderRadius: 4, color: AZUL, background: '#EAF1FA' }}>
-                            genérico
+                          <span style={{ fontSize: 11, color: AZUL }}>
+                            texto livre
                           </span>
                         ) : (
-                          <span style={{ fontSize: 10.5, color: AMBAR }}>indefinido</span>
+                          <span style={{ fontSize: 11, color: AMBAR }}>falta definir</span>
                         )}
                       </td>
                       <td style={{ ...td }}>
                         <input value={x.cod_vol} onChange={e => mudar(i, 'cod_vol', e.target.value.toUpperCase())}
-                          style={{ ...inp, width: 56 }} /></td>
+                          onFocus={foco} onBlur={desfoco} placeholder="—"
+                          style={cel({ width: 52, textAlign: 'center' })} /></td>
                       <td style={{ ...td }}>
                         <select value={x.grupo_mat} onChange={e => mudar(i, 'grupo_mat', e.target.value)}
-                          style={{ ...inp, width: 150 }}>
-                          {GRUPOS.map(g => <option key={g.cod} value={g.cod}>{g.cod} · {g.nome}</option>)}
+                          onFocus={foco} onBlur={desfoco}
+                          style={cel({ width: 146, cursor: 'pointer' })}>
+                          {GRUPOS.map(g => <option key={g.cod} value={g.cod}>{g.cod} — {g.nome}</option>)}
                         </select></td>
                       <td style={{ ...td, textAlign: 'right' }}>
-                        <input value={x.qtd} onChange={e => mudar(i, 'qtd', numero(e.target.value))}
-                          style={{ ...inp, width: 66, textAlign: 'right' }} /></td>
+                        <input value={x.qtd || ''} onChange={e => mudar(i, 'qtd', numero(e.target.value))}
+                          onFocus={foco} onBlur={desfoco} placeholder="0"
+                          style={cel({ width: 64, textAlign: 'right',
+                                       fontVariantNumeric: 'tabular-nums' })} /></td>
                       <td style={{ ...td, textAlign: 'right' }}>
-                        <input value={x.custo_unit} onChange={e => mudar(i, 'custo_unit', numero(e.target.value))}
-                          style={{ ...inp, width: 86, textAlign: 'right' }} /></td>
-                      <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: TINTA,
+                        <input value={x.custo_unit || ''} onChange={e => mudar(i, 'custo_unit', numero(e.target.value))}
+                          onFocus={foco} onBlur={desfoco} placeholder="0,00"
+                          style={cel({ width: 84, textAlign: 'right',
+                                       fontVariantNumeric: 'tabular-nums' })} /></td>
+                      <td style={{ ...td, textAlign: 'right', fontWeight: 600,
+                                   color: (Number(x.qtd) * Number(x.custo_unit)) > 0 ? TINTA : '#C9C5BE',
                                    fontVariantNumeric: 'tabular-nums' }}>
-                        {brl(x.qtd * x.custo_unit)}</td>
+                        {(Number(x.qtd) * Number(x.custo_unit)) > 0 ? brl(Number(x.qtd) * Number(x.custo_unit)) : '—'}</td>
                       <td style={{ ...td }}>
                         <button onClick={() => setItens(xs => xs.filter((_, j) => j !== i))}
                           title="tirar esta linha"
@@ -685,7 +709,9 @@ export default function OrcamentoMaterial({ sessao }) {
                          cursor: gravando || !prontos.length ? 'default' : 'pointer', padding: '9px 18px',
                          border: 'none', borderRadius: 6,
                          background: gravando || !prontos.length ? SUAVE : VERDE, color: '#fff' }}>
-                {gravando ? 'Gravando…' : `Lançar ${prontos.length} item(ns) no Sankhya`}
+                {gravando ? 'Gravando…'
+                  : prontos.length === 1 ? 'Lançar 1 item no Sankhya'
+                  : `Lançar ${prontos.length} itens no Sankhya`}
               </button>
             ) : (
               <span style={{ display: 'flex', gap: 9, alignItems: 'center', background: '#E9F7F1',
