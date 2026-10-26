@@ -151,6 +151,7 @@ export default function OrcamentoMaterial({ sessao }) {
   const [verHistorico, setVerHistorico] = useState(false)
   const [historico, setHistorico] = useState([])
   const [lotes, setLotes] = useState([])
+  const [filtroQuem, setFiltroQuem] = useState('')
 
   // Arrastar o arquivo evita o copiar-colar, que é onde a pessoa erra:
   // seleciona demais, seleciona de menos, perde o cabeçalho.
@@ -184,8 +185,8 @@ export default function OrcamentoMaterial({ sessao }) {
   const carregarHistorico = async () => {
     try {
       const [h, l] = await Promise.all([
-        sbFetch('orcamento_item_lancado?select=*&order=feito_em.desc&limit=300'),
-        sbFetch('orcamento_lote?select=*&limit=60'),
+        sbFetch('orcamento_item_lancado?select=*&order=feito_em.desc&limit=400'),
+        sbFetch('orcamento_lote?select=*&limit=120'),
       ])
       setHistorico(h || []); setLotes(l || [])
     } catch { /* histórico vazio não impede o resto */ }
@@ -362,6 +363,17 @@ export default function OrcamentoMaterial({ sessao }) {
   const mostrarNum = (i, campo, valor) =>
     editando === `${i}-${campo}` ? (valor ?? '') : (Number(valor) ? num(valor) : '')
 
+  // Sem e-mail não se grava: o histórico precisa dizer quem fez, e na
+  // engenharia vão ser várias pessoas usando a mesma tela.
+  if (!sessao?.email) {
+    return (
+      <div style={{ padding: 30, fontSize: 13.5, color: VERM, lineHeight: 1.6 }}>
+        Não consegui identificar seu e-mail nesta sessão. Saia e entre de novo —
+        todo lançamento fica registrado com quem fez, e sem isso não dá para gravar.
+      </div>
+    )
+  }
+
   return (
     <div style={{ background: PAPEL,
                   margin: 'calc(var(--pad-y) * -1) calc(var(--pad-x) * -1) calc(var(--pad-b) * -1)',
@@ -393,21 +405,42 @@ export default function OrcamentoMaterial({ sessao }) {
           </div>
           {lotes.length === 0 ? (
             <div style={{ padding: '20px 15px', fontSize: 13, color: SUAVE }}>Nada lançado ainda.</div>
-          ) : (
+          ) : (<>
+            {[...new Set(lotes.map(l => l.quem))].length > 1 && (
+              <div style={{ padding: '10px 15px', borderBottom: `1px solid ${TRACO}`,
+                            display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11.5, color: SUAVE }}>quem lançou:</span>
+                {['', ...new Set(lotes.map(l => l.quem))].map(q => (
+                  <button key={q || 'todos'} onClick={() => setFiltroQuem(q)}
+                    style={{ fontFamily: 'inherit', fontSize: 11.5, cursor: 'pointer',
+                             padding: '4px 10px', borderRadius: 5,
+                             border: `1px solid ${filtroQuem === q ? TINTA : TRACO}`,
+                             background: filtroQuem === q ? TINTA : '#fff',
+                             color: filtroQuem === q ? PAPEL : SUAVE }}>
+                    {q || 'todos'}
+                  </button>
+                ))}
+              </div>
+            )}
             <div style={{ overflowX: 'auto', maxHeight: 440 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
                 <thead><tr>
-                  {['Quando', 'Quem', 'Orçamento', 'Itens', 'Gravados', 'Com erro', 'Valor'].map((h, i) => (
-                    <th key={h} style={{ ...th, textAlign: i >= 3 ? 'right' : 'left',
+                  {['Quando', 'Quem', 'BR', 'Cliente', 'Itens', 'Gravados', 'Com erro', 'Valor'].map((h, i) => (
+                    <th key={h} style={{ ...th, textAlign: i >= 4 ? 'right' : 'left',
                                          position: 'sticky', top: 0, background: '#fff' }}>{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>
-                  {lotes.map(l => (
+                  {lotes.filter(l => !filtroQuem || l.quem === filtroQuem).map(l => (
                     <tr key={l.lote}>
                       <td style={{ ...td, color: SUAVE, whiteSpace: 'nowrap' }}>{dh(l.quando)}</td>
-                      <td style={{ ...td, color: SUAVE }}>{String(l.quem || '').split('@')[0]}</td>
-                      <td style={{ ...td, fontWeight: 600, color: TINTA }}>{l.nureg}</td>
+                      <td style={{ ...td, color: TINTA }}>{l.quem}</td>
+                      <td style={{ ...td, fontWeight: 600, color: TINTA, whiteSpace: 'nowrap' }}>
+                        {l.br || l.nureg}
+                        {l.sequencia > 1 && <span style={{ color: SUAVE, fontWeight: 400 }}> · prod. {l.sequencia}</span>}
+                      </td>
+                      <td style={{ ...td, color: SUAVE, maxWidth: 220, overflow: 'hidden',
+                                   textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.cliente}</td>
                       <td style={{ ...td, textAlign: 'right' }}>{l.itens}</td>
                       <td style={{ ...td, textAlign: 'right', color: VERDE, fontWeight: 600 }}>{l.gravados}</td>
                       <td style={{ ...td, textAlign: 'right', color: l.com_erro ? VERM : SUAVE }}>{l.com_erro}</td>
@@ -418,7 +451,7 @@ export default function OrcamentoMaterial({ sessao }) {
                 </tbody>
               </table>
             </div>
-          )}
+          </>)}
           {historico.some(h => h.resultado === 'erro') && (
             <div style={{ padding: '12px 15px', borderTop: `1px solid ${TRACO}` }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: VERM, marginBottom: 7 }}>
@@ -426,7 +459,8 @@ export default function OrcamentoMaterial({ sessao }) {
               </div>
               {historico.filter(h => h.resultado === 'erro').slice(0, 12).map(h => (
                 <div key={h.id} style={{ fontSize: 11.5, color: SUAVE, lineHeight: 1.6 }}>
-                  <b style={{ color: TINTA }}>{h.descr_prod || h.descr_gen}</b> · orç. {h.nureg} · {h.mensagem}
+                  <b style={{ color: TINTA }}>{h.descr_prod || h.descr_gen}</b>
+                  {' · '}orç. {h.nureg}{' · '}{h.feito_por}{' · '}{h.mensagem}
                 </div>
               ))}
             </div>
@@ -760,6 +794,9 @@ export default function OrcamentoMaterial({ sessao }) {
             )}
             <span style={{ fontSize: 12, color: SUAVE, fontVariantNumeric: 'tabular-nums' }}>
               total R$ {brl(prontos.reduce((s, x) => s + Number(x.qtd) * Number(x.custo_unit), 0))}
+            </span>
+            <span style={{ fontSize: 11.5, color: SUAVE, marginLeft: 'auto' }}>
+              vai ficar registrado como {sessao.email}
             </span>
             {comProblema.length > 0 && (
               <span style={{ fontSize: 12, color: AMBAR }}>
