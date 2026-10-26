@@ -222,6 +222,36 @@ export default function OrcamentoMaterial({ sessao }) {
     setResolvendo(false)
   }
 
+  const LINHA_VAZIA = {
+    linha: 0, codigo: '', item: '', custo_unit: 0, qtd: 0, cod_vol: '',
+    grupo_mat: 'DM', cod_prod: null, descr_prod: '', descr_gen: '',
+    resolvido: false, opcoes: [],
+  }
+
+  const adicionarLinha = () =>
+    setItens(xs => [...xs, { ...LINHA_VAZIA, linha: xs.length + 1 }])
+
+  // Procura o produto de uma linha só, quando a pessoa termina de
+  // digitar o código ou o nome. Evita obrigar a reler tudo.
+  const procurarNaLinha = async (i) => {
+    const x = itens[i]
+    const busca = String(x.codigo || x.item || '').trim()
+    if (!busca) return
+    try {
+      const d = await chamar({ modo: 'produtos', nomes: [busca] })
+      const op = d.produtos?.[0]?.achados || []
+      setItens(xs => xs.map((y, j) => {
+        if (j !== i) return y
+        if (op.length === 1) {
+          return { ...y, cod_prod: op[0].cod_prod, descr_prod: op[0].descr_prod,
+                   descr_gen: '', cod_vol: y.cod_vol || op[0].cod_vol,
+                   opcoes: op, resolvido: true }
+        }
+        return { ...y, opcoes: op, resolvido: false }
+      }))
+    } catch { /* deixa a pessoa resolver à mão */ }
+  }
+
   const mudar = (i, campo, valor) =>
     setItens(xs => xs.map((x, j) => j === i ? { ...x, [campo]: valor } : x))
 
@@ -452,27 +482,21 @@ export default function OrcamentoMaterial({ sessao }) {
       {/* ─── colar ou arrastar ─── */}
       {orc && seq != null && (
         <div style={{ background: '#fff', border: `1px solid ${TRACO}`, padding: '15px 16px', marginBottom: 16 }}>
-          <div style={{ fontSize: 12.5, color: SUAVE, marginBottom: 11, lineHeight: 1.6 }}>
-            Selecione as células no Excel e cole aqui, ou arraste um arquivo CSV.
-            A primeira linha pode ser o cabeçalho — as colunas são reconhecidas pelo nome,
-            em qualquer ordem.
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+            <button onClick={adicionarLinha}
+              style={{ fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                       padding: '8px 16px', border: 'none', borderRadius: 6,
+                       background: TINTA, color: PAPEL }}>
+              + Adicionar item à mão
+            </button>
+            <span style={{ fontSize: 12.5, color: SUAVE }}>
+              ou cole a planilha abaixo
+            </span>
           </div>
 
-          <div style={{ display: 'flex', gap: 14, marginBottom: 11, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: 11, color: SUAVE, lineHeight: 1.7 }}>
-              <div style={{ fontWeight: 600, color: TINTA, marginBottom: 3 }}>Colunas reconhecidas</div>
-              <div><b>Item</b> ou Descrição ou Produto &nbsp;·&nbsp; obrigatória</div>
-              <div><b>Quantidade</b> ou Qtd &nbsp;·&nbsp; obrigatória</div>
-              <div><b>Preço/unidade</b> ou Custo unit. ou Valor</div>
-              <div>Código &nbsp;·&nbsp; Unidade &nbsp;·&nbsp; Grupo</div>
-            </div>
-            <div style={{ fontSize: 11, color: SUAVE, lineHeight: 1.7, paddingLeft: 14,
-                          borderLeft: `1px solid ${TRACO}` }}>
-              <div style={{ fontWeight: 600, color: TINTA, marginBottom: 3 }}>Como fica</div>
-              <div>Linha <b>com código</b> → vira produto do cadastro</div>
-              <div>Linha <b>só com nome</b> → o portal procura; se não achar, vira descrição genérica</div>
-              <div style={{ color: AMBAR }}>Nunca os dois juntos: o Sankhya recusa</div>
-            </div>
+          <div style={{ fontSize: 11.5, color: SUAVE, marginBottom: 8, lineHeight: 1.6 }}>
+            Copie as células do Excel e cole aqui, ou arraste um CSV. Cada coluna da planilha
+            vira uma coluna da tabela — <b>não precisa separar por vírgula</b>.
           </div>
 
           <div onDragOver={e => { e.preventDefault(); setArrastando(true) }}
@@ -540,7 +564,7 @@ export default function OrcamentoMaterial({ sessao }) {
       )}
 
       {/* ─── conferência ─── */}
-      {itens.length > 0 && (
+      {orc && seq != null && itens.length > 0 && (
         <div style={{ background: '#fff', border: `1px solid ${TRACO}`, marginBottom: 16 }}>
           <div style={{ padding: '11px 15px', borderBottom: `1px solid ${TRACO}`, fontSize: 11,
                         color: SUAVE, fontWeight: 600 }}>
@@ -549,8 +573,8 @@ export default function OrcamentoMaterial({ sessao }) {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 940 }}>
               <thead><tr>
-                {['#', 'Item', 'Vira', 'Unid.', 'Grupo', 'Qtd', 'Custo unit.', 'Total', ''].map((h, i) => (
-                  <th key={h} style={{ ...th, textAlign: i >= 5 && i <= 7 ? 'right' : 'left' }}>{h}</th>
+                {['#', 'Código', 'Item / descrição', 'Vira', 'Unid.', 'Grupo', 'Qtd', 'Custo unit.', 'Total', ''].map((h, i) => (
+                  <th key={h} style={{ ...th, textAlign: i >= 6 && i <= 8 ? 'right' : 'left' }}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>
@@ -559,8 +583,21 @@ export default function OrcamentoMaterial({ sessao }) {
                   return (
                     <tr key={i} style={{ background: p ? '#FDF3E7' : '#fff' }}>
                       <td style={{ ...td, color: SUAVE }}>{x.linha}</td>
-                      <td style={{ ...td, maxWidth: 260 }}>
-                        <div style={{ color: TINTA }}>{x.descr_prod || x.item}</div>
+                      <td style={{ ...td }}>
+                        <input value={x.codigo} onChange={e => mudar(i, 'codigo', e.target.value)}
+                          onBlur={() => x.codigo && procurarNaLinha(i)}
+                          placeholder="—"
+                          style={{ ...inp, width: 74, textAlign: 'right' }} />
+                      </td>
+                      <td style={{ ...td, maxWidth: 300 }}>
+                        {x.descr_prod ? (
+                          <div style={{ color: TINTA }}>{x.descr_prod}</div>
+                        ) : (
+                          <input value={x.item} onChange={e => mudar(i, 'item', e.target.value)}
+                            onBlur={() => x.item && !x.resolvido && procurarNaLinha(i)}
+                            placeholder="nome do material"
+                            style={{ ...inp, width: '100%', minWidth: 180 }} />
+                        )}
                         {p && <div style={{ fontSize: 10.5, color: AMBAR, marginTop: 2 }}>{p}</div>}
                         {!x.resolvido && x.opcoes.length > 1 && (
                           <div style={{ marginTop: 5, display: 'flex', gap: 5, flexWrap: 'wrap' }}>
@@ -637,6 +674,11 @@ export default function OrcamentoMaterial({ sessao }) {
           </div>
           <div style={{ padding: '12px 15px', borderTop: `1px solid ${TRACO}`, display: 'flex',
                         gap: 11, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={adicionarLinha}
+              style={{ fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', padding: '7px 13px',
+                       border: `1px solid ${TRACO}`, borderRadius: 6, background: '#fff', color: TINTA }}>
+              + linha
+            </button>
             {!confirmando ? (
               <button onClick={() => setConfirmando(true)} disabled={gravando || !prontos.length}
                 style={{ fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
