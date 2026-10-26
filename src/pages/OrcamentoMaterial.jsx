@@ -109,6 +109,9 @@ export default function OrcamentoMaterial({ sessao }) {
   const [achados, setAchados] = useState([])
   const [orc, setOrc] = useState(null)
   const [jaNoOrc, setJaNoOrc] = useState([])
+  const [produtosOrc, setProdutosOrc] = useState([])
+  const [seq, setSeq] = useState(null)        // produto escolhido
+  const [arrastando, setArrastando] = useState(false)
   const [colado, setColado] = useState('')
   const [itens, setItens] = useState([])
   const [resolvendo, setResolvendo] = useState(false)
@@ -118,6 +121,25 @@ export default function OrcamentoMaterial({ sessao }) {
   const [verHistorico, setVerHistorico] = useState(false)
   const [historico, setHistorico] = useState([])
   const [lotes, setLotes] = useState([])
+
+  // Arrastar o arquivo evita o copiar-colar, que é onde a pessoa erra:
+  // seleciona demais, seleciona de menos, perde o cabeçalho.
+  const lerArquivo = async (arq) => {
+    if (!arq) return
+    const nome = String(arq.name || '').toLowerCase()
+    if (nome.endsWith('.csv') || nome.endsWith('.txt') || nome.endsWith('.tsv')) {
+      setColado(await arq.text())
+      return
+    }
+    setResultado({ ok: false,
+      erro: `Não leio ${nome.split('.').pop()} direto. No Excel, salve como CSV ou selecione as células e cole aqui.` })
+  }
+
+  const aoSoltar = (e) => {
+    e.preventDefault(); setArrastando(false)
+    const arq = e.dataTransfer?.files?.[0]
+    if (arq) lerArquivo(arq)
+  }
 
   const chamar = async (corpo) => {
     const r = await fetch(`${SUPABASE_URL}/functions/v1/sankhya-orcamento-material`, {
@@ -151,11 +173,25 @@ export default function OrcamentoMaterial({ sessao }) {
     setBuscando(false)
   }
 
-  const escolher = async (o) => {
-    setOrc(o); setAchados([]); setJaNoOrc([])
+  // A matéria-prima entra NUM PRODUTO do orçamento, não no orçamento
+  // inteiro. Há orçamento com 267 produtos: gravar no errado seria
+  // trabalhoso de desfazer.
+  const escolherProduto = async (o, sequencia) => {
+    setSeq(sequencia); setJaNoOrc([])
     try {
-      const d = await chamar({ modo: 'itens', nureg: o.nureg })
+      const d = await chamar({ modo: 'itens', nureg: (o || orc).nureg, sequencia })
       setJaNoOrc(d.itens || [])
+    } catch { /* segue sem a lista */ }
+  }
+
+  const escolher = async (o) => {
+    setOrc(o); setAchados([]); setJaNoOrc([]); setProdutosOrc([]); setSeq(null)
+    try {
+      const d = await chamar({ modo: 'produtos_orc', nureg: o.nureg })
+      const ps = d.produtos || []
+      setProdutosOrc(ps)
+      // um produto só: não faz sentido perguntar
+      if (ps.length === 1) escolherProduto(o, ps[0].sequencia)
     } catch { /* segue sem a lista */ }
   }
 
@@ -217,7 +253,7 @@ export default function OrcamentoMaterial({ sessao }) {
     setConfirmando(false); setGravando(true); setResultado(null)
     try {
       const d = await chamar({
-        modo: 'lancar', nureg: orc.nureg,
+        modo: 'lancar', nureg: orc.nureg, sequencia: seq,
         itens: prontos.map(x => ({
           cod_prod: x.cod_prod || null,
           descr_prod: x.descr_prod || '',
@@ -229,7 +265,7 @@ export default function OrcamentoMaterial({ sessao }) {
       setResultado(d)
       if (d.ok) {
         setItens([]); setColado('')
-        await Promise.all([escolher(orc), carregarHistorico()])
+        await Promise.all([escolherProduto(orc, seq), carregarHistorico()])
       }
     } catch (e) { setResultado({ ok: false, erro: String(e?.message ?? e) }) }
     setGravando(false)
@@ -363,26 +399,111 @@ export default function OrcamentoMaterial({ sessao }) {
               <span style={{ fontSize: 15, fontWeight: 600, color: '#19477F' }}>{orc.identificacao}</span>
               <span style={{ fontSize: 12.5, color: '#19477F' }}>{orc.cliente}</span>
               <span style={{ fontSize: 11.5, color: '#4A7CB5' }}>
-                registro {orc.nureg} · nº único {orc.nunota || '—'} · {jaNoOrc.length} item(ns) já cadastrado(s)
+                registro {orc.nureg} · nº único {orc.nunota || '—'}
+                {produtosOrc.length > 0 && ` · ${produtosOrc.length} produto(s)`}
               </span>
             </div>
           </div>
         )}
       </div>
 
-      {/* ─── colar ─── */}
-      {orc && (
-        <div style={{ background: '#fff', border: `1px solid ${TRACO}`, padding: '15px 16px', marginBottom: 16 }}>
-          <div style={{ fontSize: 12.5, color: SUAVE, marginBottom: 9, lineHeight: 1.55 }}>
-            Cole as linhas da planilha. Se a primeira linha for o cabeçalho, as colunas são
-            reconhecidas pelo nome — <i>Código, Item, Preço/unidade, Quantidade, Unidade, Grupo</i> —
-            e a ordem não importa.
+      {/* ─── escolher o produto do orçamento ─── */}
+      {orc && produtosOrc.length > 1 && (
+        <div style={{ background: '#fff', border: `1px solid ${seq == null ? AMBAR : TRACO}`,
+                      padding: '15px 16px', marginBottom: 16 }}>
+          <div style={{ fontSize: 12.5, color: seq == null ? AMBAR : SUAVE, marginBottom: 10,
+                        fontWeight: seq == null ? 600 : 400 }}>
+            {seq == null
+              ? `Este orçamento tem ${produtosOrc.length} produtos. Escolha em qual a matéria-prima vai entrar.`
+              : 'Produto escolhido:'}
           </div>
-          <textarea value={colado} onChange={e => setColado(e.target.value)}
-            rows={6} placeholder={'Código\tItem\tPreço/unidade\tQuantidade\tUnidade\n4942\tCHEMITAC 26N\t12,50\t3\tLT'}
-            style={{ width: '100%', fontFamily: 'ui-monospace, monospace', fontSize: 12,
-                     padding: 10, border: `1px solid ${TRACO}`, borderRadius: 6,
-                     resize: 'vertical', background: '#FBFAF8' }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
+            {produtosOrc.map(p => {
+              const sel = seq === p.sequencia
+              return (
+                <button key={p.sequencia} onClick={() => escolherProduto(orc, p.sequencia)}
+                  style={{ display: 'grid', gridTemplateColumns: '42px 1fr 90px 110px',
+                           gap: 12, alignItems: 'center', textAlign: 'left', width: '100%',
+                           padding: '9px 12px', borderRadius: 6, cursor: 'pointer',
+                           fontFamily: 'inherit',
+                           border: `1px solid ${sel ? VERDE : TRACO}`,
+                           background: sel ? '#E9F7F1' : '#fff' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: sel ? VERDE : SUAVE }}>
+                    {p.sequencia}
+                  </span>
+                  <span style={{ fontSize: 12.5, color: TINTA, overflow: 'hidden',
+                                 textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.descr_prod}
+                  </span>
+                  <span style={{ fontSize: 11.5, color: SUAVE, textAlign: 'right',
+                                 fontVariantNumeric: 'tabular-nums' }}>
+                    {p.quantidade} {p.cod_vol}
+                  </span>
+                  <span style={{ fontSize: 11, color: p.materiais ? AZUL : SUAVE, textAlign: 'right' }}>
+                    {p.materiais} material(is)
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ─── colar ou arrastar ─── */}
+      {orc && seq != null && (
+        <div style={{ background: '#fff', border: `1px solid ${TRACO}`, padding: '15px 16px', marginBottom: 16 }}>
+          <div style={{ fontSize: 12.5, color: SUAVE, marginBottom: 11, lineHeight: 1.6 }}>
+            Selecione as células no Excel e cole aqui, ou arraste um arquivo CSV.
+            A primeira linha pode ser o cabeçalho — as colunas são reconhecidas pelo nome,
+            em qualquer ordem.
+          </div>
+
+          <div style={{ display: 'flex', gap: 14, marginBottom: 11, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 11, color: SUAVE, lineHeight: 1.7 }}>
+              <div style={{ fontWeight: 600, color: TINTA, marginBottom: 3 }}>Colunas reconhecidas</div>
+              <div><b>Item</b> ou Descrição ou Produto &nbsp;·&nbsp; obrigatória</div>
+              <div><b>Quantidade</b> ou Qtd &nbsp;·&nbsp; obrigatória</div>
+              <div><b>Preço/unidade</b> ou Custo unit. ou Valor</div>
+              <div>Código &nbsp;·&nbsp; Unidade &nbsp;·&nbsp; Grupo</div>
+            </div>
+            <div style={{ fontSize: 11, color: SUAVE, lineHeight: 1.7, paddingLeft: 14,
+                          borderLeft: `1px solid ${TRACO}` }}>
+              <div style={{ fontWeight: 600, color: TINTA, marginBottom: 3 }}>Como fica</div>
+              <div>Linha <b>com código</b> → vira produto do cadastro</div>
+              <div>Linha <b>só com nome</b> → o portal procura; se não achar, vira descrição genérica</div>
+              <div style={{ color: AMBAR }}>Nunca os dois juntos: o Sankhya recusa</div>
+            </div>
+          </div>
+
+          <div onDragOver={e => { e.preventDefault(); setArrastando(true) }}
+               onDragLeave={() => setArrastando(false)}
+               onDrop={aoSoltar}
+               style={{ position: 'relative', border: `2px dashed ${arrastando ? VERDE : TRACO}`,
+                        borderRadius: 8, background: arrastando ? '#E9F7F1' : '#FBFAF8',
+                        transition: 'all .12s' }}>
+            <textarea value={colado} onChange={e => setColado(e.target.value)}
+              rows={7}
+              placeholder={'Cole aqui, ou arraste um arquivo CSV\n\nItem\tQuantidade\tPreço/unidade\tUnidade\nCHEMITAC 26N\t3\t12,50\tLT\nPEÇA SOB MEDIDA\t2\t1.250,00\tUN'}
+              style={{ width: '100%', fontFamily: 'ui-monospace, monospace', fontSize: 12,
+                       padding: 12, border: 'none', borderRadius: 7, background: 'transparent',
+                       resize: 'vertical', outline: 'none', color: TINTA }} />
+            {arrastando && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                            justifyContent: 'center', fontSize: 14, fontWeight: 600, color: VERDE,
+                            background: 'rgba(233,247,241,.92)', borderRadius: 7, pointerEvents: 'none' }}>
+                solte o arquivo
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: 8 }}>
+            <label style={{ fontSize: 11.5, color: AZUL, cursor: 'pointer' }}>
+              ou escolher um arquivo
+              <input type="file" accept=".csv,.txt,.tsv"
+                onChange={e => lerArquivo(e.target.files?.[0])}
+                style={{ display: 'none' }} />
+            </label>
+          </div>
           <div style={{ display: 'flex', gap: 9, marginTop: 10, alignItems: 'center' }}>
             <button onClick={interpretar} disabled={resolvendo || !colado.trim()}
               style={{ fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
@@ -528,7 +649,8 @@ export default function OrcamentoMaterial({ sessao }) {
               <span style={{ display: 'flex', gap: 9, alignItems: 'center', background: '#E9F7F1',
                              padding: '8px 13px', borderRadius: 6 }}>
                 <span style={{ fontSize: 12.5, color: '#0C6349' }}>
-                  Gravar {prontos.length} item(ns) em {orc.identificacao}?
+                  Gravar {prontos.length} item(ns) em {orc.identificacao}
+                  {produtosOrc.length > 1 && `, produto ${seq}`}?
                 </span>
                 <button onClick={gravar}
                   style={{ fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
@@ -552,11 +674,11 @@ export default function OrcamentoMaterial({ sessao }) {
       )}
 
       {/* ─── o que já está no orçamento ─── */}
-      {orc && jaNoOrc.length > 0 && (
+      {orc && seq != null && jaNoOrc.length > 0 && (
         <div style={{ background: '#fff', border: `1px solid ${TRACO}` }}>
           <div style={{ padding: '11px 15px', borderBottom: `1px solid ${TRACO}`, fontSize: 11,
                         color: SUAVE, fontWeight: 600 }}>
-            JÁ CADASTRADO NESTE ORÇAMENTO ({jaNoOrc.length})
+            JÁ CADASTRADO {produtosOrc.length > 1 ? `NO PRODUTO ${seq}` : 'NESTE ORÇAMENTO'} ({jaNoOrc.length})
           </div>
           <div style={{ overflowX: 'auto', maxHeight: 320 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
